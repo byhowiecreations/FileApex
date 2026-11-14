@@ -74,7 +74,12 @@ internal fun SimpleOverview(
     onFilesDropped: (List<String>) -> Unit,
     showDevicesCard: Boolean = false,
     onDevicesAnchor: (Rect) -> Unit = {},
-    onOpenDevices: () -> Unit = {}
+    onOpenDevices: () -> Unit = {},
+    onSendClipboard: () -> Unit = {},
+    onOpenStorageTools: () -> Unit = {},
+    onOpenBackupSettings: () -> Unit = {},
+    hasStoragePermission: Boolean = true,
+    onRequestStoragePermission: () -> Unit = {}
 ) {
     val state by devicesViewModel.uiState.collectAsState()
     val isInitialLoadComplete by devicesViewModel.isInitialLoadComplete.collectAsState()
@@ -82,25 +87,16 @@ internal fun SimpleOverview(
     val isDemoActive by DemoModeState.isDemoModeActive.collectAsState()
     var dropHover by remember { mutableStateOf(false) }
     var shareLinkFile by remember { mutableStateOf<File?>(null) }
-    var postPairBannerDismissed by remember { mutableStateOf(false) }
-    val linkFilePicker = rememberFriendFilePicker(
-        titleKey = "share_link_title",
-        viewModelKey = "simple-link-file-pick"
-    ) { picked ->
-        picked.firstOrNull()?.let { shareLinkFile = it }
-    }
-    val sendFilePicker = rememberFriendFilePicker(
-        titleKey = "choose_files",
-        viewModelKey = "simple-send-file-pick"
-    ) { picked ->
-        val targetDevice = active?.takeIf { it.online } ?: active ?: rows.firstOrNull()
-        if (picked.isNotEmpty() && targetDevice != null) {
-            onFilesDropped(picked.map { it.absolutePath })
-        }
-    }
-    shareLinkFile?.let { file ->
-        GuestDropDialog(file = file, onDismiss = { shareLinkFile = null })
-    }
+    var showHowItWorks by remember { mutableStateOf(false) }
+    val (openLinkPicker, openSendPicker) = rememberSimpleOverviewPickers(
+        active = active,
+        rows = rows,
+        hasStoragePermission = hasStoragePermission,
+        onRequestStoragePermission = onRequestStoragePermission,
+        onPickShareLinkFile = { shareLinkFile = it },
+        onFilesDropped = onFilesDropped
+    )
+    shareLinkFile?.let { file -> GuestDropDialog(file = file, onDismiss = { shareLinkFile = null }) }
 
     val connected = active?.takeIf { it.online } ?: active ?: rows.firstOrNull()
     val details = state.deviceDetails?.takeIf { it.deviceId == connected?.deviceId }
@@ -143,27 +139,37 @@ internal fun SimpleOverview(
                     onExitDemo = { DemoModeState.exitDemo() }
                 )
             }
-            if (isInitialLoadComplete && !postPairBannerDismissed && !isDemoActive) {
+            if (isInitialLoadComplete && !isDemoActive) {
                 PostPairBackgroundSetupBanner(
                     pairedCount = rows.size,
                     onboardingSteps = onboardingSteps,
                     onReviewSetup = onOpenBackgroundSetup,
-                    onDismiss = { postPairBannerDismissed = true }
+                    onDismiss = {}
                 )
             }
 
-            when (SimpleOverviewContentPolicy.resolve(connected != null, isInitialLoadComplete)) {
+            val bodyState = SimpleOverviewContentPolicy.resolve(connected != null, isInitialLoadComplete)
+            when (bodyState) {
                 SimpleOverviewBodyState.Loading -> {
                     Spacer(modifier = Modifier.fillMaxWidth())
                 }
                 SimpleOverviewBodyState.Welcome -> {
-                    SimpleWelcomeOverview(
-                        onAddDevice = onAddDevice,
-                        onJoinDevice = onJoinDevice,
-                        onLaunchDemo = { DemoModeState.launchDemo() },
-                        onShareAsLink = linkFilePicker,
-                        onOpenBulletinBoard = onOpenBulletinBoard
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        com.fileapex.ui.UnpairedLanDiscoverySection(
+                            devicesViewModel = devicesViewModel,
+                            pairedRowsCount = rows.size,
+                            isInitialLoadComplete = isInitialLoadComplete,
+                            isDemoActive = isDemoActive
+                        )
+                        SimpleWelcomeOverview(
+                            onAddDevice = onAddDevice,
+                            onJoinDevice = onJoinDevice,
+                            onLaunchDemo = { DemoModeState.launchDemo() },
+                            onShareAsLink = openLinkPicker,
+                            onOpenBulletinBoard = onOpenBulletinBoard,
+                            onHowItWorks = { showHowItWorks = true }
+                        )
+                    }
                 }
                 SimpleOverviewBodyState.Connected -> {
                     val activeDevice = connected!!
@@ -189,11 +195,11 @@ internal fun SimpleOverview(
                             clipboardRefreshNonce++
                             devicesViewModel.requestDeviceDetails(activeDevice.deviceId, summaryOnly = false)
                         },
-                        onChooseFilesToSend = sendFilePicker,
+                        onChooseFilesToSend = openSendPicker,
                         onBrowseDevice = onBrowseDevice,
                         onOpenSplitView = onOpenSplitView,
-                        onShareAsLink = linkFilePicker,
-                        onClipboardAction = triggerClipboardPrompt,
+                        onShareAsLink = openLinkPicker,
+                        onClipboardAction = resolveClipboardCardClickAction(clipEnabled, onSendClipboard, triggerClipboardPrompt),
                         onLocatePhone = onLocateDevice,
                         showDevicesCard = showDevicesCard,
                         onDevicesAnchor = onDevicesAnchor,
@@ -203,6 +209,14 @@ internal fun SimpleOverview(
                     )
                 }
             }
+            SimpleOverviewFooterExtras(
+                isDemoActive = isDemoActive,
+                bodyState = bodyState,
+                isInitialLoadComplete = isInitialLoadComplete,
+                rows = rows,
+                onOpenBackupSettings = onOpenBackupSettings,
+                onOpenStorageTools = onOpenStorageTools
+            )
         }
         if (showDropHint) {
             Text(
@@ -211,6 +225,19 @@ internal fun SimpleOverview(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp)
+            )
+        }
+        if (showHowItWorks) {
+            SimpleWelcomeTutorialOverlay(onDismiss = { showHowItWorks = false })
+        }
+        state.pendingPinPairing?.let { pending ->
+            var pinText by remember(pending.deviceId) { mutableStateOf("") }
+            com.fileapex.ui.devices.PendingPinPairingDialog(
+                deviceName = pending.deviceName,
+                pinText = pinText,
+                onPinTextChange = { pinText = it },
+                onConfirm = { devicesViewModel.confirmPinPairing(pinText) },
+                onCancel = { devicesViewModel.cancelPinPairing() }
             )
         }
     }
@@ -272,6 +299,47 @@ private fun rememberClipboardCardState(
         }
     }
     return Triple(sharingEnabled, hint, onPrompt)
+}
+
+@Composable
+private fun rememberSimpleOverviewPickers(
+    active: DeviceListRow?,
+    rows: List<DeviceListRow>,
+    hasStoragePermission: Boolean,
+    onRequestStoragePermission: () -> Unit,
+    onPickShareLinkFile: (File) -> Unit,
+    onFilesDropped: (List<String>) -> Unit
+): Pair<() -> Unit, () -> Unit> {
+    val linkFilePicker = rememberFriendFilePicker(
+        titleKey = "share_link_title",
+        viewModelKey = "simple-link-file-pick"
+    ) { picked ->
+        picked.firstOrNull()?.let(onPickShareLinkFile)
+    }
+    val sendFilePicker = rememberFriendFilePicker(
+        titleKey = "choose_files",
+        viewModelKey = "simple-send-file-pick"
+    ) { picked ->
+        val targetDevice = active?.takeIf { it.online } ?: active ?: rows.firstOrNull()
+        if (picked.isNotEmpty() && targetDevice != null) {
+            onFilesDropped(picked.map { it.absolutePath })
+        }
+    }
+    val openLinkPicker: () -> Unit = {
+        com.fileapex.platform.OnDemandPermissionPolicy.runWithStoragePermission(
+            hasStoragePermission = hasStoragePermission,
+            onRequestStoragePermission = onRequestStoragePermission,
+            action = linkFilePicker
+        )
+    }
+    val openSendPicker: () -> Unit = {
+        com.fileapex.platform.OnDemandPermissionPolicy.runWithStoragePermission(
+            hasStoragePermission = hasStoragePermission,
+            onRequestStoragePermission = onRequestStoragePermission,
+            action = sendFilePicker
+        )
+    }
+    return openLinkPicker to openSendPicker
 }
 
 @Composable

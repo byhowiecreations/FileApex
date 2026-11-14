@@ -18,7 +18,7 @@ class RouteAuthPolicyTest {
     @Test
     fun fileNoteBulletinAndRosterRoutesNeedAPeer() {
         listOf(
-            "/api/v1/files/list", "/api/v1/files/upload", "/api/v1/files/delete", "/api/v1/files/stream",
+            "/api/v1/files/list", "/api/v1/files/thumbnail", "/api/v1/files/upload", "/api/v1/files/delete", "/api/v1/files/stream",
             "/api/v1/devices", "/api/v1/devices/merge", "/api/v1/cluster/introductions", "/api/v1/cluster/remove", "/cluster/remove",
             "/api/v1/bulletin/delta", "/api/v1/bulletin/sync/batch", "/api/v1/bulletin/file",
             "/api/v1/clipboard/send", "/api/v1/clipboard/current",

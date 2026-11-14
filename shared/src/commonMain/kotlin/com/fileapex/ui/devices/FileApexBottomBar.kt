@@ -44,6 +44,7 @@ import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.HomeTab
+import com.fileapex.ui.adaptive.CleanModernBottomBar
 import com.fileapex.ui.adaptive.JadedRaisedTile
 import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.theme.FluxGlassPalette
@@ -56,6 +57,7 @@ import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
 import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import com.fileapex.ui.theme.fileApexNavigationBarItemColors
 import com.fileapex.ui.theme.isFileApexCleanCurved
+import com.fileapex.ui.theme.isFileApexCleanModern
 import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import com.fileapex.ui.theme.isFileApexJadedSteel
 
@@ -70,9 +72,20 @@ fun FileApexBottomBar(
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
     val currentTheme = LocalAppTheme.current
     if (currentTheme.traits.canvasHome) return
+    if (isFileApexCleanModern()) {
+        CleanModernBottomBar(
+            selected = selected,
+            onMainHomeScreen = onMainHomeScreen,
+            onDevices = onDevices,
+            onFiles = onFiles,
+            onSettings = onSettings
+        )
+        return
+    }
 
     val isCustomGlass = currentTheme.traits.glassNotesSurfaces
     val jadedNav = isFileApexJadedSteel()
+    val isFlux = currentTheme.traits.fluxSurfaces
 
     if (isCustomGlass) {
         BoxWithConstraints(
@@ -96,9 +109,10 @@ fun FileApexBottomBar(
                 shape = pillShape,
                 color = when {
                     jadedNav -> Color(0xCC121E28)
+                    isFlux -> Color(0xDF101C21)
                     else -> FluxGlassPalette.actionPill
                 },
-                border = BorderStroke(1.dp, Color.White.copy(alpha = if (jadedNav) 0.10f else 0.30f)),
+                border = BorderStroke(1.dp, if (isFlux) FluxGlassPalette.cardBorder else Color.White.copy(alpha = if (jadedNav) 0.10f else 0.30f)),
                 shadowElevation = if (jadedNav) 0.dp else 10.dp
             ) {
                 Row(
@@ -231,8 +245,9 @@ private fun CustomGlassNavItem(
     jaded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val activeBg = Color(0xFF00E676).copy(alpha = 0.22f)
-    val activeTint = Color(0xFF00E676)
+    val isFlux = LocalAppTheme.current.traits.fluxSurfaces
+    val activeBg = if (isFlux) FluxGlassPalette.navSelectedPill else Color(0xFF00E676).copy(alpha = 0.22f)
+    val activeTint = if (isFlux) FluxGlassPalette.navSelectedTint else Color(0xFF00E676)
     val inactiveTint = Color.White.copy(alpha = 0.72f)
 
     Column(

@@ -1,5 +1,6 @@
 package com.fileapex.domain.backup
 
+import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.PeerUnreachableException
 import com.fileapex.network.InboxTarget
@@ -77,6 +78,7 @@ object BackupEngine {
 
         // The destination decides where its own receive folder is.
         val destinationRoot = InboxTarget.ROOT
+        val sourceDeviceName = cancellableCatching { loadLocalIdentity().deviceName }.getOrDefault("")
 
         val manifest = BackupManifest.load(config.destinationDeviceId)
         val candidates = config.sources.flatMap { collect(it) }
@@ -104,7 +106,12 @@ object BackupEngine {
                     host = host,
                     port = port,
                     localSourcePath = file.absolutePath,
-                    remoteTargetPath = PathUtils.join(destinationRoot, file.relativePath),
+                    remoteTargetPath = BackupFolderPresets.remoteTargetPath(
+                        destinationRoot = destinationRoot,
+                        sourceDeviceName = sourceDeviceName,
+                        sourcePath = file.sourceRoot,
+                        fileRelativePath = file.relativePath
+                    ),
                     transactionId = generateDeviceId(),
                     transactionTimestampEpochMs = TimeUtils.now(),
                     backup = capabilities.backupSync
@@ -145,7 +152,13 @@ object BackupEngine {
             for (file in files) {
                 // The receiver rejects empty uploads, and half-written media files are not worth keeping.
                 if (file.sizeBytes <= 0L || skippedNamePrefixes.any { file.name.startsWith(it) }) continue
-                out += BackupCandidate(file.absolutePath, "$relative/${file.name}", file.sizeBytes, file.lastModified)
+                out += BackupCandidate(
+                    absolutePath = file.absolutePath,
+                    relativePath = "$relative/${file.name}",
+                    sizeBytes = file.sizeBytes,
+                    modifiedMillis = file.lastModified,
+                    sourceRoot = root
+                )
             }
             for (folder in folders) walk(folder.absolutePath, "$relative/${folder.name}")
         }

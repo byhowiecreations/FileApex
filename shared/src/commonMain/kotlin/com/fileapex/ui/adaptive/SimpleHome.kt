@@ -237,7 +237,7 @@ fun SimpleHome(
                 devicesViewModel = devicesViewModel,
                 rows = rows,
                 active = active,
-                onboardingSteps = onboardingSteps,
+                onboardingSteps = onboardingSteps, hasStoragePermission = hasStoragePermission, onRequestStoragePermission = onRequestStoragePermission,
                 onAddDevice = onGenerateQr,
                 onJoinDevice = onJoinDevice,
                 onBrowseDevice = { goTo(SimpleDestination.Browse) },
@@ -277,7 +277,7 @@ fun SimpleHome(
                 },
                 showDevicesCard = SimpleOverviewCardPolicy.showDevicesCard(navPosition),
                 onDevicesAnchor = { menuAnchor = it },
-                onOpenDevices = { popover = SimplePopover.DeviceManagement }
+                onOpenDevices = { popover = SimplePopover.DeviceManagement }, onSendClipboard = sendClipboard, onOpenStorageTools = { com.fileapex.ui.adaptive.simple.LocalExplorerOpenToolsSignal.requestOpenIfPermitted(hasStoragePermission); goTo(SimpleDestination.LocalFiles) }, onOpenBackupSettings = { onSettingsDeepLinkChange(SettingsDeepLink.BackupSync); goTo(SimpleDestination.Settings) }
             )
             SimpleLocateCard(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp))
             }

@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -42,6 +44,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.ui.theme.FileApexTeal
@@ -50,6 +53,7 @@ import com.fileapex.ui.theme.FileApexTeal
 internal fun ColumnScope.NotesComposer(notes: NotesScope) {
     with(notes) { with(frame) { with(live) {
         // 47.6dp composer height keeps the placeholder on a single line.
+        val snackbar = LocalNotesSnackbar.current
         val composerInteraction = remember { MutableInteractionSource() }
         val composerFocused by composerInteraction.collectIsFocusedAsState()
         val composerTextStyle = MaterialTheme.typography.bodySmall.copy(
@@ -100,8 +104,7 @@ internal fun ColumnScope.NotesComposer(notes: NotesScope) {
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 14.dp)
                         .onPreviewKeyEvent { event ->
-                            // Desktop: Enter sends, Shift+Enter inserts a newline.
-                            // Android: the IME Enter key inserts a newline.
+                            // Desktop: Enter sends (Shift+Enter inserts newline), Cmd/Ctrl+V attaches clipboard files/images.
                             val isEnter = event.key == Key.Enter || event.key == Key.NumPadEnter
                             if (usesDesktopFileSelection() && isEnter && !event.isShiftPressed) {
                                 if (event.type == KeyEventType.KeyDown) {
@@ -110,10 +113,30 @@ internal fun ColumnScope.NotesComposer(notes: NotesScope) {
                                         doSendNote(text)
                                     }
                                 }
-                                true
-                            } else {
-                                false
+                                return@onPreviewKeyEvent true
                             }
+                            val isPasteShortcut = event.type == KeyEventType.KeyDown &&
+                                event.key == Key.V &&
+                                (event.isMetaPressed || event.isCtrlPressed)
+                            if (usesDesktopFileSelection() && isPasteShortcut) {
+                                when (val payload = readBulletinPastePayload()) {
+                                    is BulletinPastePayload.Files -> {
+                                        val picked = payload.paths.mapNotNull { pickedFileFromDroppedPath(it) }
+                                        val first = picked.firstOrNull()
+                                        if (first != null) {
+                                            acceptPickedAttachment(first)
+                                            if (picked.size > 1) {
+                                                handleDroppedPaths(picked.drop(1).map { it.absolutePath }, null)
+                                            }
+                                            snackbar?.show(AppI18n.t("clipboard_image_attached"))
+                                            return@onPreviewKeyEvent true
+                                        }
+                                    }
+                                    is BulletinPastePayload.Text -> Unit
+                                    BulletinPastePayload.Empty -> Unit
+                                }
+                            }
+                            false
                         },
                     singleLine = false,
                     minLines = 1,

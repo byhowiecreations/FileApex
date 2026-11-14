@@ -57,6 +57,7 @@ data class SettingsUiState(
     val clipboardSendNotificationEnabled: Boolean = false,
     val clipboardShizukuEnabled: Boolean = false,
     val clipboardAutoSendEnabled: Boolean = false,
+    val clipboardImagesEnabled: Boolean = true,
     val clipboardPeers: List<PairedDeviceEntity> = emptyList(),
     val showClipboardConfigDialog: Boolean = false,
     val clipboardConfigPeers: List<PairedDeviceEntity> = emptyList(),
@@ -132,6 +133,7 @@ class SettingsViewModel : ViewModel() {
             clipboardSendNotificationEnabled = settings.clipboardSendNotificationEnabled.value,
             clipboardShizukuEnabled = settings.clipboardShizukuEnabled.value,
             clipboardAutoSendEnabled = settings.clipboardAutoSendEnabled.value,
+            clipboardImagesEnabled = settings.clipboardImagesEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             driveRelayNotificationsEnabled = settings.driveRelayNotificationsEnabled.value,
             notesNotificationsEnabled = settings.notesNotificationsEnabled.value,
@@ -487,15 +489,11 @@ class SettingsViewModel : ViewModel() {
     fun setClipboardTargetDevice(deviceId: String, selected: Boolean) = clipboard.setClipboardTargetDevice(deviceId, selected)
 
     fun setClipboardViaCellular(enabled: Boolean) = clipboard.setClipboardViaCellular(enabled)
-
     fun setClipboardAutoSend(enabled: Boolean) = clipboard.setClipboardAutoSend(enabled)
-
+    fun setClipboardImages(enabled: Boolean) = clipboard.setClipboardImages(enabled)
     fun setClipboardAccessibility(enabled: Boolean) = clipboard.setClipboardAccessibility(enabled)
-
     fun setClipboardSendNotification(enabled: Boolean) = clipboard.setClipboardSendNotification(enabled)
-
     fun setClipboardShizuku(enabled: Boolean) = clipboard.setClipboardShizuku(enabled)
-
     fun dismissAccessibilityRestrictedHelp() = clipboard.dismissAccessibilityRestrictedHelp()
 
     fun openAccessibilityAppInfo() = clipboard.openAccessibilityAppInfo()

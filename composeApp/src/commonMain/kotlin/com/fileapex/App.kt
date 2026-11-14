@@ -457,6 +457,21 @@ fun App(
                 } else {
                     val localFilesTarget = remember { devicesViewModel.thisDeviceTarget() }
                     val localExplorer = viewModel(key = localFilesTarget.deviceId) { ExplorerViewModel(localFilesTarget) }
+                    val deviceRowsForJoin by devicesViewModel.deviceRows.collectAsState()
+                    val isDemoForJoin by com.fileapex.domain.demo.DemoModeState.isDemoModeActive.collectAsState()
+                    val realPairedCountForJoin = com.fileapex.ui.JoinClusterSafetyPolicy.pairedPeerCount(
+                        rowsCount = deviceRowsForJoin.size,
+                        isDemoActive = isDemoForJoin
+                    )
+                    var confirmJoinExistingCluster by remember { mutableStateOf(false) }
+                    val requestJoinDevice: () -> Unit = {
+                        if (com.fileapex.ui.JoinClusterSafetyPolicy.requiresLeaveConfirmation(realPairedCountForJoin)) {
+                            confirmJoinExistingCluster = true
+                        } else {
+                            onStartShareServer()
+                            route = AppRoute.Join
+                        }
+                    }
                     LaunchedEffect(Unit) {
                         com.fileapex.presentation.LocalExplorerNavigation.folder.collect { path ->
                             if (path.isNullOrBlank()) return@collect
@@ -473,8 +488,6 @@ fun App(
                             onStartShareServer()
                         }
                     }
-                    com.fileapex.ui.UpdateCheckPromptHost()
-                    com.fileapex.ui.notice.CriticalNoticeConsentHost()
 
                     // Overlay routes stay full-screen on every size class.
                     val hasDock = appTheme.traits.dockHome
@@ -537,10 +550,7 @@ fun App(
                                             onStartShareServer()
                                             route = AppRoute.GenerateQr
                                         },
-                                        onJoinDevice = {
-                                            onStartShareServer()
-                                            route = AppRoute.Join
-                                        },
+                                        onJoinDevice = requestJoinDevice,
                                         onExitApp = exitFileApex,
                                         onOpenTransferQueue = { route = AppRoute.TransferQueue },
                                         onOpenNotes = { route = AppRoute.Notes },
@@ -681,10 +691,7 @@ fun App(
                                             onStartShareServer()
                                             route = AppRoute.GenerateQr
                                         },
-                                        onJoinDevice = {
-                                            onStartShareServer()
-                                            route = AppRoute.Join
-                                        },
+                                        onJoinDevice = requestJoinDevice,
                                         onExitApp = exitFileApex,
                                         onClearDetail = {
                                             wideSelectedTarget?.deviceId?.let {
@@ -711,7 +718,11 @@ fun App(
                                         deniedOnboardingStepIds = deniedOnboardingStepIds,
                                         onGrantOnboardingStep = onGrantOnboardingStep,
                                         settingsDeepLink = settingsDeepLink,
-                                        onSettingsDeepLinkConsumed = { settingsDeepLink = null }
+                                        onSettingsDeepLinkConsumed = { settingsDeepLink = null },
+                                        onOpenBackgroundSetup = {
+                                            settingsDeepLink = SettingsDeepLink.OnboardingPermissions
+                                            wideHomeTab = HomeTab.Settings
+                                        }
                                     )
                                 } else {
                                     CompactHomeContent(
@@ -731,10 +742,7 @@ fun App(
                                             onStartShareServer()
                                             route = AppRoute.GenerateQr
                                         },
-                                        onJoinDevice = {
-                                            onStartShareServer()
-                                            route = AppRoute.Join
-                                        },
+                                        onJoinDevice = requestJoinDevice,
                                         onOpenSettings = { route = AppRoute.Settings },
                                         onNavigateHome = onNavigateHome,
                                         onExitApp = exitFileApex,
@@ -753,7 +761,11 @@ fun App(
                                         deniedOnboardingStepIds = deniedOnboardingStepIds,
                                         onGrantOnboardingStep = onGrantOnboardingStep,
                                         settingsDeepLink = settingsDeepLink,
-                                        onSettingsDeepLinkConsumed = { settingsDeepLink = null }
+                                        onSettingsDeepLinkConsumed = { settingsDeepLink = null },
+                                        onOpenBackgroundSetup = {
+                                            settingsDeepLink = SettingsDeepLink.OnboardingPermissions
+                                            route = AppRoute.Settings
+                                        }
                                     )
                                 }
                                 }
@@ -786,10 +798,7 @@ fun App(
                                 onStartShareServer()
                                 route = AppRoute.GenerateQr
                             },
-                            onJoinDevice = {
-                                onStartShareServer()
-                                route = AppRoute.Join
-                            },
+                            onJoinDevice = requestJoinDevice,
                             onFriends = { com.fileapex.friends.ui.FriendsUi.open() },
                             onSettings = {
                                 route = AppRoute.Devices
@@ -798,9 +807,35 @@ fun App(
                             modifier = Modifier.align(Alignment.BottomCenter)
                         )
                     }
-                    if (!welcomeTutorialShown && !showLanguagePrompt && !shareOverlay && !clusterWiping) {
+                    LaunchedEffect(welcomeTutorialShown, showLanguagePrompt, shareOverlay, clusterWiping) {
+                        if (!com.fileapex.ui.adaptive.simple.SimpleWelcomeStartupPolicy.shouldAutoShowTutorialModal() &&
+                            !welcomeTutorialShown &&
+                            !showLanguagePrompt &&
+                            !shareOverlay &&
+                            !clusterWiping
+                        ) {
+                            FileApexServices.settings.setWelcomeTutorialShown(true)
+                        }
+                    }
+                    if (com.fileapex.ui.adaptive.simple.SimpleWelcomeStartupPolicy.shouldAutoShowTutorialModal() &&
+                        !welcomeTutorialShown &&
+                        !showLanguagePrompt &&
+                        !shareOverlay &&
+                        !clusterWiping
+                    ) {
                         com.fileapex.ui.adaptive.simple.SimpleWelcomeTutorialOverlay(
                             onDismiss = { FileApexServices.settings.setWelcomeTutorialShown(true) }
+                        )
+                    }
+                    if (confirmJoinExistingCluster) {
+                        com.fileapex.ui.ConfirmJoinExistingClusterDialog(
+                            pairedCount = realPairedCountForJoin,
+                            onConfirm = {
+                                confirmJoinExistingCluster = false
+                                onStartShareServer()
+                                route = AppRoute.Join
+                            },
+                            onDismiss = { confirmJoinExistingCluster = false }
                         )
                     }
                     if (showLocalFilesPermissionDialog) {
@@ -1125,7 +1160,8 @@ private fun CompactHomeContent(
     deniedOnboardingStepIds: Set<String> = emptySet(),
     onGrantOnboardingStep: (String) -> Unit = {},
     settingsDeepLink: SettingsDeepLink? = null,
-    onSettingsDeepLinkConsumed: () -> Unit = {}
+    onSettingsDeepLinkConsumed: () -> Unit = {},
+    onOpenBackgroundSetup: () -> Unit = {}
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
@@ -1175,7 +1211,9 @@ private fun CompactHomeContent(
                 onOpenNotes = onOpenNotes,
                 onOpenTransferQueue = onOpenTransferQueue,
                 viewModel = devicesViewModel,
-                embeddedInCompactShell = true
+                embeddedInCompactShell = true,
+                onboardingSteps = onboardingSteps,
+                onOpenBackgroundSetup = onOpenBackgroundSetup
             )
             AppRoute.Settings -> SettingsScreen(
                 appVersionName = appVersionName,
@@ -1231,7 +1269,9 @@ private fun CompactHomeContent(
                 onOpenNotes = onOpenNotes,
                 onOpenTransferQueue = onOpenTransferQueue,
                 viewModel = devicesViewModel,
-                embeddedInCompactShell = true
+                embeddedInCompactShell = true,
+                onboardingSteps = onboardingSteps,
+                onOpenBackgroundSetup = onOpenBackgroundSetup
             )
         }
     }

@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
  */
 internal class SettingsNavigationState : androidx.lifecycle.ViewModel() {
     val page = mutableStateOf(SettingsPage.Root)
+    val searchQuery = mutableStateOf("")
 }
 
 internal enum class SettingsPage(val parent: SettingsPage?) {
@@ -46,7 +47,7 @@ internal enum class SettingsPage(val parent: SettingsPage?) {
 }
 
 /** Settings pages other screens can open directly. */
-enum class SettingsDeepLink { Clipboard, Tailscale, Notifications, BroadcastNotifications, OnboardingPermissions }
+enum class SettingsDeepLink { Clipboard, Tailscale, Notifications, BroadcastNotifications, OnboardingPermissions, BackupSync }
 
 internal fun settingsPageFor(link: SettingsDeepLink): SettingsPage = when (link) {
     SettingsDeepLink.Clipboard -> SettingsPage.Clipboard
@@ -54,6 +55,7 @@ internal fun settingsPageFor(link: SettingsDeepLink): SettingsPage = when (link)
     SettingsDeepLink.Notifications -> SettingsPage.Notifications
     SettingsDeepLink.BroadcastNotifications -> SettingsPage.BroadcastNotifications
     SettingsDeepLink.OnboardingPermissions -> SettingsPage.OnboardingPermissions
+    SettingsDeepLink.BackupSync -> SettingsPage.BackupSync
 }
 
 enum class SettingsScreenLayoutMode {

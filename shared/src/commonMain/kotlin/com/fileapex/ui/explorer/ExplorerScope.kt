@@ -4,8 +4,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.fileapex.presentation.LocalRecursiveSearch
+import com.fileapex.presentation.LocalSearchListing
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
@@ -31,7 +36,11 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
     val live = remember { ExplorerLive() }
     with(inputs) {
         val state by viewModel.uiState.collectAsState()
-    val toolsAvailable = target is BrowseTarget.Local && storageToolsSupported()
+    val toolsAvailable = ExplorerToolsPolicy.isToolsAvailable(
+        isLocal = target is BrowseTarget.Local,
+        isPicker = onPickFiles != null,
+        supported = storageToolsSupported()
+    )
     val fabMode = ExplorerFabMode.of(onPickFiles != null, state.isSelectionMode, state.selectedFileIds.size, state.isMultiCopying)
     val showCopyFabs = fabMode != ExplorerFabMode.None
     val topBarTitle = titleOverride
@@ -48,11 +57,30 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
     }
         val filterQueryState = remember(state.currentPath) { mutableStateOf("") }
         val filterQuery by filterQueryState
-    val visibleDirectories = remember(state.contentDirectories, filterQuery, live.sortMode) {
-        ExplorerListOrdering.apply(state.contentDirectories, filterQuery, live.sortMode)
+        val canSearchSubfolders = target is BrowseTarget.Local
+        val searchSubfoldersState = remember(state.currentPath) { mutableStateOf(false) }
+        val searchSubfolders by searchSubfoldersState
+        val recursiveListing by produceState<LocalSearchListing?>(
+            initialValue = null,
+            canSearchSubfolders,
+            state.currentPath,
+            filterQuery,
+            searchSubfolders,
+            live.sortMode
+        ) {
+            value = if (canSearchSubfolders && searchSubfolders && filterQuery.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    LocalRecursiveSearch.search(state.currentPath, filterQuery, live.sortMode)
+                }
+            } else {
+                null
+            }
+        }
+    val visibleDirectories = remember(state.contentDirectories, filterQuery, live.sortMode, recursiveListing) {
+        recursiveListing?.directories ?: ExplorerListOrdering.apply(state.contentDirectories, filterQuery, live.sortMode)
     }
-    val visibleFiles = remember(state.contentFiles, filterQuery, live.sortMode) {
-        ExplorerListOrdering.apply(state.contentFiles, filterQuery, live.sortMode)
+    val visibleFiles = remember(state.contentFiles, filterQuery, live.sortMode, recursiveListing) {
+        recursiveListing?.files ?: ExplorerListOrdering.apply(state.contentFiles, filterQuery, live.sortMode)
     }
     val openActionLabel = stringRes("open")
     val showInFolderLabel = stringRes("show_in_folder")
@@ -61,10 +89,15 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
         val frame = ExplorerFrame(
             state, toolsAvailable, showCopyFabs, topBarTitle, paneFocus, splitOpen, folderPane, backEnabled, visibleDirectories, visibleFiles,
-            openActionLabel, showInFolderLabel, ownedFocus, jadedOrbital, filterQueryState
+            openActionLabel, showInFolderLabel, ownedFocus, jadedOrbital, filterQueryState, searchSubfoldersState, canSearchSubfolders
         )
         return ExplorerScope(inputs, live, frame)
     }
+}
+
+internal object ExplorerToolsPolicy {
+    fun isToolsAvailable(isLocal: Boolean, isPicker: Boolean, supported: Boolean): Boolean =
+        isLocal && !isPicker && supported
 }
 
 internal object ExplorerSplitPolicy {

@@ -50,7 +50,8 @@ class OnboardingAndPopupGateTest {
     }
 
     @Test
-    fun `update and critical notice prompts are deferred while welcome tutorial is active`() {
+    fun `update and critical notice dialogs never auto-show at startup`() {
+        assertFalse(StartupPromptGate.showStartupDialogs)
         assertFalse(
             StartupPromptGate.canShowUpdatePrompt(
                 welcomeTutorialShown = false,
@@ -72,11 +73,7 @@ class OnboardingAndPopupGateTest {
                 wipeOutcomePending = false
             )
         )
-    }
-
-    @Test
-    fun `update prompt then critical notice consent show after welcome tutorial is done`() {
-        assertTrue(
+        assertFalse(
             StartupPromptGate.canShowUpdatePrompt(
                 welcomeTutorialShown = true,
                 managedByStore = false,
@@ -91,22 +88,38 @@ class OnboardingAndPopupGateTest {
                 welcomeTutorialShown = true,
                 choiceMade = false,
                 managedByStore = false,
-                updatePromptShown = false,
-                checkingForUpdates = false,
-                wiping = false,
-                wipeOutcomePending = false
-            )
-        )
-        assertTrue(
-            StartupPromptGate.canShowCriticalNoticeConsent(
-                welcomeTutorialShown = true,
-                choiceMade = false,
-                managedByStore = false,
                 updatePromptShown = true,
-                checkingForUpdates = false,
+                checkingForUpdates = true,
                 wiping = false,
                 wipeOutcomePending = false
             )
         )
+    }
+
+    @Test
+    fun `post-pair setup tracks pending update and critical notice choices until answered`() {
+        assertTrue(StartupPromptGate.isUpdatePromptPending(managedByStore = false, answered = false, enabled = false))
+        assertFalse(StartupPromptGate.isUpdatePromptPending(managedByStore = true, answered = false, enabled = false))
+        assertFalse(StartupPromptGate.isUpdatePromptPending(managedByStore = false, answered = true, enabled = false))
+        assertFalse(StartupPromptGate.isUpdatePromptPending(managedByStore = false, answered = false, enabled = true))
+
+        assertTrue(StartupPromptGate.isCriticalNoticePending(choiceMade = false))
+        assertFalse(StartupPromptGate.isCriticalNoticePending(choiceMade = true))
+    }
+
+    @Test
+    fun `postPairSetupBannerDismissed persists across screen reloads and clears on resetToDefaults`() {
+        val store = MemoryKvStore()
+        val settings = BaseAppSettings(store)
+        assertFalse(settings.postPairSetupBannerDismissed.value)
+
+        settings.setPostPairSetupBannerDismissed(true)
+        assertTrue(settings.postPairSetupBannerDismissed.value)
+
+        val reloaded = BaseAppSettings(store, existingInstall = true)
+        assertTrue(reloaded.postPairSetupBannerDismissed.value)
+
+        reloaded.resetToDefaults()
+        assertFalse(reloaded.postPairSetupBannerDismissed.value)
     }
 }

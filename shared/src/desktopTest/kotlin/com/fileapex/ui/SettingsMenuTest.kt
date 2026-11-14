@@ -40,7 +40,6 @@ class SettingsMenuTest {
         assertEquals(SettingsMenuSection.RemoteAccess, sectionOf(SettingsMenuIds.DRIVE_RELAY))
         assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.THEMES))
         assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.BULLETIN_BOARD))
-        assertFalse(entries.any { it.id == SettingsMenuIds.BACKUP_SYNC })
         assertEquals(SettingsMenuSection.Security, sectionOf(SettingsMenuIds.LEAVE_CLUSTER))
         assertEquals(
             listOf(
@@ -133,7 +132,7 @@ class SettingsMenuTest {
 
     private val advancedIds = listOf(
         SettingsMenuIds.TAILSCALE, SettingsMenuIds.IROH, SettingsMenuIds.DRIVE_RELAY, SettingsMenuIds.PIN_REQUIRED,
-        SettingsMenuIds.GOOGLE_ACCOUNT, SettingsMenuIds.BACKUP_SYNC, SettingsMenuIds.LEAVE_CLUSTER
+        SettingsMenuIds.GOOGLE_ACCOUNT, SettingsMenuIds.LEAVE_CLUSTER
     )
 
     private fun menu(showAdvanced: Boolean, inUse: Set<String> = emptySet()) = settingsMenuEntries(
@@ -146,7 +145,7 @@ class SettingsMenuTest {
         val ids = menu(showAdvanced = false).map { it.id }
         advancedIds.forEach { assertFalse("$it should be advanced", ids.contains(it)) }
         listOf(
-            SettingsMenuIds.DEVICE_NAME, SettingsMenuIds.LANGUAGE, SettingsMenuIds.CHECK_FOR_UPDATES, SettingsMenuIds.REPORT_ISSUE,
+            SettingsMenuIds.DEVICE_NAME, SettingsMenuIds.LANGUAGE, SettingsMenuIds.BACKUP_SYNC, SettingsMenuIds.CHECK_FOR_UPDATES, SettingsMenuIds.REPORT_ISSUE,
             SettingsMenuIds.BACKGROUND_PERSISTENCE, SettingsMenuIds.THEMES, SettingsMenuIds.BULLETIN_BOARD,
             SettingsMenuIds.NOTIFICATIONS, SettingsMenuIds.CLIPBOARD, SettingsMenuIds.DEVICE_DETAILS
         ).forEach { assertTrue("$it should stay basic", ids.contains(it)) }

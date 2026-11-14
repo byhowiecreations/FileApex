@@ -99,6 +99,8 @@ import com.fileapex.ui.theme.fileApexNavSelectedTextColor
 import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
 import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import com.fileapex.ui.theme.fileApexNavigationRailItemColors
+import com.fileapex.ui.theme.CleanModernPalette
+import com.fileapex.ui.theme.isFileApexCleanModern
 
 import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.platform.isDesktopHost
@@ -144,7 +146,8 @@ fun AdaptiveWideHome(
     deniedOnboardingStepIds: Set<String> = emptySet(),
     onGrantOnboardingStep: (String) -> Unit = {},
     settingsDeepLink: SettingsDeepLink? = null,
-    onSettingsDeepLinkConsumed: () -> Unit = {}
+    onSettingsDeepLinkConsumed: () -> Unit = {},
+    onOpenBackgroundSetup: () -> Unit = {}
 ) {
     val state by devicesViewModel.uiState.collectAsState()
     val deviceRows by devicesViewModel.deviceRows.collectAsState()
@@ -262,7 +265,9 @@ fun AdaptiveWideHome(
                                 onOpenTransferQueue = onOpenTransferQueue,
                                 viewModel = devicesViewModel,
                                 layoutMode = DevicesScreenLayoutMode.FullScreen,
-                                selectedDeviceId = selectedDeviceId
+                                selectedDeviceId = selectedDeviceId,
+                                onboardingSteps = onboardingSteps,
+                                onOpenBackgroundSetup = onOpenBackgroundSetup
                             )
                         }
                     } else if (selectedTarget != null && isSpatialTheme) {
@@ -295,7 +300,9 @@ fun AdaptiveWideHome(
                             selectedTarget = selectedTarget,
                             onClearDetail = onClearDetail,
                             onRegisterRefresh = onRegisterRefresh,
-                            onRegisterHeaderCommands = onRegisterHeaderCommands
+                            onRegisterHeaderCommands = onRegisterHeaderCommands,
+                            onboardingSteps = onboardingSteps,
+                            onOpenBackgroundSetup = onOpenBackgroundSetup
                         )
                     }
                 }
@@ -383,15 +390,20 @@ private fun WideTopBar(
                                 Modifier.background(fileApexChromeContainerColor())
                             }
                         )
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .padding(horizontal = 12.dp, vertical = if (isFileApexCleanModern()) 8.dp else 6.dp)
                 }
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val currentTheme = LocalAppTheme.current
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
+            if (isFileApexCleanModern() || currentTheme.traits.fluxSurfaces) {
+                WideTopBarBrandMark()
+                Spacer(modifier = Modifier.width(8.dp))
+            }
             Text(
                 text = "FileApex",
                 style = if (jadedHeader) {
@@ -404,7 +416,7 @@ private fun WideTopBar(
                 },
                 color = fileApexChromeContentColor()
             )
-            if (!jadedHeader && LocalAppTheme.current !in HEADER_WITHOUT_PAIRED_TITLE && selectedTab == HomeTab.Devices && !hasActiveDetail) {
+            if (!jadedHeader && currentTheme !in HEADER_WITHOUT_PAIRED_TITLE && selectedTab == HomeTab.Devices && !hasActiveDetail) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = stringRes("paired_devices_title"),
@@ -416,7 +428,6 @@ private fun WideTopBar(
             if (onOpenNotes != null) HeaderAlertTicker(onOpenNotes, Modifier.weight(1f, fill = false))
         }
         TransferStatsPill(onOpenTransferQueue)
-        val currentTheme = LocalAppTheme.current
         val headerIconTint = fileApexHeaderActionTint(onChromeBar = true)
         QueuedFilesButton(
             onClick = onOpenTransferQueue,
@@ -424,7 +435,12 @@ private fun WideTopBar(
         )
         val isDevicesTab = selectedTab == HomeTab.Devices && !hasActiveDetail
         if (onOpenNotes != null && isDevicesTab && !currentTheme.traits.dockHome) {
-            val noteIconKind = if (currentTheme.traits.glassChrome) NoteIconKind.GREEN else NoteIconKind.WHITE
+            val noteIconKind = when {
+                isFileApexCleanModern() -> NoteIconKind.BLACK
+                currentTheme.traits.fluxSurfaces -> NoteIconKind.WHITE
+                currentTheme.traits.glassChrome -> NoteIconKind.GREEN
+                else -> NoteIconKind.WHITE
+            }
             NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode, iconKind = noteIconKind, modifier = Modifier.size(40.dp))
         }
         if (isDevicesTab) {
@@ -512,56 +528,40 @@ fun FileApexNavigationRail(
     } else {
         RoundedCornerShape(topStart = 0.dp, topEnd = 28.dp, bottomEnd = 28.dp, bottomStart = 0.dp)
     }
+    val cleanModern = isFileApexCleanModern()
     BoxWithConstraints(modifier = Modifier.fillMaxHeight()) {
         val isPortrait = maxHeight > maxWidth
-        NavigationRail(
-            modifier = Modifier
-                .widthIn(min = 92.dp)
-                .padding(horizontal = 4.dp)
-                .fillMaxHeight()
-                .then(
-                    if (jadedRail) {
-                        Modifier
-                            .padding(top = 6.dp, bottom = 10.dp)
-                            .clip(jadedRailShape)
-                            .border(1.dp, Color.White.copy(alpha = 0.10f), jadedRailShape)
-                    } else if (isFileApexCleanCurved()) {
-                        Modifier
-                            .padding(top = 8.dp, bottom = 10.dp)
-                            .clip(RoundedCornerShape(28.dp))
-                    } else {
-                        Modifier
-                    }
-                ),
-            containerColor = if (jadedRail) Color(0x66101820) else fileApexChromeContainerColor(),
-            contentColor = fileApexChromeContentColor()
-        ) {
-            if (isPortrait) {
-                Spacer(modifier = Modifier.weight(1f))
-            } else {
-                Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxHeight()) {
+            if (cleanModern && onRightEdge) Box(Modifier.width(1.dp).fillMaxHeight().background(CleanModernPalette.ChromeBorder))
+            NavigationRail(
+                modifier = Modifier
+                    .widthIn(min = if (cleanModern) 88.dp else 92.dp)
+                    .padding(horizontal = if (cleanModern) 0.dp else 4.dp)
+                    .fillMaxHeight()
+                    .then(
+                        if (jadedRail) {
+                            Modifier
+                                .padding(top = 6.dp, bottom = 10.dp)
+                                .clip(jadedRailShape)
+                                .border(1.dp, Color.White.copy(alpha = 0.10f), jadedRailShape)
+                        } else if (isFileApexCleanCurved()) {
+                            Modifier
+                                .padding(top = 8.dp, bottom = 10.dp)
+                                .clip(RoundedCornerShape(28.dp))
+                        } else {
+                            Modifier
+                        }
+                    ),
+                containerColor = if (jadedRail) Color(0x66101820) else fileApexChromeContainerColor(),
+                contentColor = fileApexChromeContentColor()
+            ) {
+                if (isPortrait) Spacer(modifier = Modifier.weight(1f)) else Spacer(modifier = Modifier.height(8.dp))
+                RailItem(selected = selected == HomeTab.Devices, onClick = onDevices, icon = Icons.Filled.Devices, label = devicesLabel)
+                RailItem(selected = selected == HomeTab.Files, onClick = onFiles, icon = Icons.Filled.Folder, label = com.fileapex.i18n.AppI18n.t("local_files"))
+                RailItem(selected = selected == HomeTab.Settings, onClick = onSettings, icon = Icons.Filled.Settings, label = com.fileapex.i18n.AppI18n.t("settings"))
+                if (isPortrait) Spacer(modifier = Modifier.weight(1f))
             }
-            RailItem(
-                selected = selected == HomeTab.Devices,
-                onClick = onDevices,
-                icon = Icons.Filled.Devices,
-                label = devicesLabel
-            )
-            RailItem(
-                selected = selected == HomeTab.Files,
-                onClick = onFiles,
-                icon = Icons.Filled.Folder,
-                label = com.fileapex.i18n.AppI18n.t("local_files")
-            )
-            RailItem(
-                selected = selected == HomeTab.Settings,
-                onClick = onSettings,
-                icon = Icons.Filled.Settings,
-                label = com.fileapex.i18n.AppI18n.t("settings")
-            )
-            if (isPortrait) {
-                Spacer(modifier = Modifier.weight(1f))
-            }
+            if (cleanModern && !onRightEdge) Box(Modifier.width(1.dp).fillMaxHeight().background(CleanModernPalette.ChromeBorder))
         }
     }
 }
@@ -578,6 +578,8 @@ internal fun RailItem(
     val jadedSelected = selected &&
         LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
+    val cleanModern = isFileApexCleanModern()
+    val fluxRail = LocalAppTheme.current.traits.fluxSurfaces
     NavigationRailItem(
         selected = selected,
         onClick = onClick,
@@ -585,26 +587,17 @@ internal fun RailItem(
             val tile = RoundedCornerShape(10.dp)
             Box(contentAlignment = Alignment.Center) {
                 if (jadedSelected) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .blur(16.dp)
-                            .background(Color(0x736366F1), tile)
-                    )
+                    Box(modifier = Modifier.size(48.dp).blur(16.dp).background(Color(0x736366F1), tile))
                 }
                 Box(
                     modifier = Modifier
                         .size(if (jadedSelected) 48.dp else 40.dp)
-                        .clip(if (jadedSelected) tile else RoundedCornerShape(12.dp))
+                        .clip(if (jadedSelected || cleanModern) tile else RoundedCornerShape(12.dp))
                         .then(
                             if (jadedSelected) {
-                                Modifier
-                                    .background(Color(0x596366F1))
-                                    .border(1.dp, Color(0x73A0AAFF), tile)
+                                Modifier.background(Color(0x596366F1)).border(1.dp, Color(0x73A0AAFF), tile)
                             } else {
-                                Modifier.background(
-                                    if (selected) fileApexNavSelectedBackgroundColor() else Color.Transparent
-                                )
+                                Modifier.background(if (selected) fileApexNavSelectedBackgroundColor() else Color.Transparent)
                             }
                         ),
                     contentAlignment = Alignment.Center
@@ -612,12 +605,11 @@ internal fun RailItem(
                     Icon(
                         imageVector = icon,
                         contentDescription = label,
-                        modifier = Modifier.size(if (jadedSelected) 24.dp else 24.dp),
+                        modifier = Modifier.size(if (cleanModern) 21.dp else 24.dp),
                         tint = when {
                             jadedSelected -> Color(0xFF8DB8F5)
                             selected -> fileApexNavSelectedIconColor()
-                            LocalAppTheme.current.traits.orbitalHome &&
-                                LocalKineticStyle.current == KineticStyle.JADED_STEEL -> Color(0xFFC5D0D2)
+                            LocalAppTheme.current.traits.orbitalHome && LocalKineticStyle.current == KineticStyle.JADED_STEEL -> Color(0xFFC5D0D2)
                             else -> fileApexNavUnselectedIconColor()
                         }
                     )
@@ -632,12 +624,8 @@ internal fun RailItem(
                 Text(
                     label,
                     textAlign = if (labelMaxWidth != null) androidx.compose.ui.text.style.TextAlign.Center else null,
-                    fontWeight = if (jadedSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (selected) {
-                        fileApexNavSelectedTextColor()
-                    } else {
-                        fileApexNavUnselectedTextColor()
-                    },
+                    fontWeight = if (jadedSelected || (selected && (cleanModern || fluxRail))) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) fileApexNavSelectedTextColor() else fileApexNavUnselectedTextColor(),
                     softWrap = true,
                     maxLines = 2
                 )
@@ -657,7 +645,11 @@ internal fun RailItem(
 }
 
 @Composable
-internal fun DetailEmptyState() {
+internal fun DetailEmptyState(onOpenLocalFiles: () -> Unit = {}) {
+    if (isFileApexCleanModern() || LocalAppTheme.current.traits.fluxSurfaces) {
+        ModernDetailEmptyState(onOpenLocalFiles = onOpenLocalFiles)
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()

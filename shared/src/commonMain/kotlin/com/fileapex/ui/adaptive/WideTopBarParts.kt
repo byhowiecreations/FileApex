@@ -98,8 +98,7 @@ internal fun RowScope.ExplorerHeaderCommandButtons(commands: ExplorerHeaderComma
             commands.onOpenTools?.let { onOpenTools ->
                 ToolsHeaderButton(
                     onClick = onOpenTools,
-                    tint = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
-                    modifier = Modifier.size(40.dp)
+                    tint = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor()
                 )
             }
             commands.onPaste?.let { onPaste ->

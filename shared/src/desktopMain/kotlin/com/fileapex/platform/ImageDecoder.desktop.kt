@@ -1,11 +1,13 @@
 package com.fileapex.platform
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Codec
 import org.jetbrains.skia.Data
+import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.FilterMipmap
 import org.jetbrains.skia.FilterMode
 import org.jetbrains.skia.Image
@@ -186,4 +188,19 @@ private fun calculateInSampleSize(
         }
     }
     return inSampleSize.coerceAtLeast(1)
+}
+
+actual fun encodeLocalMediaThumbnailJpeg(absolutePath: String, mimeType: String, maxEdge: Int): ByteArray? {
+    val edge = maxEdge.coerceIn(64, 320)
+    val bitmap = if (mimeType.lowercase().startsWith("video/")) {
+        decodeVideoPoster(absolutePath, edge)
+    } else {
+        decodeLocalImageFile(absolutePath, edge)
+    } ?: return null
+    return runCatching {
+        Image.makeFromBitmap(bitmap.asSkiaBitmap())
+            .encodeToData(EncodedImageFormat.JPEG, 78)
+            ?.bytes
+            ?.takeIf { it.isNotEmpty() && it.size <= 256 * 1024 }
+    }.getOrNull()
 }

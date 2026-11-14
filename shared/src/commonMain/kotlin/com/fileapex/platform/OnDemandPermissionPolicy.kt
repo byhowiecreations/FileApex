@@ -10,6 +10,24 @@ object OnDemandPermissionPolicy {
     fun needsStoragePromptBeforeLocalFiles(isAndroid: Boolean, hasStoragePermission: Boolean): Boolean =
         isAndroid && !hasStoragePermission
 
-    fun shouldOfferPostPairSetup(pairedCount: Int, steps: List<OnboardingPermissionStep>): Boolean =
-        pairedCount > 0 && steps.any { !it.granted && it.id != STORAGE_STEP_ID }
+    fun shouldOfferPostPairSetup(
+        pairedCount: Int,
+        steps: List<OnboardingPermissionStep>,
+        updateCheckPending: Boolean = false,
+        criticalNoticePending: Boolean = false,
+        bannerDismissed: Boolean = false
+    ): Boolean =
+        pairedCount > 0 && !bannerDismissed && (
+            steps.any { !it.granted && it.id != STORAGE_STEP_ID } ||
+                updateCheckPending ||
+                criticalNoticePending
+            )
+
+    fun runWithStoragePermission(
+        hasStoragePermission: Boolean,
+        onRequestStoragePermission: () -> Unit,
+        action: () -> Unit
+    ) {
+        if (hasStoragePermission) action() else onRequestStoragePermission()
+    }
 }

@@ -72,6 +72,11 @@ internal class SettingsStateMirror(
             }
         }
         viewModelScope.launch {
+            settings.clipboardImagesEnabled.collect { enabled ->
+                _uiState.update { it.copy(clipboardImagesEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
             settings.notesNotificationsEnabled.collect { enabled ->
                 _uiState.update { it.copy(notesNotificationsEnabled = enabled) }
             }

@@ -60,13 +60,18 @@ class FilePreviewManager(
 
     fun isTextFile(item: RemoteFileItem): Boolean {
         if (target is BrowseTarget.Demo) return true
+        if (item.mimeType.startsWith("text/")) return true
         val name = item.name.lowercase()
-        return item.mimeType.startsWith("text/") ||
-            name.endsWith(".txt") ||
-            name.endsWith(".md") ||
-            name.endsWith(".log") ||
-            name.endsWith(".json") ||
-            name.endsWith(".csv")
+        val ext = name.substringAfterLast('.', "")
+        return name in EXACT_TEXT_NAMES || ext in TEXT_EXTENSIONS
+    }
+
+    fun isExternalMediaFile(item: RemoteFileItem): Boolean {
+        if (item.isDirectory || target is BrowseTarget.Demo) return false
+        val mime = item.mimeType.lowercase()
+        if (mime == "application/pdf" || mime.startsWith("audio/")) return true
+        val ext = item.name.lowercase().substringAfterLast('.', "")
+        return ext == "pdf" || ext in AUDIO_EXTENSIONS
     }
 
     fun formatBytes(bytes: Long): String = com.fileapex.platform.formatHostFileSize(bytes)
@@ -74,6 +79,22 @@ class FilePreviewManager(
     companion object {
         const val MAX_PREVIEW_BYTES = 25L * 1024L * 1024L
         const val MAX_TEXT_PREVIEW_BYTES = 1L * 1024L * 1024L
+
+        private val AUDIO_EXTENSIONS = setOf(
+            "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "wma", "aiff"
+        )
+
+        private val EXACT_TEXT_NAMES = setOf(
+            ".env", ".gitignore", ".gitattributes", ".editorconfig", "makefile", "dockerfile"
+        )
+        private val TEXT_EXTENSIONS = setOf(
+            "txt", "md", "markdown", "log", "json", "csv", "tsv",
+            "kt", "kts", "java", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx",
+            "xml", "yaml", "yml", "toml", "gradle", "sh", "zsh", "bash", "bat", "ps1",
+            "sql", "css", "scss", "html", "htm", "svg",
+            "c", "cc", "cpp", "h", "hpp", "rs", "go", "rb", "php", "swift",
+            "ini", "conf", "cfg", "env", "properties"
+        )
 
         /**
          * Stream-reads a local file with a hard byte cap (never loads past [maxBytes]).
@@ -129,5 +150,23 @@ class FilePreviewManager(
             }
             return result
         }
+    }
+}
+
+enum class ExplorerOpenKind {
+    Directory,
+    Image,
+    Text,
+    ExternalMedia,
+    Fallback
+}
+
+object ExplorerFileOpenPolicy {
+    fun classify(preview: FilePreviewManager, item: RemoteFileItem): ExplorerOpenKind = when {
+        item.isDirectory -> ExplorerOpenKind.Directory
+        preview.isImageFile(item) -> ExplorerOpenKind.Image
+        preview.isTextFile(item) -> ExplorerOpenKind.Text
+        preview.isExternalMediaFile(item) -> ExplorerOpenKind.ExternalMedia
+        else -> ExplorerOpenKind.Fallback
     }
 }

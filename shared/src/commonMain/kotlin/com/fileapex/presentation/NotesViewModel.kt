@@ -86,6 +86,7 @@ data class NotesUiState(
     val downloadingAttachmentIds: Set<String> = emptySet(),
     val bulletinBoardStyle: BulletinBoardStyle = BulletinBoardStyle.DEFAULT,
     val activeFilter: BulletinFilter = BulletinFilter.All,
+    val searchQuery: String = "",
     val hasLinks: Boolean = false,
     val hasImages: Boolean = false,
     val hasDocs: Boolean = false,
@@ -101,6 +102,8 @@ class NotesViewModel(
 ) : ViewModel() {
     private val activeFilterFlow = MutableStateFlow<BulletinFilter>(BulletinFilter.All)
     private val activeFilterState = activeFilterFlow.asStateFlow()
+    private val searchQueryFlow = MutableStateFlow("")
+    private val searchQueryState = searchQueryFlow.asStateFlow()
 
     private val rawNotesFlow = FileApexServices.noteRepository.notes
     private val downloadingFlow = FileApexServices.noteRepository.downloadingAttachmentIds
@@ -110,8 +113,9 @@ class NotesViewModel(
         rawNotesFlow,
         downloadingFlow,
         styleFlow,
-        activeFilterState
-    ) { notes, downloadingIds, style, filter ->
+        activeFilterState,
+        searchQueryState
+    ) { notes, downloadingIds, style, filter, query ->
         val sortedNotes = notes.sortedBy { it.epochMs }
         val hasLinks = sortedNotes.any { isWebUrl(it.content) || textContainsWebUrl(it.content) }
         val hasImages = sortedNotes.any { isBulletinImage(it.attachmentFileName) }
@@ -134,20 +138,7 @@ class NotesViewModel(
             is BulletinFilter.Tag -> if (filter.tag in tags) filter else BulletinFilter.All
         }
 
-        val filteredNotes = when (validFilter) {
-            BulletinFilter.All -> sortedNotes
-            BulletinFilter.Links -> sortedNotes.filter { isWebUrl(it.content) || textContainsWebUrl(it.content) }
-            BulletinFilter.Images -> sortedNotes.filter { isBulletinImage(it.attachmentFileName) }
-            BulletinFilter.Documents -> sortedNotes.filter { isBulletinDoc(it.attachmentFileName) }
-            BulletinFilter.Snippets -> sortedNotes.filter { isBulletinSnippet(it) }
-            BulletinFilter.Files -> sortedNotes.filter { isBulletinOtherFile(it.attachmentFileName) }
-            BulletinFilter.Pinned -> sortedNotes.filter { it.attachmentPinned }
-            BulletinFilter.Todo -> sortedNotes.filter { it.contentType == com.fileapex.data.bulletin.BulletinContentType.CHECKLIST }
-            is BulletinFilter.Tag -> {
-                val target = validFilter.tag.lowercase()
-                sortedNotes.filter { target in extractBulletinHashtags(it.content) }
-            }
-        }
+        val filteredNotes = BulletinSearchPolicy.filterNotes(sortedNotes, validFilter, query)
 
         val rows = buildDayGroupedRows(filteredNotes)
         NotesUiState(
@@ -156,6 +147,7 @@ class NotesViewModel(
             downloadingAttachmentIds = downloadingIds,
             bulletinBoardStyle = style,
             activeFilter = validFilter,
+            searchQuery = query,
             hasLinks = hasLinks,
             hasImages = hasImages,
             hasDocs = hasDocs,
@@ -177,6 +169,10 @@ class NotesViewModel(
 
     fun setFilter(filter: BulletinFilter) {
         activeFilterFlow.value = filter
+    }
+
+    fun setSearchQuery(query: String) {
+        searchQueryFlow.value = query
     }
 
     fun deleteNoteLocally(noteId: String) {

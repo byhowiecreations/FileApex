@@ -44,15 +44,18 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.domain.demo.DemoModeState
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
+import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.ui.adaptive.CompactDevicesTitleBand
 import com.fileapex.ui.adaptive.JadedRaisedTile
+import com.fileapex.ui.adaptive.simple.PostPairBackgroundSetupBanner
 import com.fileapex.ui.devices.DevicesActionBar
 import com.fileapex.ui.devices.DevicesDialogs
 import com.fileapex.ui.devices.PairedDevicesList
 import com.fileapex.ui.devices.PendingDelete
 import com.fileapex.ui.theme.FluxGlassPalette
+import com.fileapex.ui.theme.isFileApexCleanModern
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexCleanCurved
@@ -92,7 +95,9 @@ fun DevicesScreen(
     embeddedInCompactShell: Boolean = false,
     viewModel: DevicesViewModel = viewModel { DevicesViewModel() },
     layoutMode: DevicesScreenLayoutMode = DevicesScreenLayoutMode.FullScreen,
-    selectedDeviceId: String? = null
+    selectedDeviceId: String? = null,
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
+    onOpenBackgroundSetup: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val isInitialLoadComplete by viewModel.isInitialLoadComplete.collectAsState()
@@ -112,39 +117,20 @@ fun DevicesScreen(
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         val currentTheme = LocalAppTheme.current
-        val isGlass = currentTheme.traits.reorderAccent
-        val editTint = if (isGlass) FluxGlassPalette.accent else fileApexHeaderActionTint()
-        if (!currentTheme.traits.orbitalHome) {
-            if (editMode) {
-                TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
-                    Text(stringRes("revert"), color = editTint)
-                }
-                TextButton(onClick = viewModel::saveDeviceOrderAndExitEditMode) {
-                    Text(stringRes("done"), color = Color(0xFF00E676))
-                }
-            } else if (deviceRows.isNotEmpty() && isFileApexCleanCurved()) {
-                Box(
-                    modifier = Modifier.size(40.dp).clickable(onClick = viewModel::enterDeviceOrderEditMode),
-                    contentAlignment = Alignment.Center
-                ) {
-                    JadedRaisedTile(tileSize = 28.dp) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = stringRes("reorder_devices"),
-                            tint = fileApexTileTint(),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            } else if (deviceRows.isNotEmpty()) {
-                IconButton(onClick = viewModel::enterDeviceOrderEditMode) {
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = stringRes("reorder_devices"),
-                        tint = editTint
-                    )
-                }
-            }
+        val editTint = when {
+            currentTheme.traits.fluxSurfaces -> FluxGlassPalette.headerIcon
+            currentTheme.traits.reorderAccent -> FluxGlassPalette.accent
+            else -> fileApexHeaderActionTint()
+        }
+        if (!currentTheme.traits.orbitalHome && (editMode || deviceRows.isNotEmpty())) {
+            DevicesOrderActionButtons(
+                editMode = editMode,
+                editTint = editTint,
+                isFluxOrCleanModern = currentTheme.traits.fluxSurfaces || isFileApexCleanModern(),
+                onRevert = viewModel::revertDeviceOrderInEditMode,
+                onSave = viewModel::saveDeviceOrderAndExitEditMode,
+                onEnterEdit = viewModel::enterDeviceOrderEditMode
+            )
         }
     }
     val listState = rememberLazyListState(
@@ -214,7 +200,20 @@ fun DevicesScreen(
                 )
             }
             val isDemoActive by DemoModeState.isDemoModeActive.collectAsState()
-            DevicesScreenTopBanners(showDemoBanner = isDemoActive, onExitDemo = { DemoModeState.exitDemo() })
+            DevicesScreenTopBanners(
+                showDemoBanner = isDemoActive,
+                onExitDemo = { DemoModeState.exitDemo() },
+                pairedCount = if (isInitialLoadComplete) deviceRows.size else 0,
+                onboardingSteps = onboardingSteps,
+                onOpenBackgroundSetup = onOpenBackgroundSetup
+            )
+            UnpairedLanDiscoverySection(
+                devicesViewModel = viewModel,
+                pairedRowsCount = deviceRows.size,
+                isInitialLoadComplete = isInitialLoadComplete,
+                isDemoActive = isDemoActive,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
             if (isFreestyle) {
                 FreestyleDevicesView(
                     deviceRows = listRows,
@@ -334,12 +333,50 @@ fun DevicesScreen(
 }
 
 @Composable
+private fun DevicesOrderActionButtons(
+    editMode: Boolean,
+    editTint: Color,
+    isFluxOrCleanModern: Boolean,
+    onRevert: () -> Unit,
+    onSave: () -> Unit,
+    onEnterEdit: () -> Unit
+) {
+    if (editMode) {
+        TextButton(onClick = onRevert) { Text(stringRes("revert"), color = editTint) }
+        val doneColor = if (isFluxOrCleanModern) MaterialTheme.colorScheme.primary else Color(0xFF00E676)
+        TextButton(onClick = onSave) { Text(stringRes("done"), color = doneColor) }
+    } else if (isFileApexCleanCurved()) {
+        Box(modifier = Modifier.size(40.dp).clickable(onClick = onEnterEdit), contentAlignment = Alignment.Center) {
+            JadedRaisedTile(tileSize = 28.dp) {
+                Icon(Icons.Filled.Edit, stringRes("reorder_devices"), Modifier.size(16.dp), tint = fileApexTileTint())
+            }
+        }
+    } else {
+        IconButton(onClick = onEnterEdit) {
+            Icon(Icons.Filled.Edit, stringRes("reorder_devices"), tint = editTint)
+        }
+    }
+}
+
+@Composable
 internal fun DevicesScreenTopBanners(
     showDemoBanner: Boolean,
     onExitDemo: () -> Unit,
     showClipboardBanner: Boolean = true,
-    bannerModifier: Modifier = Modifier
+    bannerModifier: Modifier = Modifier,
+    pairedCount: Int = 0,
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
+    onOpenBackgroundSetup: () -> Unit = {}
 ) {
+    if (!showDemoBanner && pairedCount > 0) {
+        PostPairBackgroundSetupBanner(
+            pairedCount = pairedCount,
+            onboardingSteps = onboardingSteps,
+            onReviewSetup = onOpenBackgroundSetup,
+            onDismiss = {},
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+    }
     if (showClipboardBanner) {
         ClipboardAccessibilityBanner(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }

@@ -56,6 +56,8 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.TransferActivityGuard
@@ -64,10 +66,12 @@ import com.fileapex.platform.isDesktopHost
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.dnd.deviceFileDropTarget
+import com.fileapex.ui.theme.CleanModernPalette
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FileApexTealDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
+import com.fileapex.ui.theme.isFileApexCleanModern
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
@@ -134,7 +138,8 @@ internal fun DeviceGridCell(
 
     val highlighted = selected || dropHover
     val fluent = LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
-    val cellShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(12.dp)
+    val cleanModern = isFileApexCleanModern()
+    val cellShape = if (fluent || cleanModern || isFlux) RoundedCornerShape(10.dp) else RoundedCornerShape(12.dp)
     val titleStyle = if (grid.compactTypography) {
         MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
     } else {
@@ -149,14 +154,17 @@ internal fun DeviceGridCell(
     val subtitleColor = if (isFlux) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
     val containerColor = when {
         dropHover -> FileApexTeal.copy(alpha = 0.22f)
+        selected && isFlux -> FluxGlassPalette.navSelectedPill
+        selected && cleanModern -> CleanModernPalette.NavSelectedPill
         selected -> FileApexTeal.copy(alpha = 0.12f)
         isFlux -> FluxGlassPalette.deviceCard
+        cleanModern -> CleanModernPalette.CardSurface
         fluent -> MaterialTheme.colorScheme.surface
         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     }
 
     val liveStats by TransferActivityGuard.statsFlow.collectAsState()
-    val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
+    val pendingItems by if (FileApexServices.isDatabaseReady()) FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList()) else remember { mutableStateOf(emptyList()) }
     val activeSending = pendingItems.firstOrNull { it.isSending }
     val isSendingToThis = liveStats.isActive && (row.deviceId == dropDeviceId || (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) })))
 
@@ -180,12 +188,14 @@ internal fun DeviceGridCell(
         color = containerColor,
         contentColor = titleColor,
         tonalElevation = 0.dp,
-        shadowElevation = if (fluent || highlighted) 0.dp else 1.dp,
+        shadowElevation = if (fluent || highlighted || cleanModern || isFlux) 0.dp else 1.dp,
         border = BorderStroke(
             width = 1.dp,
             color = when {
-                highlighted -> FileApexTeal
+                highlighted -> if (isFlux) FluxGlassPalette.navSelectedTint else FileApexTeal
                 fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                cleanModern -> CleanModernPalette.CardBorder
+                isFlux -> FluxGlassPalette.cardBorder
                 else -> FileApexTeal.copy(alpha = 0.10f)
             }
         )
@@ -203,10 +213,15 @@ internal fun DeviceGridCell(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                val iconTint = if (cleanModern || (isFlux && LocalThemeIconStyle.current == ThemeIconStyle.STANDARD)) {
+                    Color.Unspecified
+                } else {
+                    FileApexTealDark
+                }
                 DeviceEntryIcon(
                     row = row,
                     modifier = Modifier.size(grid.iconSize),
-                    tint = FileApexTealDark
+                    tint = iconTint
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -282,53 +297,18 @@ internal fun DeviceGridCell(
                     )
                 }
             }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(grid.menuSize)
-            ) {
-                IconButton(
-                    onClick = { menuOpen = true },
-                    modifier = Modifier.size(grid.menuSize)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreHoriz,
-                        contentDescription = stringRes("device_options"),
-                        tint = subtitleColor,
-                        modifier = Modifier.size(if (grid.compactTypography) 16.dp else 18.dp)
-                    )
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringRes("rename")) },
-                        onClick = {
-                            menuOpen = false
-                            onRename()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(deviceMenuText(row, "device_details")) },
-                        onClick = {
-                            menuOpen = false
-                            onDeviceDetails()
-                        }
-                    )
-                    if (!row.isFriend) DropdownMenuItem(
-                        text = { Text(stringRes("send_clipboard")) },
-                        onClick = {
-                            menuOpen = false
-                            onSendClipboard()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(deviceMenuText(row, "remove")) },
-                        onClick = {
-                            menuOpen = false
-                            onRemove()
-                        }
-                    )
-                }
-            }
+            DeviceGridMenuButton(
+                row = row,
+                menuOpen = menuOpen,
+                onMenuOpenChange = { menuOpen = it },
+                grid = grid,
+                subtitleColor = subtitleColor,
+                onRename = onRename,
+                onDeviceDetails = onDeviceDetails,
+                onSendClipboard = onSendClipboard,
+                onRemove = onRemove,
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
@@ -357,6 +337,34 @@ internal fun DeviceGridCell(
                     interactionSource = popupInteractionSource
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DeviceGridMenuButton(
+    row: DeviceListRow,
+    menuOpen: Boolean,
+    onMenuOpenChange: (Boolean) -> Unit,
+    grid: DeviceGridLayoutSpec,
+    subtitleColor: Color,
+    onRename: () -> Unit,
+    onDeviceDetails: () -> Unit,
+    onSendClipboard: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier.size(grid.menuSize)) {
+        IconButton(onClick = { onMenuOpenChange(true) }, modifier = Modifier.size(grid.menuSize)) {
+            Icon(Icons.Filled.MoreHoriz, stringRes("device_options"), Modifier.size(if (grid.compactTypography) 16.dp else 18.dp), tint = subtitleColor)
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
+            DropdownMenuItem(text = { Text(stringRes("rename")) }, onClick = { onMenuOpenChange(false); onRename() })
+            DropdownMenuItem(text = { Text(deviceMenuText(row, "device_details")) }, onClick = { onMenuOpenChange(false); onDeviceDetails() })
+            if (!row.isFriend) {
+                DropdownMenuItem(text = { Text(stringRes("send_clipboard")) }, onClick = { onMenuOpenChange(false); onSendClipboard() })
+            }
+            DropdownMenuItem(text = { Text(deviceMenuText(row, "remove")) }, onClick = { onMenuOpenChange(false); onRemove() })
         }
     }
 }

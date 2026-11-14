@@ -64,6 +64,7 @@ import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.TransferActivityGuard
@@ -71,13 +72,16 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.DeviceEntryIcon
+import com.fileapex.ui.adaptive.OnlineStatusDot
 import com.fileapex.ui.deviceIconFillsOrb
 import com.fileapex.ui.dnd.deviceFileDropTarget
+import com.fileapex.ui.theme.CleanModernPalette
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FileApexTealDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.LocalFileApexUiStyle
+import com.fileapex.ui.theme.isFileApexCleanModern
 import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -235,18 +239,29 @@ internal fun DeviceCard(
     }
     val highlighted = selected || dropHover || dragging
     val fluent = LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
+    val cleanModern = isFileApexCleanModern()
+    val isFlux = currentTheme.traits.fluxSurfaces
     val containerColor = when {
         dragging -> FileApexTeal.copy(alpha = 0.14f)
         dropHover -> FileApexTeal.copy(alpha = 0.22f)
+        selected && isFlux -> FluxGlassPalette.navSelectedPill
+        selected && cleanModern -> CleanModernPalette.NavSelectedPill
         selected -> FileApexTeal.copy(alpha = 0.12f)
+        isCardHovered && cleanModern -> CleanModernPalette.CardHover
+        isCardHovered && isFlux -> FluxGlassPalette.cardHover
+        cleanModern -> CleanModernPalette.CardSurface
         else -> MaterialTheme.colorScheme.surface
     }
     val liveStats by TransferActivityGuard.statsFlow.collectAsState()
-    val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
+    val pendingItems by if (FileApexServices.isDatabaseReady()) {
+        FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
+    } else {
+        remember { mutableStateOf(emptyList()) }
+    }
     val activeSending = pendingItems.firstOrNull { it.isSending }
     val isSendingToThis = liveStats.isActive && (row.deviceId == dropDeviceId || (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) })))
 
-    val cardShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
+    val cardShape = if (fluent || cleanModern || isFlux) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
 
     Box(modifier = modifier) {
         Card(
@@ -256,52 +271,35 @@ internal fun DeviceCard(
                     val next = coords.localToWindow(Offset.Zero)
                     if (cardOriginInWindow != next) cardOriginInWindow = next
                 }
-                .then(if (allowHoverPopOver) Modifier.hoverable(cardInteractionSource) else Modifier)
+                .then(if (allowHoverPopOver || cleanModern || isFlux) Modifier.hoverable(cardInteractionSource) else Modifier)
                 .then(dropModifier)
                 .clickable(enabled = !connecting && !editMode, onClick = onClick),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = when {
-                fluent -> 0.dp
-                highlighted -> 0.dp
-                else -> 3.dp
-            }
+            defaultElevation = if (fluent || highlighted || cleanModern || isFlux) 0.dp else 3.dp
         ),
         border = BorderStroke(
             width = 1.dp,
             color = when {
-                highlighted -> FileApexTeal
+                highlighted -> if (isFlux) FluxGlassPalette.navSelectedTint else FileApexTeal
                 fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                cleanModern -> CleanModernPalette.CardBorder
+                isFlux -> FluxGlassPalette.cardBorder
                 else -> FileApexTeal.copy(alpha = 0.10f)
             }
         )
     ) {
+        val hPad = if (cleanModern || isFlux) 12.dp else 16.dp
+        val vPad = if (cleanModern || isFlux) 12.dp else 18.dp
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
+                .padding(horizontal = hPad, vertical = vPad),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                val iconStyle = LocalThemeIconStyle.current
-                DeviceEntryIcon(
-                    row = row,
-                    modifier = if (deviceIconFillsOrb(iconStyle)) {
-                        Modifier.fillMaxSize().padding(2.dp)
-                    } else {
-                        Modifier.size(24.dp)
-                    },
-                    tint = FileApexTealDark
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
+            DeviceCardIconBadge(row = row, cleanModern = cleanModern, isFlux = isFlux)
+            Spacer(modifier = Modifier.width(if (cleanModern || isFlux) 12.dp else 14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = row.title,
@@ -356,15 +354,21 @@ internal fun DeviceCard(
                         )
                     }
                 } else {
-                    Text(
-                        text = DeviceListRow.localizedSubtitle(row),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        softWrap = true,
-                        onTextLayout = { subtitleOverflow = it.hasVisualOverflow }
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if ((cleanModern || isFlux) && row.online && !editMode) {
+                            OnlineStatusDot(isFlux = isFlux)
+                            Spacer(modifier = Modifier.width(5.dp))
+                        }
+                        Text(
+                            text = DeviceListRow.localizedSubtitle(row),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = true,
+                            onTextLayout = { subtitleOverflow = it.hasVisualOverflow }
+                        )
+                    }
                 }
             }
             if (selected) {
@@ -446,6 +450,30 @@ internal fun DeviceCard(
                     interactionSource = popupInteractionSource
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DeviceCardIconBadge(row: DeviceListRow, cleanModern: Boolean, isFlux: Boolean) {
+    val iconStyle = LocalThemeIconStyle.current
+    if (cleanModern || (isFlux && iconStyle == ThemeIconStyle.STANDARD)) {
+        val shape = RoundedCornerShape(9.dp)
+        val bg = if (isFlux) FluxGlassPalette.iconBadgeBg else CleanModernPalette.IconBadgeBg
+        val border = if (isFlux) FluxGlassPalette.iconBadgeBorder else CleanModernPalette.IconBadgeBorder
+        Box(
+            modifier = Modifier.size(38.dp).clip(shape).background(bg).border(1.dp, border, shape),
+            contentAlignment = Alignment.Center
+        ) {
+            DeviceEntryIcon(row = row, modifier = Modifier.size(20.dp))
+        }
+    } else {
+        Box(
+            modifier = Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            val iconMod = if (deviceIconFillsOrb(iconStyle)) Modifier.fillMaxSize().padding(2.dp) else Modifier.size(24.dp)
+            DeviceEntryIcon(row = row, modifier = iconMod, tint = FileApexTealDark)
         }
     }
 }

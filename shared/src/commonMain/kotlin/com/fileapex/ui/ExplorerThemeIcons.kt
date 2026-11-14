@@ -75,7 +75,7 @@ internal fun explorerIcon(icon: ExplorerIcon, family: ExplorerIconFamily): Image
         ExplorerIcon.ListView -> Icons.AutoMirrored.Outlined.ViewList
         ExplorerIcon.SplitView -> Icons.Outlined.VerticalSplit
         ExplorerIcon.Refresh -> Icons.Outlined.Refresh
-        ExplorerIcon.Power -> Icons.Outlined.PowerSettingsNew
+        ExplorerIcon.Power -> Icons.AutoMirrored.Outlined.ExitToApp
         ExplorerIcon.CardsVertical -> Icons.Outlined.TableRows
         ExplorerIcon.CardsHorizontal -> Icons.Outlined.ViewColumn
     }
@@ -113,7 +113,7 @@ internal fun explorerIcon(icon: ExplorerIcon, family: ExplorerIconFamily): Image
         ExplorerIcon.ListView -> Icons.AutoMirrored.Rounded.ViewList
         ExplorerIcon.SplitView -> Icons.Rounded.VerticalSplit
         ExplorerIcon.Refresh -> Icons.Rounded.Refresh
-        ExplorerIcon.Power -> Icons.Rounded.PowerSettingsNew
+        ExplorerIcon.Power -> Icons.AutoMirrored.Rounded.ExitToApp
         ExplorerIcon.CardsVertical -> Icons.Rounded.TableRows
         ExplorerIcon.CardsHorizontal -> Icons.Rounded.ViewColumn
     }
@@ -151,7 +151,7 @@ internal fun explorerIcon(icon: ExplorerIcon, family: ExplorerIconFamily): Image
         ExplorerIcon.ListView -> Icons.AutoMirrored.Sharp.ViewList
         ExplorerIcon.SplitView -> Icons.Sharp.VerticalSplit
         ExplorerIcon.Refresh -> Icons.Sharp.Refresh
-        ExplorerIcon.Power -> Icons.Sharp.PowerSettingsNew
+        ExplorerIcon.Power -> Icons.AutoMirrored.Sharp.ExitToApp
         ExplorerIcon.CardsVertical -> Icons.Sharp.TableRows
         ExplorerIcon.CardsHorizontal -> Icons.Sharp.ViewColumn
     }
@@ -189,7 +189,7 @@ internal fun explorerIcon(icon: ExplorerIcon, family: ExplorerIconFamily): Image
         ExplorerIcon.ListView -> Icons.AutoMirrored.TwoTone.ViewList
         ExplorerIcon.SplitView -> Icons.TwoTone.VerticalSplit
         ExplorerIcon.Refresh -> Icons.TwoTone.Refresh
-        ExplorerIcon.Power -> Icons.TwoTone.PowerSettingsNew
+        ExplorerIcon.Power -> Icons.AutoMirrored.TwoTone.ExitToApp
         ExplorerIcon.CardsVertical -> Icons.TwoTone.TableRows
         ExplorerIcon.CardsHorizontal -> Icons.TwoTone.ViewColumn
     }

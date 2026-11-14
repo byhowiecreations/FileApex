@@ -50,6 +50,7 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.backup.BackupConfig
 import com.fileapex.domain.backup.BackupEngine
+import com.fileapex.domain.backup.BackupFolderPresets
 import com.fileapex.domain.backup.BackupManifest
 import com.fileapex.domain.backup.BackupStatus
 import com.fileapex.domain.backup.BackupSummary
@@ -181,6 +182,10 @@ internal fun BackupSyncSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack
             TextButton(onClick = { addOpen = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text(stringRes("backup_add_folder"))
             }
+            BackupPresetsAndHints(
+                existingSources = config.sources,
+                onAddSource = { path -> update { it.withSource(path) } }
+            )
             HorizontalDivider()
 
             ListItem(
@@ -273,6 +278,50 @@ private fun DestinationCard(
                 Text(device.deviceName, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+@Composable
+private fun BackupPresetsAndHints(
+    existingSources: List<String>,
+    onAddSource: (String) -> Unit
+) {
+    val storageRoot = remember { defaultStorageRoot() }
+    val presets = remember(storageRoot) { BackupFolderPresets.detectAndroidMediaPresets(storageRoot) }
+    val missingPresets = remember(presets, existingSources) {
+        presets.filter { preset -> preset.path !in existingSources }
+    }
+    var showScreenshotsInfo by remember { mutableStateOf(false) }
+
+    if (missingPresets.isNotEmpty()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            missingPresets.forEach { preset ->
+                val labelKey = when (preset.kind) {
+                    BackupFolderPresets.PresetKind.Photos -> "backup_preset_photos"
+                    BackupFolderPresets.PresetKind.Screenshots -> "backup_preset_screenshots"
+                }
+                OutlinedButton(onClick = { onAddSource(preset.path) }) {
+                    Text(stringRes(labelKey))
+                }
+            }
+        }
+    }
+    TextButton(
+        onClick = { showScreenshotsInfo = !showScreenshotsInfo },
+        modifier = Modifier.padding(horizontal = 8.dp)
+    ) {
+        Text(stringRes("backup_what_about_screenshots"))
+    }
+    if (showScreenshotsInfo) {
+        Text(
+            text = stringRes("backup_screenshots_explanation"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
+        )
     }
 }
 

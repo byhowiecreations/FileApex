@@ -23,9 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.PlatformClipboard
 import com.fileapex.platform.usesDesktopFileSelection
+import com.fileapex.ui.theme.CleanModernPalette
+import com.fileapex.ui.theme.FluxGlassPalette
+import com.fileapex.ui.theme.isFileApexCleanModern
 
 private const val SHARE_DOWNLOAD_TEXT = """Get FileApex for local P2P file transfers:
 • Google Play: https://play.google.com/store/apps/details?id=com.fileapex
@@ -45,13 +50,24 @@ fun EmptyDevicesQuickStartCard(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Quick Start Card
+        val cleanModern = isFileApexCleanModern()
+        val isFlux = LocalAppTheme.current.traits.fluxSurfaces
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(if (cleanModern || isFlux) 12.dp else 16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                containerColor = when {
+                    cleanModern -> CleanModernPalette.CardSurface
+                    isFlux -> FluxGlassPalette.deviceCard
+                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                }
             ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = if (cleanModern || isFlux) 0.dp else 1.dp),
+            border = when {
+                cleanModern -> BorderStroke(1.dp, CleanModernPalette.CardBorder)
+                isFlux -> BorderStroke(1.dp, FluxGlassPalette.cardBorder)
+                else -> null
+            }
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(

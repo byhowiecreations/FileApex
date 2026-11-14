@@ -8,6 +8,7 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.decodeImageBytes
 import com.fileapex.platform.decodeLocalImageFile
+import com.fileapex.platform.openLocalFile
 import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
@@ -162,20 +163,42 @@ internal class ExplorerPreviewActions(
         }
     }
 
+    fun openExternalMedia(item: RemoteFileItem) {
+        if (target is BrowseTarget.Local) {
+            openLocalFile(item.absolutePath, item.name)
+            return
+        }
+        if (!isRemote) return
+        downloadSingleRemoteItem(item) { path ->
+            openLocalFile(path, item.name)
+        }
+    }
+
     fun downloadPreview() {
         val item = _uiState.value.previewItem ?: return
+        downloadSingleRemoteItem(item)
+    }
+
+    private fun downloadSingleRemoteItem(
+        item: RemoteFileItem,
+        onDownloadedPath: (String) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
+            _uiState.update { it.copy(isDownloading = true, errorMessage = null, statusMessage = null) }
             cancellableCatching {
                 transfers.downloadRemote(listOf(item))
             }.fold(
                 onSuccess = { paths ->
+                    val downloadedPath = paths.firstOrNull()
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            statusMessage = AppI18n.t("downloaded_to", paths.first()),
+                            statusMessage = downloadedPath?.let { path -> AppI18n.t("downloaded_to", path) },
                             lastDownloadedPaths = paths
                         )
+                    }
+                    if (downloadedPath != null) {
+                        onDownloadedPath(downloadedPath)
                     }
                 },
                 onFailure = { error ->

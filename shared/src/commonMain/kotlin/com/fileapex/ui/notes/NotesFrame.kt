@@ -33,6 +33,7 @@ internal class NotesFrame(
     val downloadingAttachmentIds get() = state.downloadingAttachmentIds
     val bulletinBoardStyle get() = state.bulletinBoardStyle
     val activeFilter get() = state.activeFilter
+    val searchQuery get() = state.searchQuery
     val hasLinks get() = state.hasLinks
     val hasImages get() = state.hasImages
     val hasDocs get() = state.hasDocs

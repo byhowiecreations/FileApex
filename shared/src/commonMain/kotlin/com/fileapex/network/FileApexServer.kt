@@ -9,19 +9,7 @@ import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.AppLocale
-import com.fileapex.network.routes.registerBulletinRoutes
-import com.fileapex.network.routes.rejectBridgedRequest
-import com.fileapex.network.routes.registerClipboardRoutes
-import com.fileapex.network.routes.registerDiagnosticRoutes
-import com.fileapex.network.routes.registerFileRoutes
-import com.fileapex.network.routes.registerIdentityRoutes
-import com.fileapex.network.routes.registerLocalExtensionRoutes
-import com.fileapex.network.routes.registerIrohRoutes
-import com.fileapex.network.routes.registerNotificationRoutes
-import com.fileapex.network.routes.registerPresenceRoutes
-import com.fileapex.network.routes.registerChainRoutes
-import com.fileapex.network.routes.registerIdentityChangeRoutes
-import com.fileapex.network.routes.registerTlsRoutes
+import com.fileapex.network.routes.*
 import com.fileapex.security.tls.TlsTransportPolicy
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.PathUtils
@@ -232,6 +220,7 @@ class FileApexServer(
                     registerIdentityRoutes(this@FileApexServer)
                     registerIrohRoutes(this@FileApexServer)
                     registerFileRoutes(this@FileApexServer)
+                    registerFileThumbnailRoute(this@FileApexServer)
                     registerClipboardRoutes(this@FileApexServer)
                     registerBulletinRoutes(this@FileApexServer)
                     registerDiagnosticRoutes(this@FileApexServer)

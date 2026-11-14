@@ -48,11 +48,16 @@ fun isFileApexCustomGlassTheme(): Boolean =
 fun isFileApexSimpleModern(): Boolean =
     LocalAppTheme.current == AppTheme.SIMPLE && !isFileApexFluentUi()
 
-/** Top/bottom nav and title-strip background. Pure Black on Freestyle; Dark slate-teal pill on Simple; Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent; Teal on Clean. */
+@Composable
+fun isFileApexCleanModern(): Boolean =
+    LocalAppTheme.current == AppTheme.CLEAN && !isFileApexFluentUi()
+
+/** Top/bottom nav and title-strip background. Pure Black on Freestyle; Dark slate-teal pill on Simple; Cool light slate on Clean; Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent. */
 @Composable
 fun fileApexChromeContainerColor(): Color = when {
     isFileApexFreestyle() -> Color.Black
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.ChromeSurface
+    isFileApexCleanModern() -> CleanModernPalette.ChromeSurface
     isFileApexCustomGlassTheme() -> Color.Transparent
     isFileApexFluentUi() -> MaterialTheme.colorScheme.surface
     else -> FileApexTeal
@@ -62,6 +67,7 @@ fun fileApexChromeContainerColor(): Color = when {
 @Composable
 fun fileApexChromeContentColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.ChromeContent
+    isFileApexCleanModern() -> CleanModernPalette.ChromeContent
     isFileApexCustomGlassTheme() -> Color.White
     isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurface
     else -> Color.White
@@ -73,13 +79,15 @@ fun isFileApexJadedSteel(): Boolean =
 
 /**
  * Action icons in header/chrome (toggle view mode, queued transfers, panel toggle).
- * [onChromeBar] is for the wide-layout header, which sits on the teal chrome container; the compact title band sits on the surface.
+ * [onChromeBar] is for the wide-layout header; the compact title band sits on the surface.
  */
 @Composable
 fun fileApexHeaderActionTint(onChromeBar: Boolean = false): Color = when {
     LocalAppTheme.current == com.fileapex.data.settings.AppTheme.CAROUSEL -> Color(0xFFE8E8E8)
     isFileApexJadedSteel() -> KineticStyleLook.steel
+    LocalAppTheme.current.traits.fluxSurfaces -> FluxGlassPalette.headerIcon
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
+    isFileApexCleanModern() -> CleanModernPalette.ChromeMuted
     isFileApexCleanCurved() -> Color.White
     onChromeBar -> fileApexChromeContentColor()
     else -> MaterialTheme.colorScheme.onSurface
@@ -88,6 +96,8 @@ fun fileApexHeaderActionTint(onChromeBar: Boolean = false): Color = when {
 @Composable
 fun fileApexNavSelectedBackgroundColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.PillTint
+    isFileApexCleanModern() -> CleanModernPalette.NavSelectedPill
+    LocalAppTheme.current.traits.fluxSurfaces -> FluxGlassPalette.navSelectedPill
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent.copy(alpha = 0.22f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.primaryContainer
     else -> Color.White
@@ -96,6 +106,8 @@ fun fileApexNavSelectedBackgroundColor(): Color = when {
 @Composable
 fun fileApexNavSelectedIconColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMintSoft
+    isFileApexCleanModern() -> FileApexTealDark
+    LocalAppTheme.current.traits.fluxSurfaces -> FluxGlassPalette.navSelectedTint
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
     isFileApexFluentUi() -> FileApexTeal
     else -> FileApexTealDark
@@ -104,6 +116,7 @@ fun fileApexNavSelectedIconColor(): Color = when {
 @Composable
 fun fileApexNavUnselectedIconColor(): Color = when {
     isFileApexSimpleModern() -> Color(0xFFBFD4D6)
+    isFileApexCleanModern() -> CleanModernPalette.ChromeMuted
     isFileApexCustomGlassTheme() -> Color.White.copy(alpha = 0.72f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurfaceVariant
     else -> Color.White
@@ -112,6 +125,8 @@ fun fileApexNavUnselectedIconColor(): Color = when {
 @Composable
 fun fileApexNavSelectedTextColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMintSoft
+    isFileApexCleanModern() -> FileApexTealDark
+    LocalAppTheme.current.traits.fluxSurfaces -> Color.White
     isFileApexCustomGlassTheme() -> Color.White
     isFileApexFluentUi() -> FileApexTeal
     else -> Color.White
@@ -120,6 +135,7 @@ fun fileApexNavSelectedTextColor(): Color = when {
 @Composable
 fun fileApexNavUnselectedTextColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.TextSecondary
+    isFileApexCleanModern() -> CleanModernPalette.ChromeMuted
     isFileApexCustomGlassTheme() -> Color.White.copy(alpha = 0.72f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurfaceVariant
     else -> Color.White.copy(alpha = 0.85f)
@@ -128,8 +144,14 @@ fun fileApexNavUnselectedTextColor(): Color = when {
 
 @Composable
 fun Modifier.fileApexChromeBottomEdge(): Modifier {
-    if (!isFileApexFluentUi()) return this
-    val stroke = MaterialTheme.colorScheme.outlineVariant
+    val cleanModern = isFileApexCleanModern()
+    val fluxGlass = LocalAppTheme.current.traits.fluxSurfaces
+    if (!isFileApexFluentUi() && !cleanModern && !fluxGlass) return this
+    val stroke = when {
+        cleanModern -> CleanModernPalette.ChromeBorder
+        fluxGlass -> FluxGlassPalette.footerDivider
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
     return drawBehind {
         drawLine(
             color = stroke,
@@ -142,8 +164,14 @@ fun Modifier.fileApexChromeBottomEdge(): Modifier {
 
 @Composable
 fun Modifier.fileApexChromeTopEdge(): Modifier {
-    if (!isFileApexFluentUi()) return this
-    val stroke = MaterialTheme.colorScheme.outlineVariant
+    val cleanModern = isFileApexCleanModern()
+    val fluxGlass = LocalAppTheme.current.traits.fluxSurfaces
+    if (!isFileApexFluentUi() && !cleanModern && !fluxGlass) return this
+    val stroke = when {
+        cleanModern -> CleanModernPalette.ChromeBorder
+        fluxGlass -> FluxGlassPalette.footerDivider
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
     return drawBehind {
         drawLine(
             color = stroke,
@@ -187,9 +215,9 @@ fun fileApexTopAppBarColors(): TopAppBarColors =
     )
 
 @Composable
-fun isFileApexCleanCurved(): Boolean = (LocalAppTheme.current == AppTheme.CLEAN || LocalAppTheme.current == AppTheme.SIMPLE) && !isFileApexFluentUi()
+fun isFileApexCleanCurved(): Boolean = LocalAppTheme.current == AppTheme.SIMPLE && !isFileApexFluentUi()
 
-/** Jaded Steel and the curved Clean theme draw header icons on small raised tiles. */
+/** Jaded Steel and the curved Simple theme draw header icons on small raised tiles. */
 @Composable
 fun isFileApexTiledChrome(): Boolean = isFileApexJadedSteel() || isFileApexCleanCurved()
 

@@ -3,7 +3,10 @@ package com.fileapex.presentation.explorer
 import androidx.lifecycle.viewModelScope
 import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.domain.preview.ExplorerFileOpenPolicy
+import com.fileapex.domain.preview.ExplorerOpenKind
 import com.fileapex.domain.preview.FilePreviewManager
+import com.fileapex.platform.openLocalFile
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
 import com.fileapex.presentation.ExplorerViewModel
@@ -19,7 +22,8 @@ internal class ExplorerSelectionActions(
     private val isRemote: Boolean,
     private val onDirectoryClick: (RemoteFileItem) -> Unit,
     private val openImagePreview: (RemoteFileItem) -> Unit,
-    private val openTextPreview: (RemoteFileItem) -> Unit
+    private val openTextPreview: (RemoteFileItem) -> Unit,
+    private val openExternalMedia: (RemoteFileItem) -> Unit
 ) {
     /** Anchor for desktop Shift-click range selection. */
     private var selectionAnchorId: String? = null
@@ -85,13 +89,14 @@ internal class ExplorerSelectionActions(
 
     /** Open / preview a file (Android tap outside selection; desktop double-click). */
     fun activateFile(item: RemoteFileItem) {
-        when {
-            item.isDirectory -> onDirectoryClick(item)
-            preview.isImageFile(item) -> openImagePreview(item)
-            preview.isTextFile(item) -> openTextPreview(item)
-            else -> {
+        when (ExplorerFileOpenPolicy.classify(preview, item)) {
+            ExplorerOpenKind.Directory -> onDirectoryClick(item)
+            ExplorerOpenKind.Image -> openImagePreview(item)
+            ExplorerOpenKind.Text -> openTextPreview(item)
+            ExplorerOpenKind.ExternalMedia -> openExternalMedia(item)
+            ExplorerOpenKind.Fallback -> {
                 if (target is BrowseTarget.Local) {
-                    com.fileapex.platform.openLocalFile(item.absolutePath, item.name)
+                    openLocalFile(item.absolutePath, item.name)
                 } else {
                     _uiState.update {
                         it.copy(statusMessage = "${item.name} · ${preview.formatBytes(item.sizeBytes)}")

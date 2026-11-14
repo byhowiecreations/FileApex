@@ -41,6 +41,7 @@ interface AppSettings {
     val clipboardSendNotificationEnabled: StateFlow<Boolean>
     val clipboardShizukuEnabled: StateFlow<Boolean>
     val clipboardAutoSendEnabled: StateFlow<Boolean>
+    val clipboardImagesEnabled: StateFlow<Boolean>
     val appLanguageTag: StateFlow<String>
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
     val driveRelayNotificationsEnabled: StateFlow<Boolean>
@@ -50,6 +51,8 @@ interface AppSettings {
     val checkForUpdatesEnabled: StateFlow<Boolean>
     /** True once the first-run "check for updates?" question has been answered. */
     val updateCheckPromptShown: StateFlow<Boolean>
+    /** True once the user dismissed the post-pair setup card on Home; settings still keeps the setup card if pending. */
+    val postPairSetupBannerDismissed: StateFlow<Boolean>
     val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit>
     val checkForUpdatesIntervalAmount: StateFlow<Int>
     val lastUpdateCheckEpochMs: StateFlow<Long>
@@ -180,6 +183,7 @@ interface AppSettings {
     fun setClipboardSendNotificationEnabled(enabled: Boolean)
     fun setClipboardShizukuEnabled(enabled: Boolean)
     fun setClipboardAutoSendEnabled(enabled: Boolean)
+    fun setClipboardImagesEnabled(enabled: Boolean)
     fun setAppLanguageTag(tag: String)
     fun clipboardPrivateKeyBase64(): String
     fun setClipboardPrivateKeyBase64(value: String)
@@ -277,6 +281,7 @@ interface AppSettings {
     fun setPinIdleTimeout(timeout: PinIdleTimeout)
     fun setCheckForUpdatesEnabled(enabled: Boolean)
     fun setUpdateCheckPromptShown(shown: Boolean)
+    fun setPostPairSetupBannerDismissed(dismissed: Boolean)
 
     /** True once the one-time "check out the other themes" hint was shown or is no longer needed. */
     val otherThemesHintShown: StateFlow<Boolean>

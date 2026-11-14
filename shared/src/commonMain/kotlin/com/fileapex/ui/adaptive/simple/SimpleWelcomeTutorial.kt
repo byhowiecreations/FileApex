@@ -34,6 +34,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,15 +43,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.OnDemandPermissionPolicy
+import com.fileapex.ui.StartupPromptGate
 import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.platform.isDesktopHost
 
+object SimpleWelcomeStartupPolicy {
+    fun shouldAutoShowTutorialModal(): Boolean = false
+}
+
 /**
- * Lightweight first-run tutorial shown over the visible Home screen so new users immediately see
- * the workspace instead of a permission wall, and learn Bulletin Board, download link, pairing,
- * and Demo Mode in one dismissible card.
+ * Lightweight first-run tutorial shown on request from Home so new users immediately see
+ * the workspace instead of a modal overlay, and can still open the quick tour from "How it works".
  */
 @Composable
 fun SimpleWelcomeTutorialOverlay(
@@ -230,7 +237,27 @@ fun PostPairBackgroundSetupBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (!OnDemandPermissionPolicy.shouldOfferPostPairSetup(pairedCount, onboardingSteps)) return
+    if (pairedCount <= 0) return
+    val settings = FileApexServices.settings
+    val updateAnswered by settings.updateCheckPromptShown.collectAsState()
+    val updatesEnabled by settings.checkForUpdatesEnabled.collectAsState()
+    val noticeChoiceMade by settings.noticeSettings.choiceMade.collectAsState()
+    val dismissed by settings.postPairSetupBannerDismissed.collectAsState()
+    val updateCheckPending = StartupPromptGate.isUpdatePromptPending(
+        managedByStore = FileApexServices.managedByStore,
+        answered = updateAnswered,
+        enabled = updatesEnabled
+    )
+    val criticalNoticePending = StartupPromptGate.isCriticalNoticePending(choiceMade = noticeChoiceMade)
+    if (!OnDemandPermissionPolicy.shouldOfferPostPairSetup(
+            pairedCount = pairedCount,
+            steps = onboardingSteps,
+            updateCheckPending = updateCheckPending,
+            criticalNoticePending = criticalNoticePending,
+            bannerDismissed = dismissed
+        )
+    ) return
+    val hasPermissionSteps = onboardingSteps.any { !it.granted && it.id != OnDemandPermissionPolicy.STORAGE_STEP_ID }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -250,7 +277,7 @@ fun PostPairBackgroundSetupBanner(
                     color = Color(0xFFEDF6F6)
                 )
                 Text(
-                    text = stringRes("post_pair_setup_body"),
+                    text = stringRes(if (hasPermissionSteps) "post_pair_setup_body" else "post_pair_setup_updates_body"),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFAEC7CA)
                 )
@@ -263,7 +290,10 @@ fun PostPairBackgroundSetupBanner(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = {
+                    settings.setPostPairSetupBannerDismissed(true)
+                    onDismiss()
+                }) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = stringRes("close"),

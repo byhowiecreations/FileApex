@@ -22,7 +22,10 @@ internal class ExplorerFrame(
     val showInFolderLabel: String,
     val ownedFocus: ExplorerPaneFocus,
     val jadedOrbital: Boolean,
-    val filterQueryState: MutableState<String>
+    val filterQueryState: MutableState<String>,
+    val searchSubfoldersState: MutableState<Boolean>,
+    val canSearchSubfolders: Boolean
 ) {
     var filterQuery by filterQueryState
+    var searchSubfolders by searchSubfoldersState
 }

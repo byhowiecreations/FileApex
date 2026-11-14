@@ -36,6 +36,8 @@ import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
+import com.fileapex.ui.theme.FluxGlassPalette
+import com.fileapex.ui.theme.isFileApexCleanModern
 
 @Composable
 fun NoteHeaderButton(
@@ -48,6 +50,8 @@ fun NoteHeaderButton(
     val jaded = isFileApexJadedSteel()
     val isAndroid = com.fileapex.cloud.currentPlatformLabel() == "Android"
     val resolvedIconKind = iconKind ?: when {
+        isFileApexCleanModern() -> NoteIconKind.BLACK
+        currentTheme.traits.fluxSurfaces -> NoteIconKind.WHITE
         jaded || currentTheme.traits.glassChrome -> NoteIconKind.GREEN
         (currentTheme == AppTheme.CLEAN || currentTheme == AppTheme.SIMPLE) && isAndroid -> NoteIconKind.BLACK
         else -> NoteIconKind.WHITE
@@ -116,10 +120,18 @@ private fun NoteHeaderIcon(onOpenNotes: () -> Unit, painter: androidx.compose.ui
             onClick = onOpenNotes,
             modifier = modifier
         ) {
+            val currentTheme = LocalAppTheme.current
+            val fluxTint = if (currentTheme.traits.fluxSurfaces) {
+                ColorFilter.tint(FluxGlassPalette.headerIcon)
+            } else {
+                null
+            }
+            val iconSize = if (currentTheme.traits.fluxSurfaces || isFileApexCleanModern()) 22.dp else 24.dp
             Image(
                 painter = painter,
                 contentDescription = stringRes("bulletin_board"),
-                modifier = Modifier.size(24.dp)
+                colorFilter = fluxTint,
+                modifier = Modifier.size(iconSize)
             )
         }
     }

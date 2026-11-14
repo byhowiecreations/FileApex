@@ -54,6 +54,7 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.presentation.SettingsUiState
+import com.fileapex.ui.ExpandableSearchPillRow
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.adaptive.CompactHomeTitleBand
 import com.fileapex.ui.adaptive.CompactHomeTitleStyle
@@ -212,6 +213,9 @@ internal fun SettingsPageShell(
     layoutMode: SettingsScreenLayoutMode,
     onBack: (() -> Unit)?,
     onOpenTransferQueue: (() -> Unit)? = null,
+    searchQuery: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    searchPlaceholder: String = "",
     content: @Composable (Modifier) -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
@@ -224,7 +228,15 @@ internal fun SettingsPageShell(
         SettingsScreenLayoutMode.FullScreen -> {
             Scaffold(
                 containerColor = containerColor,
-                topBar = { SettingsTopBar(title = title, onBack = onBack) }
+                topBar = {
+                    SettingsTopBar(
+                        title = title,
+                        onBack = onBack,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = onSearchQueryChange,
+                        searchPlaceholder = searchPlaceholder
+                    )
+                }
             ) { padding ->
                 content(Modifier.fillMaxSize().padding(padding))
             }
@@ -232,7 +244,13 @@ internal fun SettingsPageShell(
 
         SettingsScreenLayoutMode.ListPane -> {
             Column(modifier = Modifier.fillMaxSize()) {
-                FileApexPaneSectionHeader(title = title, onBack = onBack)
+                FileApexPaneSectionHeader(
+                    title = title,
+                    onBack = onBack,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = onSearchQueryChange,
+                    searchPlaceholder = searchPlaceholder
+                )
                 content(Modifier.weight(1f).fillMaxWidth())
             }
         }
@@ -258,6 +276,9 @@ internal fun SettingsPageShell(
                     FileApexPaneSectionHeader(
                         title = title,
                         onBack = onBack,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = onSearchQueryChange,
+                        searchPlaceholder = searchPlaceholder,
                         actions = homeAction
                     )
                 } else {
@@ -269,6 +290,9 @@ internal fun SettingsPageShell(
                         showNavPositionToggle = DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost()),
                         showCloseService = onExit != null,
                         onCloseService = onExit,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = onSearchQueryChange,
+                        searchPlaceholder = searchPlaceholder,
                         actions = homeAction
                     )
                 }
@@ -280,9 +304,32 @@ internal fun SettingsPageShell(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SettingsTopBar(title: String, onBack: (() -> Unit)?) {
+internal fun SettingsTopBar(
+    title: String,
+    onBack: (() -> Unit)?,
+    searchQuery: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    searchPlaceholder: String = ""
+) {
     TopAppBar(
-        title = { Text(title) },
+        title = {
+            if (onSearchQueryChange != null) {
+                ExpandableSearchPillRow(
+                    query = searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    placeholder = searchPlaceholder,
+                    collapseLeadingCompletely = true,
+                    modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                    leading = { leadingModifier, _ ->
+                        Box(modifier = leadingModifier, contentAlignment = Alignment.CenterStart) {
+                            Text(text = title, maxLines = 1)
+                        }
+                    }
+                )
+            } else {
+                Text(title)
+            }
+        },
         navigationIcon = {
             if (onBack != null) {
                 IconButton(onClick = onBack) {

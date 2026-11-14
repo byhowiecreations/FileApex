@@ -115,6 +115,5 @@ val ADVANCED_IDS: Set<String> = setOf(
     SettingsMenuIds.DRIVE_RELAY,
     SettingsMenuIds.PIN_REQUIRED,
     SettingsMenuIds.GOOGLE_ACCOUNT,
-    SettingsMenuIds.BACKUP_SYNC,
     SettingsMenuIds.LEAVE_CLUSTER
 )

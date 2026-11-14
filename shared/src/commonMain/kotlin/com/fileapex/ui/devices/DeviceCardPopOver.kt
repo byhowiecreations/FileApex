@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.TransferActivityGuard
@@ -55,10 +56,12 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.deviceIconFillsOrb
+import com.fileapex.ui.theme.CleanModernPalette
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FileApexTealDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
+import com.fileapex.ui.theme.isFileApexCleanModern
 
 @Composable
 internal fun DeviceCardPopOver(
@@ -75,19 +78,22 @@ internal fun DeviceCardPopOver(
     var menuOpen by remember { mutableStateOf(false) }
     val fluent = LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
     val currentTheme = LocalAppTheme.current
-    val cardShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
+    val cleanModern = isFileApexCleanModern()
+    val cardShape = if (fluent || cleanModern || currentTheme.traits.fluxSurfaces) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
     val liveStats by TransferActivityGuard.statsFlow.collectAsState()
-    val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
+    val pendingItems by if (FileApexServices.isDatabaseReady()) FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList()) else remember { mutableStateOf(emptyList()) }
     val activeSending = pendingItems.firstOrNull { it.isSending }
-    val isSendingToThis = liveStats.isActive && (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) }))
+    val isSendingToThis = liveStats.isActive && activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) })
 
     val isFlux = currentTheme.traits.fluxSurfaces
-    val containerColor = if (isFlux) FluxGlassPalette.deviceCard else MaterialTheme.colorScheme.surface
+    val iconStyle = LocalThemeIconStyle.current
+    val useStandardBadge = cleanModern || (isFlux && iconStyle == ThemeIconStyle.STANDARD)
+    val containerColor = if (isFlux) FluxGlassPalette.deviceCard else if (cleanModern) CleanModernPalette.CardSurface else MaterialTheme.colorScheme.surface
     val textColor = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isFlux) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
-    val iconContainerColor = if (isFlux) FluxGlassPalette.accentSoft else MaterialTheme.colorScheme.primaryContainer
-    val iconTint = if (isFlux) FluxGlassPalette.accent else FileApexTealDark
-    val borderColor = if (isFlux) FluxGlassPalette.accent else FileApexTeal
+    val iconContainerColor = if (useStandardBadge && isFlux) FluxGlassPalette.iconBadgeBg else if (useStandardBadge) CleanModernPalette.IconBadgeBg else if (isFlux) FluxGlassPalette.accentSoft else MaterialTheme.colorScheme.primaryContainer
+    val iconTint = if (useStandardBadge && isFlux) FluxGlassPalette.iconBadgeTint else if (useStandardBadge) CleanModernPalette.IconBadgeTint else if (isFlux) FluxGlassPalette.accent else FileApexTealDark
+    val borderColor = if (isFlux) FluxGlassPalette.cardBorder else if (cleanModern) CleanModernPalette.CardBorder else FileApexTeal
     val menuIconTint = if (isFlux) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
 
     Card(
@@ -98,8 +104,8 @@ internal fun DeviceCardPopOver(
             .clickable(enabled = !connecting, onClick = onClick),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
-        border = BorderStroke(1.5.dp, borderColor)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isFlux) 0.dp else if (cleanModern) 4.dp else 16.dp),
+        border = BorderStroke(if (isFlux || cleanModern) 1.dp else 1.5.dp, borderColor)
     ) {
         Row(
             modifier = Modifier
@@ -107,20 +113,20 @@ internal fun DeviceCardPopOver(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val badgeShape = if (useStandardBadge) RoundedCornerShape(9.dp) else CircleShape
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
+                    .size(if (useStandardBadge) 38.dp else 44.dp)
+                    .clip(badgeShape)
                     .background(iconContainerColor),
                 contentAlignment = Alignment.Center
             ) {
-                val iconStyle = LocalThemeIconStyle.current
                 DeviceEntryIcon(
                     row = row,
                     modifier = if (deviceIconFillsOrb(iconStyle)) {
                         Modifier.fillMaxSize().padding(2.dp)
                     } else {
-                        Modifier.size(24.dp)
+                        Modifier.size(if (useStandardBadge) 20.dp else 24.dp)
                     },
                     tint = iconTint
                 )

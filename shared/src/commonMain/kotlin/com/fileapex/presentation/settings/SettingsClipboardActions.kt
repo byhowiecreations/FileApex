@@ -117,6 +117,11 @@ internal class SettingsClipboardActions(
         _uiState.update { it.copy(clipboardAutoSendEnabled = enabled) }
     }
 
+    fun setClipboardImages(enabled: Boolean) {
+        settings.setClipboardImagesEnabled(enabled)
+        _uiState.update { it.copy(clipboardImagesEnabled = enabled) }
+    }
+
     fun setClipboardAccessibility(enabled: Boolean) {
         settings.setClipboardAccessibilityEnabled(enabled)
         val restricted = enabled &&

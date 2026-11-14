@@ -42,6 +42,7 @@ internal fun ClipboardSettingsPage(
     onToggleViaCellular: (Boolean) -> Unit,
     onToggleSendNotification: (Boolean) -> Unit,
     onToggleAutoSend: (Boolean) -> Unit,
+    onToggleImages: (Boolean) -> Unit = {},
     onOpenAccessibility: () -> Unit,
     onOpenShareTargets: () -> Unit,
     onOpenDiagnostics: () -> Unit
@@ -140,6 +141,18 @@ internal fun ClipboardSettingsPage(
                         }
                     )
                 }
+                ListItem(
+                    headlineContent = { Text(stringRes("clipboard_images_sync"), softWrap = true) },
+                    supportingContent = {
+                        Text(stringRes("clipboard_images_sync_subtitle"), softWrap = true)
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = state.clipboardImagesEnabled,
+                            onCheckedChange = onToggleImages
+                        )
+                    }
+                )
                 if (!assumedSingleTarget) {
                     SettingsNavItem(
                         title = stringRes("share_clipboard_with"),

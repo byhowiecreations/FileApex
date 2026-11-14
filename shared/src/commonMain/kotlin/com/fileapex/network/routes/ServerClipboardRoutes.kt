@@ -89,7 +89,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
                 return@cancellableCatching
             }
             val text = withContext(Dispatchers.Main) {
-                com.fileapex.platform.PlatformClipboard.getSystemClipboardText().orEmpty()
+                com.fileapex.domain.clipboard.ClipboardShareCoordinator.currentClipboardPayloadOrNull().orEmpty()
             }
             val localId = server.identityProvider().deviceId
             val sealed = com.fileapex.domain.clipboard.ClipboardE2ee.encrypt(

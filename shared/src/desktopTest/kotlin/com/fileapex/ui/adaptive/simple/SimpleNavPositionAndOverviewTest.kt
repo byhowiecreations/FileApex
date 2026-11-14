@@ -254,6 +254,9 @@ class SimpleNavPositionAndOverviewTest {
     fun `SimpleOverviewCardPolicy tailors drop card for phone, names Browse device, and enables inline status plus Devices card`() {
         assertFalse(SimpleOverviewCardPolicy.showDropHint(isDesktopHost = false))
         assertTrue(SimpleOverviewCardPolicy.showDropHint(isDesktopHost = true))
+        assertTrue(SimpleOverviewCardPolicy.useCompactSendRow(isDesktopHost = false))
+        assertFalse(SimpleOverviewCardPolicy.useCompactSendRow(isDesktopHost = true))
+        assertTrue(SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(isDesktopHost = false) <= 12)
         assertTrue(
             SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(isDesktopHost = false) <
                 SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(isDesktopHost = true)

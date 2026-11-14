@@ -17,6 +17,7 @@ data class BackupCandidate(
     val relativePath: String,
     val sizeBytes: Long,
     val modifiedMillis: Long,
+    val sourceRoot: String = ""
 )
 
 /**

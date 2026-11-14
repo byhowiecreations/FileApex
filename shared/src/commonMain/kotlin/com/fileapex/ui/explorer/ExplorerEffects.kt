@@ -19,6 +19,14 @@ internal fun ExplorerScope.ExplorerEffects() {
     LaunchedEffect(Unit) {
         com.fileapex.platform.StorageToolsEvents.closeRequests.collect { toolsOpen = false }
     }
+    LaunchedEffect(toolsAvailable) {
+        com.fileapex.ui.adaptive.simple.LocalExplorerOpenToolsSignal.requests.collect { version ->
+            if (version > 0 && toolsAvailable) {
+                toolsOpen = true
+                com.fileapex.ui.adaptive.simple.LocalExplorerOpenToolsSignal.consume(version)
+            }
+        }
+    }
     LaunchedEffect(state.isRefreshing, viewModel) {
         onRegisterRefresh?.invoke(state.isRefreshing, viewModel::refresh)
     }

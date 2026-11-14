@@ -7,6 +7,11 @@ import android.content.Intent
 import android.net.Uri
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.clipboard.ClipboardCopySignals
+import com.fileapex.domain.clipboard.ClipboardImageEnvelope
+import android.graphics.Bitmap
+import androidx.core.content.FileProvider
+import java.io.ByteArrayOutputStream
+import java.io.File
 
 import android.app.PendingIntent
 import android.graphics.BitmapFactory
@@ -22,6 +27,53 @@ actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
         val context = androidAppContextOrNull() ?: return null
         return readClipboardText(context)
+    }
+
+    actual fun getSystemClipboardImageBytes(): ByteArray? {
+        val context = androidAppContextOrNull() ?: return null
+        return runCatching {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                ?: return@runCatching null
+            val clip = clipboard.primaryClip ?: return@runCatching null
+            if (clip.itemCount <= 0) return@runCatching null
+            val uri = clip.getItemAt(0)?.uri ?: return@runCatching null
+            val mime = context.contentResolver.getType(uri)
+                ?: (0 until (clip.description?.mimeTypeCount ?: 0))
+                    .map { clip.description.getMimeType(it) }
+                    .firstOrNull { it.startsWith("image/") }
+                ?: return@runCatching null
+            if (!mime.startsWith("image/")) return@runCatching null
+            val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
+            } ?: return@runCatching null
+            encodeBoundedAndroidBitmap(bitmap)
+        }.getOrNull()
+    }
+
+    private fun encodeBoundedAndroidBitmap(source: Bitmap): ByteArray? {
+        val maxEdge = 1280
+        val scale = minOf(maxEdge.toFloat() / source.width, maxEdge.toFloat() / source.height, 1f)
+        val scaled = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                source,
+                (source.width * scale).toInt().coerceAtLeast(1),
+                (source.height * scale).toInt().coerceAtLeast(1),
+                true
+            )
+        } else {
+            source
+        }
+        return try {
+            for (quality in intArrayOf(85, 70, 55)) {
+                val out = ByteArrayOutputStream()
+                scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                val bytes = out.toByteArray()
+                if (bytes.size <= ClipboardImageEnvelope.MAX_RAW_IMAGE_BYTES) return bytes
+            }
+            null
+        } finally {
+            if (scaled !== source) scaled.recycle()
+        }
     }
 
     actual fun getSystemClipboardTimestamp(): Long? {
@@ -92,6 +144,63 @@ actual object PlatformClipboard {
             ClipboardShareSuppressor.isApplyingRemote = false
         }
         notifyInboundClipboard(text, sourceDeviceName)
+    }
+
+    actual fun applyRemoteImage(bytes: ByteArray, mimeType: String, sourceDeviceName: String) {
+        val context = androidAppContextOrNull() ?: return
+        val cacheFolder = File(context.cacheDir, "note-attachments").apply { mkdirs() }
+        val ext = if (mimeType.contains("png")) "png" else "jpg"
+        val target = File(cacheFolder, "clipboard-remote.$ext")
+        runCatching { target.writeBytes(bytes) }.getOrNull() ?: return
+        val uri = runCatching {
+            FileProvider.getUriForFile(context, FileApexFileProvider.authority(context), target)
+        }.getOrNull() ?: return
+        ClipboardShareSuppressor.isApplyingRemote = true
+        try {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboard?.setPrimaryClip(ClipData.newUri(context.contentResolver, "FileApex Image", uri))
+        } finally {
+            ClipboardShareSuppressor.isApplyingRemote = false
+        }
+        val sender = com.fileapex.data.device.DeviceDisplayNames.resolve(sourceDeviceName, null)
+            .ifBlank { AppI18n.t("paired_device") }
+        val title = AppI18n.t("clipboard_image_from_device", sender)
+        BriefToast.show(title)
+        notifyInboundClipboardImage(context, target.absolutePath, mimeType, sender, title)
+    }
+
+    private fun notifyInboundClipboardImage(
+        context: Context,
+        cachedImagePath: String,
+        mimeType: String,
+        sender: String,
+        title: String
+    ) {
+        AndroidNotificationChannels.ensureNoteMessagesChannel(context)
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+        val notificationId = (System.currentTimeMillis() and 0x7FFF).toInt()
+        val saveIntent = Intent(context, ClipboardActionReceiver::class.java).apply {
+            action = ClipboardActionReceiver.ACTION_CLIPBOARD_SAVE_IMAGE
+            putExtra(ClipboardActionReceiver.EXTRA_IMAGE_PATH, cachedImagePath)
+            putExtra(ClipboardActionReceiver.EXTRA_IMAGE_MIME, mimeType)
+            putExtra(ClipboardActionReceiver.EXTRA_SOURCE_DEVICE, sender)
+            putExtra(ClipboardActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        val savePending = PendingIntent.getBroadcast(context, notificationId, saveIntent, flags)
+        val builder = NotificationCompat.Builder(context, AndroidNotificationChannels.NOTE_MESSAGES)
+            .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
+            .setLargeIcon(BitmapFactory.decodeResource(context.resources, AndroidNotificationChannels.noteLargeIcon))
+            .setContentTitle(title)
+            .setContentText(AppI18n.t("clipboard_save_to_downloads_hint", DownloadsPaths.displayLabel()))
+            .addAction(0, AppI18n.t("clipboard_save_image"), savePending)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+        runCatching {
+            manager.notify(ClipboardActionReceiver.CLIPBOARD_NOTIFICATION_TAG, notificationId, builder.build())
+        }
     }
 
     private fun notifyInboundClipboard(text: String, sourceDeviceName: String) {

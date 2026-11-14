@@ -1,6 +1,11 @@
 package com.fileapex.ui.tools
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import com.fileapex.ui.DesktopHoverTooltip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -212,11 +217,34 @@ internal fun ToolsGlyph(tint: Color, modifier: Modifier = Modifier, size: Dp = 2
 /** Header button that opens Tools; matches the raised tiles next to it on Jaded Steel. */
 @Composable
 internal fun ToolsHeaderButton(onClick: () -> Unit, tint: Color, modifier: Modifier = Modifier) {
-    if (isFileApexTiledChrome()) {
-        Box(modifier.size(40.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-            JadedRaisedTile(tileSize = 28.dp) { ToolsGlyph(tint = fileApexTileTint(), size = 18.dp) }
+    DesktopHoverTooltip(text = stringRes("storage_tools_title")) {
+        if (isFileApexTiledChrome()) {
+            Box(modifier.size(40.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+                JadedRaisedTile(tileSize = 28.dp) { ToolsGlyph(tint = fileApexTileTint(), size = 18.dp) }
+            }
+        } else {
+            Surface(
+                modifier = modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable(onClick = onClick),
+                shape = RoundedCornerShape(50),
+                color = tint.copy(alpha = 0.10f),
+                border = BorderStroke(1.dp, tint.copy(alpha = 0.28f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    ToolsGlyph(tint = tint, size = 16.dp)
+                    Text(
+                        text = stringRes("storage_tools_title"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = tint,
+                        maxLines = 1
+                    )
+                }
+            }
         }
-    } else {
-        IconButton(onClick = onClick, modifier = modifier) { ToolsGlyph(tint = tint) }
     }
 }

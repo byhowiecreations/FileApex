@@ -49,16 +49,18 @@ val LocalFileApexUiStyle = staticCompositionLocalOf { DesktopUiStyle.Standard }
 private val StandardColorScheme = lightColorScheme(
     primary = FileApexTeal,
     onPrimary = Color.White,
-    primaryContainer = FileApexTealSoft,
+    primaryContainer = CleanModernPalette.NavSelectedPill,
     onPrimaryContainer = FileApexTealDark,
     secondary = FileApexTealDark,
     onSecondary = Color.White,
-    background = FileApexCanvas,
-    onBackground = FileApexInk,
-    surface = FileApexSurface,
-    onSurface = FileApexInk,
-    onSurfaceVariant = FileApexMuted,
-    outline = FileApexBorder,
+    background = CleanModernPalette.CanvasBackdrop,
+    onBackground = CleanModernPalette.ChromeContent,
+    surface = CleanModernPalette.CardSurface,
+    surfaceVariant = CleanModernPalette.ChromeSurface,
+    onSurface = CleanModernPalette.ChromeContent,
+    onSurfaceVariant = CleanModernPalette.ChromeMuted,
+    outline = CleanModernPalette.ChromeBorder,
+    outlineVariant = CleanModernPalette.CardBorder,
     error = Color(0xFFB3261E),
     onError = Color.White
 )
@@ -152,6 +154,14 @@ private val FluxGlassColorScheme = darkColorScheme(
 /** Dropdown menus use the extra small shape; the 4dp default looked sharp beside the rounded cards. */
 private val StandardShapes = Shapes(extraSmall = RoundedCornerShape(16.dp))
 
+private val CleanShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(14.dp),
+    extraLarge = RoundedCornerShape(16.dp)
+)
+
 private val CurvedShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),
     small = RoundedCornerShape(16.dp),
@@ -227,10 +237,11 @@ fun FileApexTheme(
 
     val shapes = when {
         fluent -> FluentShapes
-        appTheme == AppTheme.SIMPLE || appTheme == AppTheme.CLEAN || appTheme == AppTheme.FLUX_GLASS -> CurvedShapes
+        appTheme == AppTheme.CLEAN -> CleanShapes
+        appTheme == AppTheme.SIMPLE || appTheme == AppTheme.FLUX_GLASS -> CurvedShapes
         else -> StandardShapes
     }
-    val macFont = if (appTheme == AppTheme.CAROUSEL) com.fileapex.platform.macSystemFontFamily() else null
+    val macFont = if (appTheme == AppTheme.CAROUSEL || appTheme == AppTheme.CLEAN) com.fileapex.platform.macSystemFontFamily() else null
     val typography = when {
         fluent -> fluentTypography(fontFamily)
         macFont != null -> fluentTypography(macFont)

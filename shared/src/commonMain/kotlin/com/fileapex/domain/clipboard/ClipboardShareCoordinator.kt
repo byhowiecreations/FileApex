@@ -99,7 +99,7 @@ object ClipboardShareCoordinator {
 
     fun onLocalClipboardChanged(text: String) {
         if (!shouldWatchLocalClipboard()) return
-        val trimmed = preparedAutomaticText(text) ?: return
+        val trimmed = ClipboardImageEnvelope.preparedAutomaticText(text) ?: return
         val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed, clipTs)) return
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
@@ -169,7 +169,7 @@ object ClipboardShareCoordinator {
             !FileApexServices.settings.clipboardAutoSendEnabled.value
         ) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) return
-        val text = preparedAutomaticText(PlatformClipboard.getSystemClipboardText()) ?: return
+        val text = ClipboardImageEnvelope.preparedAutomaticText(PlatformClipboard.getSystemClipboardText()) ?: return
         val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(text, clipTs)) return
         scope.launch {
@@ -193,17 +193,24 @@ object ClipboardShareCoordinator {
             ?: withContext(Dispatchers.Main.immediate) {
                 PlatformClipboard.getSystemClipboardText()?.takeIf { it.isNotBlank() }
             }
-        val text = preparedManualText(raw)
-            ?: return preparedManualError(raw)
-        if (!ClipboardPushDeduper.shouldAllowManualPush(text)) {
+        val imageEnvelope = if (raw.isNullOrBlank()) {
+            ClipboardImageEnvelope.encodeIfEnabled(
+                PlatformClipboard.getSystemClipboardImageBytes(),
+                settings.clipboardImagesEnabled.value
+            )
+        } else null
+        val payload = imageEnvelope ?: ClipboardImageEnvelope.preparedManualText(raw)
+            ?: return ClipboardImageEnvelope.preparedManualError(raw)
+        val dedupe = ClipboardImageEnvelope.dedupeKeyForPayload(payload)
+        if (!ClipboardPushDeduper.shouldAllowManualPush(dedupe)) {
             return com.fileapex.i18n.AppI18n.t("already_sent")
         }
         val (started, initialError) = captureAndBroadcast(
-            text,
+            payload,
             desktopPeersOnly = currentPlatformLabel() == "Android"
         )
         if (!started) {
-            ClipboardPushDeduper.forget(text)
+            ClipboardPushDeduper.forget(dedupe)
             return com.fileapex.i18n.AppI18n.t("choose_devices_first")
         }
         if (initialError != null) {
@@ -231,28 +238,34 @@ object ClipboardShareCoordinator {
             error(com.fileapex.i18n.AppI18n.t("clipboard_sharing_disabled_settings"))
         }
         val raw = PlatformClipboard.getSystemClipboardText()
-        val text = preparedManualText(raw) ?: error(preparedManualError(raw))
+        val text = ClipboardImageEnvelope.encodeIfEnabled(
+            PlatformClipboard.getSystemClipboardImageBytes(),
+            settings.clipboardImagesEnabled.value
+        )
+            ?: ClipboardImageEnvelope.preparedManualText(raw)
+            ?: error(ClipboardImageEnvelope.preparedManualError(raw))
         val device = FileApexServices.deviceRepository.getDevice(deviceId)
             ?: error(com.fileapex.i18n.AppI18n.t("device_not_found"))
         val capturedAt = TimeUtils.now()
         val ack = ClipboardAckTracker.expect(deviceId, capturedAt)
         val route = DeliveryRoute()
         val (delivered, deliveryError) = deliverToDeviceWithDetail(device, text, capturedAt, route)
+        val dedupe = ClipboardImageEnvelope.dedupeKeyForPayload(text)
         if (!delivered) {
             ack.cancel()
-            ClipboardPushDeduper.forget(text)
+            ClipboardPushDeduper.forget(dedupe)
             val msg = deliveryError?.message ?: com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName)
             error(msg)
         }
-        ClipboardPushDeduper.remember(text)
+        ClipboardPushDeduper.remember(dedupe)
         if (!route.viaCloud) ack.cancel()
         val name = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
         return ClipboardSendOutcome(ClipboardSendResponse(status = "ok", recipientDeviceName = name), route.viaCloud, ack.takeIf { route.viaCloud })
     }
 
     suspend fun sendPlaintextToDevice(deviceId: String, text: String): ClipboardSendResponse {
-        val trimmed = preparedManualText(text)
-            ?: error(preparedManualError(text))
+        val trimmed = ClipboardImageEnvelope.preparedManualText(text)
+            ?: error(ClipboardImageEnvelope.preparedManualError(text))
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) {
             error(com.fileapex.i18n.AppI18n.t("clipboard_sharing_disabled_settings"))
@@ -298,6 +311,16 @@ object ClipboardShareCoordinator {
             peerDeviceId = senderDeviceId.trim(),
             peerPublicKeyBase64 = verifiedKey, context = capturedAtEpochMs.toString()
         ).decodeToString()
+        if (ClipboardImageEnvelope.isEnvelope(plaintext)) {
+            if (!FileApexServices.settings.clipboardImagesEnabled.value) return
+            if (ClipboardImageEnvelope.applyDecodedIfImage(plaintext, senderDeviceName) { decoded, sender ->
+                    ClipboardImageInbox.record(decoded.bytes, decoded.mimeType, sender)
+                    withContext(Dispatchers.Main) {
+                        PlatformClipboard.applyRemoteImage(decoded.bytes, decoded.mimeType, sender)
+                    }
+                }
+            ) return
+        }
         val prepared = ClipboardCopySignals.prepare(plaintext)
         if (prepared !is ClipboardCopySignals.Prepared.Ok) {
             error("empty_text")
@@ -358,7 +381,7 @@ object ClipboardShareCoordinator {
                 pending = null
                 false
             } else {
-                ClipboardPushDeduper.remember(text)
+                ClipboardPushDeduper.remember(ClipboardImageEnvelope.dedupeKeyForPayload(text))
                 pending = PendingShare(
                     text = text,
                     capturedAtEpochMs = TimeUtils.now(),
@@ -612,32 +635,7 @@ object ClipboardShareCoordinator {
         }
     }
 
-    private fun preparedAutomaticText(raw: String?): String? {
-        return when (val prepared = ClipboardCopySignals.prepare(raw)) {
-            is ClipboardCopySignals.Prepared.Ok -> prepared.text
-            ClipboardCopySignals.Prepared.Empty -> null
-            ClipboardCopySignals.Prepared.TooLarge -> {
-                showClipboardToast(com.fileapex.i18n.AppI18n.t("clipboard_too_large"))
-                null
-            }
-            ClipboardCopySignals.Prepared.NotText -> {
-                showClipboardToast(com.fileapex.i18n.AppI18n.t("clipboard_not_text"))
-                null
-            }
-        }
-    }
-
-    private fun preparedManualText(raw: String?): String? =
-        (ClipboardCopySignals.prepare(raw) as? ClipboardCopySignals.Prepared.Ok)?.text
-
-    private fun preparedManualError(raw: String?): String {
-        return when (ClipboardCopySignals.prepare(raw)) {
-            is ClipboardCopySignals.Prepared.Ok,
-            ClipboardCopySignals.Prepared.Empty -> com.fileapex.i18n.AppI18n.t("clipboard_empty")
-            ClipboardCopySignals.Prepared.TooLarge -> com.fileapex.i18n.AppI18n.t("clipboard_too_large")
-            ClipboardCopySignals.Prepared.NotText -> com.fileapex.i18n.AppI18n.t("clipboard_not_text")
-        }
-    }
+    internal fun currentClipboardPayloadOrNull(): String? = ClipboardImageEnvelope.currentClipboardPayloadOrNull()
 
     private data class PendingShare(
         val text: String,

@@ -65,6 +65,7 @@ class BaseAppSettings(
         MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SEND_NOTIFICATION, false))
     private val clipboardShizukuFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHIZUKU, false))
     private val clipboardAutoSendFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_AUTO_SEND, false))
+    private val clipboardImagesFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_IMAGES, true))
     private val appLanguageTagFlow = MutableStateFlow(store.getString(KEY_APP_LANGUAGE, ""))
     private val clipboardPrivateKeyBase64Stored = MutableStateFlow(
         store.getString(KEY_CLIPBOARD_PRIVATE_KEY, "")
@@ -96,6 +97,8 @@ class BaseAppSettings(
     private val checkForUpdates = MutableStateFlow(store.getBoolean(KEY_CHECK_FOR_UPDATES, false))
     private val updateCheckPromptShownFlow = MutableStateFlow(store.getBoolean(KEY_UPDATE_CHECK_PROMPT_SHOWN, false))
     override val updateCheckPromptShown: StateFlow<Boolean> = updateCheckPromptShownFlow.asStateFlow()
+    private val postPairSetupDismissedFlow = MutableStateFlow(store.getBoolean(KEY_POST_PAIR_SETUP_DISMISSED, false))
+    override val postPairSetupBannerDismissed: StateFlow<Boolean> = postPairSetupDismissedFlow.asStateFlow()
     private val updateUnit = MutableStateFlow(
         UpdateCheckUnit.fromStorage(store.getString(KEY_UPDATE_UNIT, UpdateCheckUnit.Days.name))
     )
@@ -407,6 +410,7 @@ class BaseAppSettings(
     override val clipboardSendNotificationEnabled: StateFlow<Boolean> = clipboardSendNotificationFlow.asStateFlow()
     override val clipboardShizukuEnabled: StateFlow<Boolean> = clipboardShizukuFlow.asStateFlow()
     override val clipboardAutoSendEnabled: StateFlow<Boolean> = clipboardAutoSendFlow.asStateFlow()
+    override val clipboardImagesEnabled: StateFlow<Boolean> = clipboardImagesFlow.asStateFlow()
     override val appLanguageTag: StateFlow<String> = appLanguageTagFlow.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
@@ -638,6 +642,8 @@ class BaseAppSettings(
         store.putBoolean(KEY_CLIPBOARD_AUTO_SEND, enabled)
         clipboardAutoSendFlow.value = enabled
     }
+
+    override fun setClipboardImagesEnabled(enabled: Boolean) { store.putBoolean(KEY_CLIPBOARD_IMAGES, enabled); clipboardImagesFlow.value = enabled }
 
     override fun setAppLanguageTag(tag: String) {
         store.putString(KEY_APP_LANGUAGE, tag)
@@ -1034,6 +1040,11 @@ class BaseAppSettings(
         store.putBoolean(KEY_UPDATE_CHECK_PROMPT_SHOWN, shown)
     }
 
+    override fun setPostPairSetupBannerDismissed(dismissed: Boolean) {
+        postPairSetupDismissedFlow.value = dismissed
+        store.putBoolean(KEY_POST_PAIR_SETUP_DISMISSED, dismissed)
+    }
+
     override fun toggleExplorerFavorite(absolutePath: String) {
         val current = explorerFavoritesFlow.value
         val next = if (absolutePath in current) current - absolutePath else current + absolutePath
@@ -1325,6 +1336,7 @@ class BaseAppSettings(
         clipboardSendNotificationFlow.value = false
         clipboardShizukuFlow.value = false
         clipboardAutoSendFlow.value = false
+        clipboardImagesFlow.value = true
         appLanguageTagFlow.value = ""
         clipboardPrivateKeyBase64Stored.value = ""
         transferNotifications.value = false
@@ -1354,6 +1366,7 @@ class BaseAppSettings(
         explorerSplitFractionFlow.value = 0.38f
         explorerFavoritesFlow.value = emptyList()
         updateCheckPromptShownFlow.value = false
+        postPairSetupDismissedFlow.value = false
         otherThemesHintShownFlow.value = false
         welcomeTutorialShownFlow.value = keepWelcomeTutorial
         simpleActiveDeviceIdFlow.value = ""
@@ -1451,6 +1464,7 @@ class BaseAppSettings(
         const val KEY_CLIPBOARD_SEND_NOTIFICATION = "clipboard_send_notification"
         const val KEY_CLIPBOARD_SHIZUKU = "clipboard_shizuku"
         const val KEY_CLIPBOARD_AUTO_SEND = "clipboard_auto_send"
+        const val KEY_CLIPBOARD_IMAGES = "clipboard_images_enabled"
         const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_CLIPBOARD_PRIVATE_KEY = "clipboard_private_key_b64"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
@@ -1521,6 +1535,7 @@ class BaseAppSettings(
         const val KEY_EXPLORER_SPLIT_FRACTION = "explorer_split_fraction"
         const val KEY_EXPLORER_FAVORITES = "explorer_favorites"
         const val KEY_UPDATE_CHECK_PROMPT_SHOWN = "update_check_prompt_shown"
+        const val KEY_POST_PAIR_SETUP_DISMISSED = "post_pair_setup_dismissed"
         const val KEY_BACKUP_CONFIG = "backup_config"
         const val KEY_EXPLORER_SPLIT_ENABLED = "explorer_split_enabled"
         const val KEY_DESKTOP_UI_STYLE = "desktop_ui_style"

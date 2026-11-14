@@ -34,6 +34,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ExplorerViewMode
@@ -48,6 +50,7 @@ import com.fileapex.ui.deviceOrderDragIntOffset
 import com.fileapex.ui.deviceOrderItemVisualOffsetPx
 import com.fileapex.ui.deviceOrderListOverflowsViewport
 import com.fileapex.ui.rememberDeviceOrderDragState
+import com.fileapex.ui.theme.isFileApexCleanModern
 import kotlin.math.roundToInt
 
 /** Approximate device card row height used for desktop window sizing. */
@@ -334,17 +337,23 @@ private fun PairedDevicesBrowseList(
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val itemSpacing = 14.dp
-    val listTopPadding = 8.dp
+    val modernCompact = isFileApexCleanModern() || LocalAppTheme.current.traits.fluxSurfaces
+    val itemSpacing = if (modernCompact) 10.dp else 14.dp
+    val listTopPadding = if (modernCompact) 10.dp else 8.dp
+    val horizontalPadding = if (modernCompact) 14.dp else 20.dp
     val isDemoActive by com.fileapex.domain.demo.DemoModeState.isDemoModeActive.collectAsState()
-    val bottomPadding = if (isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive) 24.dp else DeviceListToAddGap
+    val bottomPadding = when {
+        isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive -> 24.dp
+        modernCompact -> 12.dp
+        else -> DeviceListToAddGap
+    }
 
     LazyColumn(
         state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(
-            start = 20.dp,
-            end = 20.dp,
+            start = horizontalPadding,
+            end = horizontalPadding,
             top = listTopPadding,
             bottom = bottomPadding
         ),

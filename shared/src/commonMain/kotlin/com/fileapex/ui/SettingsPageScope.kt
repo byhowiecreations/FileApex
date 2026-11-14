@@ -53,6 +53,7 @@ internal class SettingsPageScope(
     val googleLinkStatus: String?,
     val viewModel: SettingsViewModel,
     pageState: MutableState<SettingsPage>,
+    searchQueryState: MutableState<String>,
     val layoutMode: SettingsScreenLayoutMode,
     val onBack: () -> Unit,
     val goUp: () -> Unit,
@@ -73,6 +74,7 @@ internal class SettingsPageScope(
     val onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit
 ) {
     var page by pageState
+    var searchQuery by searchQueryState
 }
 
 @Composable
@@ -86,6 +88,8 @@ internal fun SettingsPageScope.PagesGeneral() {
             showBackNavigation = showRootBackNavigation,
             layoutMode = layoutMode,
             onOpenPage = { page = it },
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
             onToggleGeneralGroup = viewModel::toggleGeneralGroup,
             onShowAdvancedChange = viewModel::setShowAdvancedSettings,
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
@@ -245,6 +249,7 @@ internal fun SettingsPageScope.PagesClipboard() {
                     onToggleViaCellular = viewModel::setClipboardViaCellular,
                     onToggleSendNotification = viewModel::setClipboardSendNotification,
                     onToggleAutoSend = viewModel::setClipboardAutoSend,
+                    onToggleImages = viewModel::setClipboardImages,
                     onOpenAccessibility = { page = SettingsPage.ClipboardAccessibility },
                     onOpenShareTargets = { page = SettingsPage.ClipboardShareTargets },
                     onOpenDiagnostics = { page = SettingsPage.ClipboardDiagnostics }

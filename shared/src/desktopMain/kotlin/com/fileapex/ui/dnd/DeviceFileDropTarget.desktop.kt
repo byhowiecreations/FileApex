@@ -9,7 +9,9 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.DragData
 import androidx.compose.ui.draganddrop.awtTransferable
+import androidx.compose.ui.draganddrop.dragData
 import androidx.compose.ui.geometry.Offset
 import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DropTargetDragEvent
@@ -94,7 +96,7 @@ private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
         val files = runCatching {
             transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>
         }.getOrNull().orEmpty()
-        return files.mapNotNull { entry ->
+        val resolved = files.mapNotNull { entry ->
             val file = when (entry) {
                 is File -> entry
                 is String -> File(entry)
@@ -102,7 +104,8 @@ private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
             } ?: return@mapNotNull null
             if (file.isFile || file.isDirectory) file.absolutePath else null
         }
+        if (resolved.isNotEmpty()) return resolved
     }
 
-    return emptyList()
+    return (event.dragData() as? DragData.FilesList)?.readFiles().orEmpty()
 }

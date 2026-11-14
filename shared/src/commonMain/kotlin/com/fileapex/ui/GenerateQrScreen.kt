@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -74,11 +76,13 @@ fun GenerateQrScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             Text(
                 text = stringRes("qr_intro"),
-                modifier = Modifier.padding(bottom = 16.dp)
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(bottom = 12.dp)
             )
             state.pairedDeviceName?.let { name ->
                 Text(
@@ -114,25 +118,22 @@ fun GenerateQrScreen(
                 }
             } else {
                 state.payload?.let { payload ->
-                    if (state.broadcast.active) {
-                        Text(
-                            text = stringRes(
-                                "broadcasting_on",
-                                PairingBeacon.MULTICAST_ADDRESS,
-                                PairingBeacon.PORT,
-                                1000 / PairingBeacon.BROADCAST_INTERVAL_MS,
-                                state.broadcast.remainingLabel
-                            ),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
+                    val broadcastText = if (state.broadcast.active) {
+                        stringRes(
+                            "broadcasting_on",
+                            PairingBeacon.MULTICAST_ADDRESS,
+                            PairingBeacon.PORT,
+                            1000 / PairingBeacon.BROADCAST_INTERVAL_MS,
+                            state.broadcast.remainingLabel
                         )
+                    } else {
+                        null
                     }
                     PairingQrPanel(
+                        qrText = payload.toQrText(),
                         payload = payload,
+                        broadcastStatusText = broadcastText,
+                        showScanHint = false,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

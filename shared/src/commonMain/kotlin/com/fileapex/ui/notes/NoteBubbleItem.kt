@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fileapex.data.note.NoteChecklistItem
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.i18n.AppI18n
@@ -69,6 +71,7 @@ import com.fileapex.ui.BulletinBubbleContainer
 import com.fileapex.ui.ExplorerEntryIcons
 import com.fileapex.ui.IosModernApexBlue
 import com.fileapex.ui.NoteLinkText
+import com.fileapex.ui.notesAttachmentIsImage
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.util.TimeUtils
 import kotlin.math.roundToInt
@@ -156,11 +159,12 @@ internal fun NoteBubbleItem(
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }
+        val copyableImagePath = item.attachmentLocalPath.takeIf { desktop && notesAttachmentIsImage(attachmentName) && !it.isNullOrBlank() }
         NoteContextMenu(
             expanded = menuOpen,
-            actions = NoteMenuActions.forNote(hasCopyable, item.attachmentPinned),
+            actions = NoteMenuActions.forNote(hasCopyable, item.attachmentPinned, copyableImagePath != null),
             onDismiss = { menuOpen = false },
-            onAction = { runNoteMenuAction(it, copyableText, snackbar, onLockClick, onDeleteClick) }
+            onAction = { runNoteMenuAction(it, copyableText, copyableImagePath, snackbar, onLockClick, onDeleteClick) }
         )
         Column(
             modifier = Modifier
@@ -227,19 +231,18 @@ internal fun NoteBubbleItem(
                             )
                         }
                     }
-                    if (!caption.isNullOrBlank()) {
-                        if (!item.driveFileId.isNullOrBlank()) Spacer(modifier = Modifier.height(6.dp))
-                        NoteLinkText(
-                            text = caption,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp, lineHeight = 19.sp),
-                            color = effectiveTextColor,
-                            linkColor = effectiveHeaderColor,
-                            onHashtagClick = onHashtagClick
-                        )
-                    }
-                    if (item.contentType == com.fileapex.data.bulletin.BulletinContentType.CHECKLIST) {
-                        ChecklistLines(item.checklist, checklist, effectiveTextColor, effectiveHeaderColor, gesturesEnabled)
-                    }
+                    NoteBubbleSelectableBody(
+                        desktop = desktop,
+                        hasDriveBadge = !item.driveFileId.isNullOrBlank(),
+                        caption = caption,
+                        isChecklist = item.contentType == com.fileapex.data.bulletin.BulletinContentType.CHECKLIST,
+                        checklistItems = item.checklist,
+                        checklistActions = checklist,
+                        effectiveTextColor = effectiveTextColor,
+                        effectiveHeaderColor = effectiveHeaderColor,
+                        gesturesEnabled = gesturesEnabled,
+                        onHashtagClick = onHashtagClick
+                    )
                     if (attachmentName != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         if (thumbnail != null) {
@@ -330,6 +333,43 @@ internal fun NoteBubbleItem(
             }
             }
         }
+    }
+}
+
+@Composable
+private fun NoteBubbleSelectableBody(
+    desktop: Boolean,
+    hasDriveBadge: Boolean,
+    caption: String?,
+    isChecklist: Boolean,
+    checklistItems: List<NoteChecklistItem>,
+    checklistActions: ChecklistActions?,
+    effectiveTextColor: Color,
+    effectiveHeaderColor: Color,
+    gesturesEnabled: Boolean,
+    onHashtagClick: ((String) -> Unit)?
+) {
+    val content: @Composable () -> Unit = {
+        Column {
+            if (!caption.isNullOrBlank()) {
+                if (hasDriveBadge) Spacer(modifier = Modifier.height(6.dp))
+                NoteLinkText(
+                    text = caption,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp, lineHeight = 19.sp),
+                    color = effectiveTextColor,
+                    linkColor = effectiveHeaderColor,
+                    onHashtagClick = onHashtagClick
+                )
+            }
+            if (isChecklist) {
+                ChecklistLines(checklistItems, checklistActions, effectiveTextColor, effectiveHeaderColor, gesturesEnabled)
+            }
+        }
+    }
+    if (desktop) {
+        SelectionContainer { content() }
+    } else {
+        content()
     }
 }
 

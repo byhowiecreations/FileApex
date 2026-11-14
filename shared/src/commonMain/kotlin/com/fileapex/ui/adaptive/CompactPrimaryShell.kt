@@ -43,13 +43,19 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
+import com.fileapex.ui.DesktopHoverTooltip
+import com.fileapex.ui.ExpandableSearchPillRow
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexChromeBottomEdge
+import com.fileapex.ui.theme.fileApexChromeContainerColor
+import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.fileApexFloatingChrome
 import com.fileapex.ui.theme.isFileApexCleanCurved
+import com.fileapex.ui.theme.isFileApexCleanModern
 import com.fileapex.ui.theme.isFileApexTiledChrome
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.KineticStyleLook
@@ -67,7 +73,6 @@ import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.filled.GridView
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.ui.NavDockPositionToggle
 
@@ -123,163 +128,207 @@ fun FluxGlassHeader(
     onCloseService: (() -> Unit)? = null,
     onOpenNotes: (() -> Unit)? = null,
     onOpenTransferQueue: (() -> Unit)? = null,
+    searchQuery: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    searchPlaceholder: String = "",
+    searchButtonModifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme.traits.glassChrome
     val cleanBar = isFileApexCleanCurved()
-    val titleColor = if (isCustomGlass || cleanBar) Color.White else MaterialTheme.colorScheme.onSurface
+    val cleanModern = isFileApexCleanModern()
+    val titleColor = if (isCustomGlass || cleanBar) Color.White else fileApexChromeContentColor()
     val subtitleColor = if (isCustomGlass || cleanBar) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
     val resolvedSecondary = secondaryTitle ?: stringRes("paired_devices_title")
 
-    val headerBg = if (currentTheme.traits.canvasHome) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
+    val headerBg = when {
+        currentTheme.traits.canvasHome -> Color.Black
+        isCustomGlass -> Color.Transparent
+        cleanModern -> fileApexChromeContainerColor()
+        else -> MaterialTheme.colorScheme.surface
+    }
     val jadedHeader = isFileApexJadedSteel()
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else (if (isFileApexCleanCurved()) Modifier.fileApexFloatingChrome(FileApexTeal) else Modifier.background(headerBg)))
-            .defaultMinSize(minHeight = if (cleanBar) 52.dp else Dp.Unspecified)
-            .padding(horizontal = if (jadedHeader) 14.dp else if (cleanBar) 12.dp else 16.dp, vertical = if (jadedHeader) 4.dp else if (cleanBar) 6.dp else 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (cleanBar) {
-            Row(
-                modifier = Modifier.weight(1f, fill = true),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = primaryTitle,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = titleColor,
-                    maxLines = 1,
-                    softWrap = false
-                )
-                if (resolvedSecondary.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = resolvedSecondary,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = subtitleColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        } else {
-        Column(modifier = Modifier.weight(1f, fill = true)) {
-                Text(
-                    text = primaryTitle,
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = if (jadedHeader) 22.sp else 30.sp,
-                        letterSpacing = (-0.5).sp
-                    ),
-                    color = titleColor,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip
-                )
-                if (!jadedHeader && resolvedSecondary.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = resolvedSecondary,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 16.sp
-                        ),
-                        color = subtitleColor,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
+    val headerBody: @Composable (Modifier) -> Unit = { bodyModifier ->
         Row(
+            modifier = bodyModifier,
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val headerIconTint = fileApexHeaderActionTint()
-            if (onOpenTransferQueue != null) {
-                QueuedFilesButton(onClick = onOpenTransferQueue, iconTint = headerIconTint)
-            }
-
-            if (onOpenNotes != null) {
-                val noteIconKind = if (isFileApexJadedSteel() || currentTheme.traits.glassChrome) {
-                    NoteIconKind.GREEN
-                } else {
-                    NoteIconKind.BLACK
-                }
-                NoteHeaderButton(onOpenNotes = onOpenNotes, iconKind = noteIconKind)
-            }
-
-            if (showLayoutView && onToggleLayoutView != null) {
-                val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
-                val icon = if (currentTheme.traits.canvasHome) {
-                    when (freestyleMode) {
-                        FreestyleLayoutMode.CARDS_VERTICAL -> explorerIcon(ExplorerIcon.CardsVertical)
-                        FreestyleLayoutMode.CARDS_HORIZONTAL -> explorerIcon(ExplorerIcon.CardsHorizontal)
-                        FreestyleLayoutMode.TILES -> FileApexIcons.Atr
+            if (cleanBar || cleanModern) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = true),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (cleanModern) {
+                        WideTopBarBrandMark()
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
-                } else {
-                    explorerIcon(ExplorerIcon.GridView)
-                }
-                val desc = if (currentTheme.traits.canvasHome) {
-                    when (freestyleMode) {
-                        FreestyleLayoutMode.CARDS_VERTICAL -> "Vertical Cards Layout"
-                        FreestyleLayoutMode.CARDS_HORIZONTAL -> "Horizontal Cards Layout"
-                        FreestyleLayoutMode.TILES -> "Tiles Layout"
+                    Text(
+                        text = primaryTitle,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = titleColor,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    if (resolvedSecondary.isNotBlank() && !cleanModern) {
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = resolvedSecondary,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = subtitleColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                } else {
-                    stringRes("layout_view")
                 }
-                val layoutIconTint = fileApexHeaderActionTint()
-                if (isFileApexTiledChrome()) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clickable(onClick = onToggleLayoutView),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        JadedRaisedTile(tileSize = 28.dp) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = desc,
-                                tint = fileApexTileTint(),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                } else {
-                    IconButton(
-                        onClick = onToggleLayoutView,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = desc,
-                            tint = layoutIconTint,
-                            modifier = Modifier.size(22.dp)
+            } else {
+                Column(modifier = Modifier.weight(1f, fill = true)) {
+                    Text(
+                        text = primaryTitle,
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = if (jadedHeader) 22.sp else 30.sp,
+                            letterSpacing = (-0.5).sp
+                        ),
+                        color = titleColor,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip
+                    )
+                    if (!jadedHeader && resolvedSecondary.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = resolvedSecondary,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 16.sp
+                            ),
+                            color = subtitleColor,
+                            maxLines = 2,
+                            softWrap = true,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
             }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val headerIconTint = fileApexHeaderActionTint()
+                if (onOpenTransferQueue != null) {
+                    QueuedFilesButton(onClick = onOpenTransferQueue, iconTint = headerIconTint)
+                }
 
-            if (showDesktopLayoutToggle && DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost())) {
-                NavDockPositionToggle(
-                    modifier = Modifier.size(40.dp),
-                    iconTint = headerIconTint
-                )
+                if (onOpenNotes != null) {
+                    val noteIconKind = when {
+                        isFileApexCleanModern() -> NoteIconKind.BLACK
+                        currentTheme.traits.fluxSurfaces -> NoteIconKind.WHITE
+                        isFileApexJadedSteel() || currentTheme.traits.glassChrome -> NoteIconKind.GREEN
+                        else -> NoteIconKind.BLACK
+                    }
+                    NoteHeaderButton(onOpenNotes = onOpenNotes, iconKind = noteIconKind)
+                }
+
+                if (showLayoutView && onToggleLayoutView != null) {
+                    val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
+                    val icon = if (currentTheme.traits.canvasHome) {
+                        when (freestyleMode) {
+                            FreestyleLayoutMode.CARDS_VERTICAL -> explorerIcon(ExplorerIcon.CardsVertical)
+                            FreestyleLayoutMode.CARDS_HORIZONTAL -> explorerIcon(ExplorerIcon.CardsHorizontal)
+                            FreestyleLayoutMode.TILES -> FileApexIcons.Atr
+                        }
+                    } else {
+                        explorerIcon(ExplorerIcon.GridView)
+                    }
+                    val desc = if (currentTheme.traits.canvasHome) {
+                        when (freestyleMode) {
+                            FreestyleLayoutMode.CARDS_VERTICAL -> "Vertical Cards Layout"
+                            FreestyleLayoutMode.CARDS_HORIZONTAL -> "Horizontal Cards Layout"
+                            FreestyleLayoutMode.TILES -> "Tiles Layout"
+                        }
+                    } else {
+                        stringRes("layout_view")
+                    }
+                    val layoutIconTint = fileApexHeaderActionTint()
+                    if (isFileApexTiledChrome()) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clickable(onClick = onToggleLayoutView),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            JadedRaisedTile(tileSize = 28.dp) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = desc,
+                                    tint = fileApexTileTint(),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        IconButton(
+                            onClick = onToggleLayoutView,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = desc,
+                                tint = layoutIconTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (showDesktopLayoutToggle && DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost())) {
+                    NavDockPositionToggle(
+                        modifier = Modifier.size(40.dp),
+                        iconTint = headerIconTint
+                    )
+                }
+
+                actions()
+
+                if (showCloseService && onCloseService != null) {
+                    FileApexPowerButton(onClick = onCloseService)
+                }
             }
+        }
+    }
 
-            actions()
-
-            if (showCloseService && onCloseService != null) {
-                FileApexPowerButton(onClick = onCloseService)
-            }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                when {
+                    jadedHeader -> Modifier.jadedCompactHeaderPanel()
+                    cleanBar -> Modifier.fileApexFloatingChrome(FileApexTeal)
+                    else -> Modifier.background(headerBg).fileApexChromeBottomEdge()
+                }
+            )
+            .defaultMinSize(minHeight = if (cleanBar || cleanModern) 52.dp else Dp.Unspecified)
+            .padding(horizontal = if (jadedHeader) 14.dp else if (cleanBar || cleanModern) 12.dp else 16.dp, vertical = if (jadedHeader) 4.dp else if (cleanBar || cleanModern) 6.dp else 12.dp)
+    ) {
+        if (onSearchQueryChange != null) {
+            ExpandableSearchPillRow(
+                query = searchQuery,
+                onQueryChange = onSearchQueryChange,
+                placeholder = searchPlaceholder,
+                collapseLeadingCompletely = true,
+                constrainHeight = false,
+                useJadedStyle = jadedHeader,
+                useLightChrome = (isCustomGlass || cleanBar) && !jadedHeader,
+                modifier = Modifier.fillMaxWidth(),
+                searchPillModifier = searchButtonModifier,
+                leading = { leadingModifier, _ -> headerBody(leadingModifier) }
+            )
+        } else {
+            headerBody(Modifier.fillMaxWidth())
         }
     }
 }
@@ -320,6 +369,10 @@ fun CompactHomeTitleBand(
     showNavPositionToggle: Boolean = false,
     showCloseService: Boolean = false,
     onCloseService: (() -> Unit)? = null,
+    searchQuery: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    searchPlaceholder: String = "",
+    searchButtonModifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
@@ -339,12 +392,20 @@ fun CompactHomeTitleBand(
             onOpenTransferQueue = onOpenTransferQueue,
             showCloseService = showCloseService,
             onCloseService = onCloseService,
+            searchQuery = searchQuery,
+            onSearchQueryChange = onSearchQueryChange,
+            searchPlaceholder = searchPlaceholder,
+            searchButtonModifier = searchButtonModifier,
             actions = actions
         )
     } else {
         CompactHomeTitleBandRow(
             modifier = modifier,
             onOpenTransferQueue = onOpenTransferQueue,
+            searchQuery = searchQuery,
+            onSearchQueryChange = onSearchQueryChange,
+            searchPlaceholder = searchPlaceholder,
+            searchButtonModifier = searchButtonModifier,
             actions = {
                 if (allowNavToggle) {
                     NavDockPositionToggle(
@@ -419,34 +480,72 @@ fun CompactHomeTitleBand(
 private fun CompactHomeTitleBandRow(
     modifier: Modifier = Modifier,
     onOpenTransferQueue: (() -> Unit)? = null,
+    searchQuery: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    searchPlaceholder: String = "",
+    searchButtonModifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
     titleContent: @Composable () -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme.traits.glassChrome
-    val headerBg = if (currentTheme.traits.canvasHome) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
+    val cleanModern = isFileApexCleanModern()
+    val headerBg = when {
+        currentTheme.traits.canvasHome -> Color.Black
+        isCustomGlass -> Color.Transparent
+        cleanModern -> fileApexChromeContainerColor()
+        else -> MaterialTheme.colorScheme.surface
+    }
     val jadedHeader = isFileApexJadedSteel()
-    Row(
+    val rowContent: @Composable (Modifier) -> Unit = { rowModifier ->
+        Row(
+            modifier = rowModifier,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                titleContent()
+            }
+            if (onOpenTransferQueue != null) {
+                QueuedFilesButton(
+                    onClick = onOpenTransferQueue,
+                    iconTint = fileApexHeaderActionTint()
+                )
+            }
+            actions()
+        }
+    }
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else (if (isFileApexCleanCurved()) Modifier.fileApexFloatingChrome(FileApexTeal) else Modifier.background(headerBg)))
-            .defaultMinSize(minHeight = if (jadedHeader) Dp.Unspecified else if (isFileApexCleanCurved()) 52.dp else CompactHomeChrome.titleBandMinHeight)
-            .padding(
-                horizontal = if (jadedHeader) 14.dp else if (isFileApexCleanCurved()) 12.dp else CompactHomeChrome.titleBandHorizontalPadding,
-                vertical = if (jadedHeader) 4.dp else if (isFileApexCleanCurved()) 6.dp else CompactHomeChrome.titleBandVerticalPadding
-            ),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            titleContent()
-        }
-        if (onOpenTransferQueue != null) {
-            QueuedFilesButton(
-                onClick = onOpenTransferQueue,
-                iconTint = fileApexHeaderActionTint()
+            .then(
+                when {
+                    jadedHeader -> Modifier.jadedCompactHeaderPanel()
+                    isFileApexCleanCurved() -> Modifier.fileApexFloatingChrome(FileApexTeal)
+                    else -> Modifier.background(headerBg).fileApexChromeBottomEdge()
+                }
             )
+            .defaultMinSize(minHeight = if (jadedHeader) Dp.Unspecified else if (isFileApexCleanCurved() || cleanModern) 52.dp else CompactHomeChrome.titleBandMinHeight)
+            .padding(
+                horizontal = if (jadedHeader) 14.dp else if (isFileApexCleanCurved() || cleanModern) 12.dp else CompactHomeChrome.titleBandHorizontalPadding,
+                vertical = if (jadedHeader) 4.dp else if (isFileApexCleanCurved() || cleanModern) 6.dp else CompactHomeChrome.titleBandVerticalPadding
+            )
+    ) {
+        if (onSearchQueryChange != null) {
+            ExpandableSearchPillRow(
+                query = searchQuery,
+                onQueryChange = onSearchQueryChange,
+                placeholder = searchPlaceholder,
+                collapseLeadingCompletely = true,
+                constrainHeight = false,
+                useJadedStyle = jadedHeader,
+                useLightChrome = (isCustomGlass || isFileApexCleanCurved()) && !jadedHeader,
+                modifier = Modifier.fillMaxWidth(),
+                searchPillModifier = searchButtonModifier,
+                leading = { leadingModifier, _ -> rowContent(leadingModifier) }
+            )
+        } else {
+            rowContent(Modifier.fillMaxWidth())
         }
-        actions()
     }
 }
 
@@ -527,44 +626,11 @@ fun FileApexPowerButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val jaded = isFileApexJadedSteel()
-    val accent = if (jaded) KineticStyleLook.steel else if (LocalAppTheme.current == com.fileapex.data.settings.AppTheme.CAROUSEL) com.fileapex.ui.theme.CarouselPalette.accent else Color(0xFF00E676)
-    if (jaded) {
-        Box(
-            modifier = modifier
-                .size(40.dp)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            JadedRaisedTile(tileSize = 28.dp) {
-                Icon(
-                    imageVector = explorerIcon(ExplorerIcon.Power),
-                    contentDescription = stringRes("exit_fileapex"),
-                    tint = KineticStyleLook.steel,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-    } else {
-        IconButton(
-            onClick = onClick,
-            modifier = modifier.size(40.dp)
-        ) {
-            Surface(
-                modifier = Modifier.size(28.dp),
-                shape = CircleShape,
-                color = accent.copy(alpha = 0.20f),
-                border = BorderStroke(1.dp, accent.copy(alpha = 0.70f))
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = explorerIcon(ExplorerIcon.Power),
-                        contentDescription = stringRes("exit_fileapex"),
-                        tint = accent,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
+    DesktopHoverTooltip(text = stringRes("tooltip_quit")) {
+        if (isFileApexCleanModern() || LocalAppTheme.current.traits.fluxSurfaces) {
+            ModernHeaderPowerButton(onClick = onClick, modifier = modifier)
+        } else {
+            LegacyHeaderPowerButton(onClick = onClick, modifier = modifier)
         }
     }
 }

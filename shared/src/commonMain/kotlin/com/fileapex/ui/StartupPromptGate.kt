@@ -5,6 +5,16 @@ package com.fileapex.ui
  * of the first-run welcome tutorial or while a Leave Cluster wipe is settling.
  */
 object StartupPromptGate {
+    const val showStartupDialogs: Boolean = false
+
+    fun isUpdatePromptPending(
+        managedByStore: Boolean,
+        answered: Boolean,
+        enabled: Boolean
+    ): Boolean = !managedByStore && !answered && !enabled
+
+    fun isCriticalNoticePending(choiceMade: Boolean): Boolean = !choiceMade
+
     fun canShowUpdatePrompt(
         welcomeTutorialShown: Boolean,
         managedByStore: Boolean,
@@ -12,7 +22,12 @@ object StartupPromptGate {
         enabled: Boolean,
         wiping: Boolean,
         wipeOutcomePending: Boolean
-    ): Boolean = welcomeTutorialShown && !managedByStore && !answered && !enabled && !wiping && !wipeOutcomePending
+    ): Boolean =
+        showStartupDialogs &&
+            welcomeTutorialShown &&
+            !wiping &&
+            !wipeOutcomePending &&
+            isUpdatePromptPending(managedByStore = managedByStore, answered = answered, enabled = enabled)
 
     fun canShowCriticalNoticeConsent(
         welcomeTutorialShown: Boolean,
@@ -23,9 +38,10 @@ object StartupPromptGate {
         wiping: Boolean,
         wipeOutcomePending: Boolean
     ): Boolean =
-        welcomeTutorialShown &&
-            !choiceMade &&
+        showStartupDialogs &&
+            welcomeTutorialShown &&
             !wiping &&
             !wipeOutcomePending &&
+            isCriticalNoticePending(choiceMade = choiceMade) &&
             (managedByStore || updatePromptShown || checkingForUpdates)
 }

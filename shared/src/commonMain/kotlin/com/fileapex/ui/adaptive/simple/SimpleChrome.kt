@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Link
@@ -67,6 +68,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
+import com.fileapex.platform.isDesktopHost
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.ui.adaptive.AdaptiveRailColumn
 import com.fileapex.ui.adaptive.RailItem
@@ -86,6 +88,11 @@ import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import com.fileapex.ui.theme.fileApexNavigationBarItemColors
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.isFileApexSimpleModern
+
+internal object SimpleChromeIcons {
+    val devicesCardIcon: ImageVector = Icons.Outlined.Devices
+    val deviceManagementIcon: ImageVector = Icons.Outlined.Dns
+}
 
 @Composable
 internal fun SimpleDropBox(
@@ -230,7 +237,7 @@ internal fun SimpleRail(
                         RailItem(
                             selected = popover == SimplePopover.DeviceManagement || destination == SimpleDestination.Info,
                             onClick = { onTogglePopover(SimplePopover.DeviceManagement) },
-                            icon = Icons.Outlined.Link,
+                            icon = SimpleChromeIcons.deviceManagementIcon,
                             label = managementLabel,
                             labelMaxWidth = managementWidth
                         )
@@ -315,12 +322,14 @@ internal fun SimpleCompactBottom(
                 icon = Icons.Outlined.Devices,
                 label = stringRes("browse")
             )
-            SimpleBarItem(
-                selected = false,
-                onClick = onOpenNotes,
-                icon = Icons.Outlined.PushPin,
-                label = if (bulletinUnreadCount > 0) "${stringRes("bulletin_board")} ($bulletinUnreadCount)" else stringRes("bulletin_board")
-            )
+            if (SimpleBottomBarLayoutPolicy.showBulletinTab(isDesktopHost())) {
+                SimpleBarItem(
+                    selected = false,
+                    onClick = onOpenNotes,
+                    icon = Icons.Outlined.PushPin,
+                    label = if (bulletinUnreadCount > 0) "${stringRes("bulletin_board")} ($bulletinUnreadCount)" else stringRes("bulletin_board")
+                )
+            }
             SimpleBarItem(
                 selected = destination == SimpleDestination.Settings,
                 onClick = { onSelect(SimpleDestination.Settings) },

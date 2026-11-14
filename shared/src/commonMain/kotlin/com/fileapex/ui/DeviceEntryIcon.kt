@@ -15,13 +15,25 @@ import androidx.compose.material.icons.filled.LaptopWindows
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.TabletAndroid
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.DevicesFold
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.FlipCameraAndroid
+import androidx.compose.material.icons.outlined.LaptopMac
+import androidx.compose.material.icons.outlined.LaptopWindows
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Smartphone
+import androidx.compose.material.icons.outlined.TabletAndroid
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalThemeIconStyle
 import com.fileapex.data.settings.ThemeIconStyle
+import com.fileapex.data.settings.traits
 import com.fileapex.presentation.DeviceHardwareProfile
 import com.fileapex.presentation.DeviceIconKind
 import com.fileapex.presentation.DeviceIconProfile
@@ -30,7 +42,9 @@ import com.fileapex.presentation.resolveDeviceIconKind
 import com.fileapex.presentation.resolveFluxDrawable
 import com.fileapex.presentation.resolveFreestyleDrawable
 import com.fileapex.i18n.stringRes
+import com.fileapex.ui.theme.CleanModernPalette
 import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.FluxGlassPalette
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -41,7 +55,7 @@ const val FRIEND_ROW_PREFIX = "friend:"
 fun DeviceEntryIcon(
     row: DeviceListRow,
     modifier: Modifier = Modifier,
-    tint: Color = FileApexTealDark,
+    tint: Color = Color.Unspecified,
     iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
 ) {
     if (row.isFriend) {
@@ -65,18 +79,27 @@ fun DeviceEntryIcon(
 fun DeviceEntryIcon(
     profile: DeviceIconProfile,
     modifier: Modifier = Modifier,
-    tint: Color = FileApexTealDark,
+    tint: Color = Color.Unspecified,
     iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
 ) {
     val kind = resolveDeviceIconKind(profile)
     val description = stringRes(deviceIconDescriptionKey(kind))
+    val currentTheme = LocalAppTheme.current
+    val useModernOutlined = iconStyle == ThemeIconStyle.STANDARD &&
+        (currentTheme == AppTheme.CLEAN || currentTheme.traits.fluxSurfaces)
+    val resolvedTint = when {
+        tint != Color.Unspecified -> tint
+        currentTheme.traits.fluxSurfaces -> FluxGlassPalette.iconBadgeTint
+        currentTheme == AppTheme.CLEAN -> CleanModernPalette.IconBadgeTint
+        else -> FileApexTealDark
+    }
     when (iconStyle) {
         ThemeIconStyle.STANDARD -> {
             Icon(
-                imageVector = deviceIconVector(kind),
+                imageVector = if (useModernOutlined) deviceOutlinedIconVector(kind) else deviceIconVector(kind),
                 contentDescription = description,
                 modifier = modifier,
-                tint = tint
+                tint = resolvedTint
             )
         }
         ThemeIconStyle.FLUX -> {
@@ -137,6 +160,20 @@ fun deviceIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
     DeviceIconKind.AndroidTablet -> Icons.Filled.TabletAndroid
     DeviceIconKind.AndroidPhone -> Icons.Filled.PhoneAndroid
     DeviceIconKind.GenericDesktop -> Icons.Filled.Computer
+}
+
+internal fun deviceOutlinedIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
+    DeviceIconKind.MacDesktop -> Icons.Outlined.LaptopMac
+    DeviceIconKind.WindowsPc -> Icons.Outlined.LaptopWindows
+    DeviceIconKind.Docker -> Icons.Outlined.Dns
+    DeviceIconKind.LinuxServer -> Icons.Outlined.Computer
+    DeviceIconKind.FoldablePhone -> Icons.Outlined.DevicesFold
+    DeviceIconKind.FlipPhone -> Icons.Outlined.FlipCameraAndroid
+    DeviceIconKind.PixelPhone -> Icons.Outlined.Smartphone
+    DeviceIconKind.SamsungPhone -> Icons.Outlined.PhoneAndroid
+    DeviceIconKind.AndroidTablet -> Icons.Outlined.TabletAndroid
+    DeviceIconKind.AndroidPhone -> Icons.Outlined.PhoneAndroid
+    DeviceIconKind.GenericDesktop -> Icons.Outlined.Computer
 }
 
 internal fun deviceIconDescriptionKey(kind: DeviceIconKind): String = when (kind) {

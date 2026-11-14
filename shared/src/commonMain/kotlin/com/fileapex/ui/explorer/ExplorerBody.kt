@@ -77,7 +77,11 @@ internal fun ExplorerScope.ExplorerBody(dropHighlight: ExplorerDropHighlight, op
                 }
             )
         } else {
-        CompositionLocalProvider(LocalExplorerDropHighlight provides dropHighlight) {
+        val thumbnailFetcher = rememberRemoteThumbnailFetcher(target)
+        CompositionLocalProvider(
+            LocalExplorerDropHighlight provides dropHighlight,
+            LocalRemoteThumbnailFetcher provides thumbnailFetcher
+        ) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -280,9 +284,8 @@ internal fun ColumnScope.ExplorerPanes(
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     )
-                    ExplorerFilterBar(
-                        query = filterQuery,
-                        onQueryChange = { filterQuery = it },
+                    ExplorerFilterBarWithSubfolders(
+                        frame = notes.frame,
                         sortMode = sortMode,
                         onSortModeChange = { sortMode = it }
                     )
@@ -441,9 +444,8 @@ internal fun ColumnScope.ExplorerSingleFolderView(notes: ExplorerScope, breadcru
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         )
-        ExplorerFilterBar(
-            query = filterQuery,
-            onQueryChange = { filterQuery = it },
+        ExplorerFilterBarWithSubfolders(
+            frame = frame,
             sortMode = sortMode,
             onSortModeChange = { sortMode = it },
             leading = filterBarLeading

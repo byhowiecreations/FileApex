@@ -50,6 +50,7 @@ import com.fileapex.ui.theme.fileApexFloatingChrome
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.isFileApexSimpleModern
+import com.fileapex.ui.tools.ToolsHeaderButton
 
 @Composable
 internal fun SimpleTopBar(
@@ -148,14 +149,10 @@ internal fun SimpleTopBar(
             QueuedFilesButton(onClick = onOpenTransferQueue, iconTint = tint)
         }
         explorerCommands?.let { commands ->
-            TextButton(onClick = commands.onSelect, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                Text(stringRes("select"), color = fileApexChromeContentColor(), fontWeight = FontWeight.SemiBold)
-            }
-            commands.onPaste?.let { onPaste ->
-                TextButton(onClick = onPaste, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text(stringRes("paste"), color = fileApexChromeContentColor(), fontWeight = FontWeight.SemiBold)
-                }
-            }
+            SimpleExplorerHeaderActions(
+                commands = commands,
+                tint = tint
+            )
             if (splitAvailable) {
                 val splitActive = explorerViewMode == ExplorerViewMode.Split
                 Surface(
@@ -210,8 +207,31 @@ internal fun SimpleTopBar(
                 }
             }
         }
-        DesktopHoverTooltip(text = stringRes("tooltip_quit")) {
-            FileApexPowerButton(onClick = onExit)
+        FileApexPowerButton(onClick = onExit)
+    }
+}
+
+@Composable
+internal fun SimpleExplorerHeaderActions(
+    commands: ExplorerHeaderCommands,
+    tint: Color,
+    toolsModifier: Modifier = Modifier
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = commands.onSelect, contentPadding = PaddingValues(horizontal = 8.dp)) {
+            Text(stringRes("select"), color = fileApexChromeContentColor(), fontWeight = FontWeight.SemiBold)
+        }
+        commands.onOpenTools?.let { onOpenTools ->
+            ToolsHeaderButton(
+                onClick = onOpenTools,
+                tint = tint,
+                modifier = toolsModifier.padding(horizontal = 4.dp)
+            )
+        }
+        commands.onPaste?.let { onPaste ->
+            TextButton(onClick = onPaste, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                Text(stringRes("paste"), color = fileApexChromeContentColor(), fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }

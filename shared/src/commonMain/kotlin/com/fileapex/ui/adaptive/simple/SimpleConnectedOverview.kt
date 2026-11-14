@@ -155,7 +155,7 @@ internal fun SimpleConnectedOverview(
                             QuickActionTile(
                                 title = stringRes("devices"),
                                 subtitle = stringRes("simple_devices_card_desc"),
-                                icon = Icons.Outlined.Link,
+                                icon = SimpleChromeIcons.devicesCardIcon,
                                 onClick = onOpenDevices,
                                 modifier = Modifier
                                     .weight(1f)
@@ -174,7 +174,7 @@ internal fun SimpleConnectedOverview(
                             QuickActionTile(
                                 title = stringRes("devices"),
                                 subtitle = stringRes("simple_devices_card_desc"),
-                                icon = Icons.Outlined.Link,
+                                icon = SimpleChromeIcons.devicesCardIcon,
                                 onClick = onOpenDevices,
                                 modifier = Modifier
                                     .weight(1f)
@@ -211,7 +211,7 @@ internal fun SimpleConnectedOverview(
                         QuickActionTile(
                             title = stringRes("devices"),
                             subtitle = stringRes("simple_devices_card_desc"),
-                            icon = Icons.Outlined.Link,
+                            icon = SimpleChromeIcons.devicesCardIcon,
                             onClick = onOpenDevices,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -389,53 +389,84 @@ private fun UnifiedDropSendCard(
     val desktopHost = isDesktopHost()
     val verticalPadding = SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(desktopHost).dp
     val showDropHint = SimpleOverviewCardPolicy.showDropHint(desktopHost)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(gradient)
-            .drawBehind {
-                val radius = 18.dp.toPx()
-                drawRoundRect(
-                    color = dashColor,
-                    cornerRadius = CornerRadius(radius, radius),
-                    style = Stroke(
-                        width = if (hovered) 2.2.dp.toPx() else 1.4.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))
-                    )
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .clip(shape)
+        .background(gradient)
+        .drawBehind {
+            val radius = 18.dp.toPx()
+            drawRoundRect(
+                color = dashColor,
+                cornerRadius = CornerRadius(radius, radius),
+                style = Stroke(
+                    width = if (hovered) 2.2.dp.toPx() else 1.4.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))
                 )
-            }
-            .clickable(enabled = enabled, onClick = onChooseFiles)
-            .padding(horizontal = 20.dp, vertical = verticalPadding),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(if (showDropHint) 8.dp else 6.dp)
-    ) {
-        OutlinedUploadArrowIcon(modifier = Modifier.size(if (showDropHint) 28.dp else 24.dp))
-        Text(
-            text = stringRes("send_files_to_device", deviceName),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = SimpleModernPalette.TextPrimary
-        )
-        if (showDropHint) {
-            Text(
-                text = stringRes("drop_anywhere_or_choose"),
-                style = MaterialTheme.typography.bodySmall,
-                color = SimpleModernPalette.TextSecondary
             )
         }
-        Spacer(modifier = Modifier.height(2.dp))
-        Button(
-            onClick = onChooseFiles,
-            enabled = enabled,
-            shape = RoundedCornerShape(50),
-            contentPadding = PaddingValues(horizontal = 22.dp, vertical = if (showDropHint) 10.dp else 9.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = SimpleModernPalette.AccentMint,
-                contentColor = SimpleModernPalette.AccentOnMint
-            )
+        .clickable(enabled = enabled, onClick = onChooseFiles)
+    if (SimpleOverviewCardPolicy.useCompactSendRow(desktopHost)) {
+        Row(
+            modifier = cardModifier.padding(horizontal = 16.dp, vertical = verticalPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(stringRes("choose_files"), fontWeight = FontWeight.SemiBold)
+            OutlinedUploadArrowIcon(modifier = Modifier.size(22.dp))
+            Text(
+                text = stringRes("send_files_to_device", deviceName),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = SimpleModernPalette.TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Button(
+                onClick = onChooseFiles,
+                enabled = enabled,
+                shape = RoundedCornerShape(50),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SimpleModernPalette.AccentMint,
+                    contentColor = SimpleModernPalette.AccentOnMint
+                )
+            ) {
+                Text(stringRes("choose_files"), fontWeight = FontWeight.SemiBold)
+            }
+        }
+    } else {
+        Column(
+            modifier = cardModifier.padding(horizontal = 20.dp, vertical = verticalPadding),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(if (showDropHint) 8.dp else 6.dp)
+        ) {
+            OutlinedUploadArrowIcon(modifier = Modifier.size(if (showDropHint) 28.dp else 24.dp))
+            Text(
+                text = stringRes("send_files_to_device", deviceName),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = SimpleModernPalette.TextPrimary
+            )
+            if (showDropHint) {
+                Text(
+                    text = stringRes("drop_anywhere_or_choose"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SimpleModernPalette.TextSecondary
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Button(
+                onClick = onChooseFiles,
+                enabled = enabled,
+                shape = RoundedCornerShape(50),
+                contentPadding = PaddingValues(horizontal = 22.dp, vertical = if (showDropHint) 10.dp else 9.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SimpleModernPalette.AccentMint,
+                    contentColor = SimpleModernPalette.AccentOnMint
+                )
+            ) {
+                Text(stringRes("choose_files"), fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }

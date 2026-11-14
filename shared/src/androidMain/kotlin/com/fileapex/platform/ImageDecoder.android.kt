@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.fileapex.util.cancellableCatching
 
@@ -82,4 +83,25 @@ private fun calculateInSampleSize(
         }
     }
     return inSampleSize.coerceAtLeast(1)
+}
+
+actual fun encodeLocalMediaThumbnailJpeg(absolutePath: String, mimeType: String, maxEdge: Int): ByteArray? {
+    val edge = maxEdge.coerceIn(64, 320)
+    val bitmap = if (mimeType.lowercase().startsWith("video/")) {
+        decodeVideoPoster(absolutePath, edge)
+    } else {
+        decodeLocalImageFile(absolutePath, edge)
+    } ?: return null
+    val androidBitmap = bitmap.asAndroidBitmap()
+    val output = java.io.ByteArrayOutputStream()
+    var quality = 78
+    repeat(3) {
+        output.reset()
+        androidBitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
+        if (output.size() <= 128 * 1024) {
+            return output.toByteArray().takeIf { it.isNotEmpty() }
+        }
+        quality -= 15
+    }
+    return output.toByteArray().takeIf { it.isNotEmpty() && it.size <= 256 * 1024 }
 }

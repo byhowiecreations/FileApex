@@ -78,7 +78,17 @@ class ExplorerViewModel(
     private val previewActions = ExplorerPreviewActions(_uiState, viewModelScope, target, preview, transfers, isRemote)
     private val mutations = ExplorerMutationActions(_uiState, viewModelScope, target, browser, browseRoot, remoteDeviceId, { refresh() }, { selection.selectedItems() })
     private val copying = ExplorerCopyActions(_uiState, viewModelScope, settings, transfers, { refresh() }, { selection.selectedItems() })
-    private val selection = ExplorerSelectionActions(_uiState, viewModelScope, target, preview, isRemote, { onDirectoryClick(it) }, { previewActions.openImagePreview(it) }, { previewActions.openTextPreview(it) })
+    private val selection = ExplorerSelectionActions(
+        _uiState,
+        viewModelScope,
+        target,
+        preview,
+        isRemote,
+        { onDirectoryClick(it) },
+        { previewActions.openImagePreview(it) },
+        { previewActions.openTextPreview(it) },
+        { previewActions.openExternalMedia(it) }
+    )
     private val watching = ExplorerWatchActions(_uiState, viewModelScope, target, browser, browseRoot, { browseGeneration }, { reloadListing(it) })
 
     init {

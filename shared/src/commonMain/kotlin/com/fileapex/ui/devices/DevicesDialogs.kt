@@ -55,45 +55,17 @@ internal fun DevicesDialogs(
     }
 
     state.pendingPinPairing?.let { pending ->
-        AlertDialog(
-            onDismissRequest = {
+        PendingPinPairingDialog(
+            deviceName = pending.deviceName,
+            pinText = pinText,
+            onPinTextChange = onPinTextChange,
+            onConfirm = {
+                viewModel.confirmPinPairing(pinText)
+                onPinTextChange("")
+            },
+            onCancel = {
                 onPinTextChange("")
                 viewModel.cancelPinPairing()
-            },
-            title = { Text(stringRes("enter_device_pin")) },
-            text = {
-                Column {
-                    Text(
-                        text = stringRes("enter_pin_pair", pending.deviceName),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = pinText,
-                        onValueChange = { onPinTextChange(it.filter { ch -> ch.isDigit() }.take(8)) },
-                        singleLine = true,
-                        label = { Text(stringRes("pin")) }
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.confirmPinPairing(pinText)
-                        onPinTextChange("")
-                    },
-                    enabled = pinText.isNotBlank()
-                ) {
-                    Text(stringRes("pair"))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        onPinTextChange("")
-                        viewModel.cancelPinPairing()
-                    }
-                ) { Text(stringRes("cancel")) }
             }
         )
     }
@@ -213,4 +185,52 @@ internal fun DevicesDialogs(
             }
         )
     }
+}
+
+@Composable
+internal fun PendingPinPairingDialog(
+    deviceName: String,
+    pinText: String,
+    onPinTextChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {
+            onPinTextChange("")
+            onCancel()
+        },
+        title = { Text(stringRes("enter_device_pin")) },
+        text = {
+            Column {
+                Text(
+                    text = stringRes("enter_pin_pair", deviceName),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = pinText,
+                    onValueChange = { onPinTextChange(it.filter { ch -> ch.isDigit() }.take(8)) },
+                    singleLine = true,
+                    label = { Text(stringRes("pin")) }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = pinText.isNotBlank()
+            ) {
+                Text(stringRes("pair"))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    onPinTextChange("")
+                    onCancel()
+                }
+            ) { Text(stringRes("cancel")) }
+        }
+    )
 }

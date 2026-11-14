@@ -78,6 +78,8 @@ import com.fileapex.ui.settings.rememberAdvancedSettingsInUse
 import com.fileapex.ui.settings.LocalSettingsExitAction
 import com.fileapex.ui.settings.LocalSettingsHomeAction
 import com.fileapex.ui.settings.SettingsPageShell
+import com.fileapex.ui.settings.SettingsSearchEngine
+import com.fileapex.ui.settings.SettingsSearchOptions
 import com.fileapex.ui.settings.clipboardShareTargetsSubtitle
 import com.fileapex.util.TimeUtils
 
@@ -154,6 +156,7 @@ fun SettingsScreen(
         googleLinkStatus = googleLinkStatus,
         viewModel = viewModel,
         pageState = navigation.page,
+        searchQueryState = navigation.searchQuery,
         layoutMode = layoutMode,
         onBack = onBack,
         goUp = goUp,
@@ -205,6 +208,8 @@ internal fun SettingsRootPage(
     showBackNavigation: Boolean,
     layoutMode: SettingsScreenLayoutMode,
     onOpenPage: (SettingsPage) -> Unit,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
     onToggleGeneralGroup: () -> Unit,
     onShowAdvancedChange: (Boolean) -> Unit,
     onToggleSystemPerformanceGroup: () -> Unit,
@@ -233,7 +238,10 @@ internal fun SettingsRootPage(
         title = stringRes("settings"),
         layoutMode = layoutMode,
         onBack = onBack.takeIf { showBackNavigation },
-        onOpenTransferQueue = onOpenTransferQueue
+        onOpenTransferQueue = onOpenTransferQueue,
+        searchQuery = searchQuery,
+        onSearchQueryChange = onSearchQueryChange,
+        searchPlaceholder = stringRes("search_settings_hint")
     ) { contentModifier ->
         Box(modifier = contentModifier.fillMaxSize()) {
             Column(
@@ -242,12 +250,8 @@ internal fun SettingsRootPage(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = 48.dp)
             ) {
-                val ungrantedSteps = onboardingSteps.filter { !it.granted }
-                if (ungrantedSteps.isNotEmpty()) {
-                    OnboardingPermissionsCard { onOpenPage(SettingsPage.OnboardingPermissions) }
-                }
                 val tailscale by TailscaleNodeRuntime.state.collectAsState()
-                val menuEntries = settingsMenuEntries(
+                val searchOptions = SettingsSearchOptions(
                     playStoreBuild = com.fileapex.di.FileApexServices.managedByStore,
                     googleCloud = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     tailscale = !com.fileapex.di.FileApexServices.isFdroidBuild,
@@ -260,37 +264,76 @@ internal fun SettingsRootPage(
                     backupSync = com.fileapex.platform.backupSupported(),
                     autoLaunchOnDesktop = com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart(),
                     fullDiskAccess = com.fileapex.platform.fullDiskAccessSupported(),
-                    showAdvanced = state.showAdvancedSettings, inUseAdvancedIds = rememberAdvancedSettingsInUse(state),
+                    showAdvancedSettings = state.showAdvancedSettings,
+                    inUseAdvancedIds = rememberAdvancedSettingsInUse(state),
                     navPosition = com.fileapex.data.settings.DesktopNavPositionPolicy.supportsTheme(LocalAppTheme.current)
                 )
-                SettingsMenuSection.entries.forEach { section ->
-                    val rows = menuEntries.filter { it.section == section }
-                    if (rows.isEmpty()) return@forEach
-                    val expanded = when (section) {
-                        SettingsMenuSection.General -> state.generalExpanded
-                        SettingsMenuSection.SystemPerformance -> state.systemPerformanceExpanded
-                        SettingsMenuSection.Appearance -> state.appearanceBehaviorExpanded
-                        SettingsMenuSection.Security -> state.securityAccountExpanded
-                        SettingsMenuSection.RemoteAccess -> state.remoteAccessExpanded
+                if (searchQuery.isNotBlank()) {
+                    val matches = remember(searchQuery, state, searchOptions) {
+                        SettingsSearchEngine.search(searchQuery, state, searchOptions)
                     }
-                    val onToggle = when (section) {
-                        SettingsMenuSection.General -> onToggleGeneralGroup
-                        SettingsMenuSection.SystemPerformance -> onToggleSystemPerformanceGroup
-                        SettingsMenuSection.Appearance -> onToggleAppearanceBehaviorGroup
-                        SettingsMenuSection.Security -> onToggleSecurityAccountGroup
-                        SettingsMenuSection.RemoteAccess -> onToggleRemoteAccessGroup
-                    }
-                    SettingsCategoryGroup(
-                        title = stringRes(section.titleKey()),
-                        expanded = expanded,
-                        onToggle = onToggle
-                    ) {
-                        rows.forEach { entry ->
-                            inputs.MenuRow(entry, tailscale) { showFeedbackDialog = true }
+                    if (matches.isEmpty()) {
+                        Text(
+                            text = stringRes("settings_search_empty"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp)
+                        )
+                    } else {
+                        matches.forEach { result ->
+                            inputs.SearchResultRow(result, tailscale) { showFeedbackDialog = true }
                         }
                     }
+                } else {
+                    if (com.fileapex.ui.settings.shouldShowOnboardingSetupCard(onboardingSteps)) {
+                        OnboardingPermissionsCard { onOpenPage(SettingsPage.OnboardingPermissions) }
+                    }
+                    val menuEntries = settingsMenuEntries(
+                        playStoreBuild = searchOptions.playStoreBuild,
+                        googleCloud = searchOptions.googleCloud,
+                        tailscale = searchOptions.tailscale,
+                        iroh = searchOptions.iroh,
+                        groups = searchOptions.groups,
+                        shareLink = searchOptions.shareLink,
+                        desktopFileSelection = searchOptions.desktopFileSelection,
+                        deviceNamePage = searchOptions.deviceNamePage,
+                        windowsFluent = searchOptions.windowsFluent,
+                        backupSync = searchOptions.backupSync,
+                        autoLaunchOnDesktop = searchOptions.autoLaunchOnDesktop,
+                        fullDiskAccess = searchOptions.fullDiskAccess,
+                        showAdvanced = searchOptions.showAdvancedSettings,
+                        inUseAdvancedIds = searchOptions.inUseAdvancedIds,
+                        navPosition = searchOptions.navPosition
+                    )
+                    SettingsMenuSection.entries.forEach { section ->
+                        val rows = menuEntries.filter { it.section == section }
+                        if (rows.isEmpty()) return@forEach
+                        val expanded = when (section) {
+                            SettingsMenuSection.General -> state.generalExpanded
+                            SettingsMenuSection.SystemPerformance -> state.systemPerformanceExpanded
+                            SettingsMenuSection.Appearance -> state.appearanceBehaviorExpanded
+                            SettingsMenuSection.Security -> state.securityAccountExpanded
+                            SettingsMenuSection.RemoteAccess -> state.remoteAccessExpanded
+                        }
+                        val onToggle = when (section) {
+                            SettingsMenuSection.General -> onToggleGeneralGroup
+                            SettingsMenuSection.SystemPerformance -> onToggleSystemPerformanceGroup
+                            SettingsMenuSection.Appearance -> onToggleAppearanceBehaviorGroup
+                            SettingsMenuSection.Security -> onToggleSecurityAccountGroup
+                            SettingsMenuSection.RemoteAccess -> onToggleRemoteAccessGroup
+                        }
+                        SettingsCategoryGroup(
+                            title = stringRes(section.titleKey()),
+                            expanded = expanded,
+                            onToggle = onToggle
+                        ) {
+                            rows.forEach { entry ->
+                                inputs.MenuRow(entry, tailscale) { showFeedbackDialog = true }
+                            }
+                        }
+                    }
+                    SettingsAdvancedAndAboutRows(state.showAdvancedSettings, onShowAdvancedChange) { onOpenPage(SettingsPage.About) }
                 }
-                SettingsAdvancedAndAboutRows(state.showAdvancedSettings, onShowAdvancedChange) { onOpenPage(SettingsPage.About) }
             }
             val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
             val isAndroidGitHub = !usesDesktopFileSelection() && !com.fileapex.di.FileApexServices.managedByStore

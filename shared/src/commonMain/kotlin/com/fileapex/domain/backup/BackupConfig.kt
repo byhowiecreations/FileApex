@@ -11,6 +11,7 @@ data class BackupConfig(
     val sources: List<String> = emptyList(),
     val intervalHours: Int = DEFAULT_INTERVAL_HOURS,
     val wifiOnly: Boolean = true,
+    val promptDismissed: Boolean = false,
 ) {
     /** Enough set up for a run to do anything. */
     val isRunnable: Boolean get() = enabled && destinationDeviceId.isNotBlank() && sources.isNotEmpty()

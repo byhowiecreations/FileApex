@@ -165,22 +165,20 @@ fun JoinDeviceScreen(
                         }
                     }
 
-                    if (isDesktopHost()) {
-                        OutlinedTextField(
-                            value = linkText,
-                            onValueChange = { incoming ->
-                                linkText = incoming.take(400)
-                                PairingPayload.parseOrNull(incoming)?.let { payload ->
-                                    linkText = ""
-                                    beginPairing(payload)
-                                }
-                            },
-                            enabled = !working,
-                            label = { Text(stringRes("paste_pairing_link")) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    OutlinedTextField(
+                        value = linkText,
+                        onValueChange = { incoming ->
+                            linkText = incoming.take(400)
+                            PairingPayload.parseOrNull(incoming)?.let { payload ->
+                                linkText = ""
+                                beginPairing(payload)
+                            }
+                        },
+                        enabled = !working,
+                        label = { Text(stringRes("paste_pairing_link")) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
                     Spacer(modifier = Modifier.weight(1f))
 

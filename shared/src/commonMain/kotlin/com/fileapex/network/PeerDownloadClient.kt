@@ -293,4 +293,44 @@ class PeerDownloadClient internal constructor(private val http: FileApexClient, 
             "Stream failed (${result.statusCode})"
         }
     }
+
+    suspend fun fetchRemoteThumbnailBytes(
+        host: String,
+        port: Int,
+        remotePath: String,
+        maxEdge: Int = com.fileapex.domain.preview.RemoteThumbnailPolicy.DEFAULT_EDGE
+    ): ByteArray? {
+        PeerLanHttpPolicy.ensureRoute(host)
+        val clamped = com.fileapex.domain.preview.RemoteThumbnailPolicy.clampEdge(maxEdge)
+        val sink = Buffer()
+        var total = 0L
+        var overflow = false
+        val result = peerHttpGetStreaming(
+            host = host,
+            port = port,
+            pathWithQuery = http.withSenderQuery(
+                http.queryPath(
+                    basePath = "/api/v1/files/thumbnail",
+                    host = host,
+                    port = port,
+                    params = mapOf(
+                        "path" to remotePath,
+                        "edge" to clamped.toString()
+                    )
+                )
+            ),
+            connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+            readIdleTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+            onChunk = { buffer, length ->
+                total += length.toLong()
+                if (total > com.fileapex.domain.preview.RemoteThumbnailPolicy.MAX_THUMBNAIL_BYTES) {
+                    overflow = true
+                } else {
+                    sink.write(buffer, 0, length)
+                }
+            }
+        ) ?: return null
+        if (overflow || result.statusCode !in 200..299) return null
+        return sink.readByteArray().takeIf { it.isNotEmpty() }
+    }
 }

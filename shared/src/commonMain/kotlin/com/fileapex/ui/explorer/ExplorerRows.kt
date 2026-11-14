@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import com.fileapex.domain.preview.RemoteThumbnailPolicy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -459,21 +460,26 @@ internal fun ExplorerFileVisual(
 
 @Composable
 private fun rememberMediaThumb(item: RemoteFileItem, isRemoteTarget: Boolean): ImageBitmap? {
-    if (isRemoteTarget || item.isDirectory) return null
-    val image = item.mimeType.startsWith("image/")
-    val video = item.mimeType.startsWith("video/")
-    if (!image && !video) return null
-    if (item.absolutePath.isBlank()) return null
-    var bitmap by remember(item.absolutePath) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(item.absolutePath) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                if (video) {
-                    decodeVideoPoster(item.absolutePath, 256)
-                } else {
-                    decodeLocalImageFile(item.absolutePath, 256)
-                }
-            }.getOrNull()
+    if (!RemoteThumbnailPolicy.isMediaCandidate(item)) return null
+    val remoteFetcher = LocalRemoteThumbnailFetcher.current
+    if (isRemoteTarget && remoteFetcher == null) return null
+    var bitmap by remember(item.absolutePath, isRemoteTarget, item.lastModified, item.sizeBytes) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(item.absolutePath, isRemoteTarget, item.lastModified, item.sizeBytes, remoteFetcher) {
+        bitmap = if (isRemoteTarget) {
+            runCatching { remoteFetcher?.invoke(item) }.getOrNull()
+        } else {
+            val inferredMime = RemoteThumbnailPolicy.inferMimeType(item.name, item.mimeType)
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    if (inferredMime.startsWith("video/")) {
+                        decodeVideoPoster(item.absolutePath, 256)
+                    } else {
+                        decodeLocalImageFile(item.absolutePath, 256)
+                    }
+                }.getOrNull()
+            }
         }
     }
     return bitmap

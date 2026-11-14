@@ -55,6 +55,12 @@ import com.fileapex.ui.HomeTab
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.isFileApexCleanModern
+import com.fileapex.ui.theme.isFileApexFluentUi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import com.fileapex.platform.horizontalResizePointerIcon
@@ -76,7 +82,11 @@ internal fun RowScope.DeviceOrderHeaderActions(
 ) {
     val currentTheme = LocalAppTheme.current
     val isGlass = currentTheme.traits.reorderAccent
-    val editTint = if (isGlass) FluxGlassPalette.accent else fileApexChromeContentColor()
+    val editTint = when {
+        currentTheme.traits.fluxSurfaces -> FluxGlassPalette.headerIcon
+        isGlass -> FluxGlassPalette.accent
+        else -> fileApexChromeContentColor()
+    }
     if (editMode) {
         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
             TextButton(
@@ -135,7 +145,9 @@ internal fun RowScope.DevicesSplitPane(
     selectedTarget: BrowseTarget?,
     onClearDetail: () -> Unit,
     onRegisterRefresh: (Boolean, () -> Unit) -> Unit,
-    onRegisterHeaderCommands: (ExplorerHeaderCommands?) -> Unit
+    onRegisterHeaderCommands: (ExplorerHeaderCommands?) -> Unit,
+    onboardingSteps: List<com.fileapex.platform.OnboardingPermissionStep> = emptyList(),
+    onOpenBackgroundSetup: () -> Unit = {}
 ) {
         val splitFraction by FileApexServices.settings.desktopSplitFraction.collectAsState()
         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -144,12 +156,14 @@ internal fun RowScope.DevicesSplitPane(
             val dividerInteraction = remember { MutableInteractionSource() }
             val isHovered by dividerInteraction.collectIsHoveredAsState()
 
+            val listSurfaceColor = devicesListPaneContainerColor(LocalAppTheme.current, isFileApexFluentUi())
+                .let { if (it == Color.Unspecified) MaterialTheme.colorScheme.surface else it }
             Row(modifier = Modifier.fillMaxSize()) {
                 Surface(
                     modifier = Modifier
                         .weight(splitFraction)
                         .fillMaxHeight(),
-                    color = MaterialTheme.colorScheme.surface
+                    color = listSurfaceColor
                 ) {
                     DevicesScreen(
                         onOpenDevice = onSelectDevice,
@@ -162,7 +176,9 @@ internal fun RowScope.DevicesSplitPane(
                         onOpenTransferQueue = onOpenTransferQueue,
                         viewModel = devicesViewModel,
                         layoutMode = DevicesScreenLayoutMode.ListPane,
-                        selectedDeviceId = selectedDeviceId
+                        selectedDeviceId = selectedDeviceId,
+                        onboardingSteps = onboardingSteps,
+                        onOpenBackgroundSetup = onOpenBackgroundSetup
                     )
                 }
                 Box(
@@ -193,19 +209,34 @@ internal fun RowScope.DevicesSplitPane(
                         },
                     contentAlignment = Alignment.Center
                 ) {
+                    val showGrabHandle = isFileApexCleanModern() || LocalAppTheme.current.traits.fluxSurfaces
                     VerticalDivider(
                         thickness = if (isHovered || isDraggingDivider) 2.dp else 1.dp,
                         color = if (isHovered || isDraggingDivider) FileApexTeal else MaterialTheme.colorScheme.outlineVariant
                     )
+                    if (showGrabHandle) {
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp)
+                                .height(28.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    if (isHovered || isDraggingDivider) FileApexTeal
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f)
+                                )
+                        )
+                    }
                 }
+                val detailSurfaceColor = if (isFileApexCleanModern()) Color.White else Color.Transparent
                 Box(
                     modifier = Modifier
                         .weight(1f - splitFraction)
                         .fillMaxHeight()
+                        .background(detailSurfaceColor)
                 ) {
                     val detailTarget = selectedTarget
                     if (detailTarget == null) {
-                        DetailEmptyState()
+                        DetailEmptyState(onOpenLocalFiles = { onSelectTab(HomeTab.Files); onOpenLocalFiles() })
                     } else {
                         FileExplorerScreen(
                             target = detailTarget,

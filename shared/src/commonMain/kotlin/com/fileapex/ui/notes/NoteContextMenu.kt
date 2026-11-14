@@ -50,11 +50,12 @@ class NotesSnackbar(val host: SnackbarHostState, private val scope: CoroutineSco
 
 val LocalNotesSnackbar = staticCompositionLocalOf<NotesSnackbar?> { null }
 
-enum class NoteMenuAction { Copy, Lock, Unlock, Delete }
+enum class NoteMenuAction { Copy, CopyImage, Lock, Unlock, Delete }
 
 object NoteMenuActions {
-    fun forNote(hasCopyable: Boolean, locked: Boolean): List<NoteMenuAction> = buildList {
+    fun forNote(hasCopyable: Boolean, locked: Boolean, hasCopyableImage: Boolean = false): List<NoteMenuAction> = buildList {
         if (hasCopyable) add(NoteMenuAction.Copy)
+        if (hasCopyableImage) add(NoteMenuAction.CopyImage)
         add(if (locked) NoteMenuAction.Unlock else NoteMenuAction.Lock)
         add(NoteMenuAction.Delete)
     }
@@ -86,6 +87,7 @@ internal fun NoteContextMenu(
         for (action in actions) {
             val (label, icon) = when (action) {
                 NoteMenuAction.Copy -> "copy_to_clipboard" to Icons.Filled.ContentCopy
+                NoteMenuAction.CopyImage -> "copy_image" to Icons.Filled.ContentCopy
                 NoteMenuAction.Lock -> "lock_attachment" to Icons.Filled.Lock
                 NoteMenuAction.Unlock -> "unlock_attachment" to Icons.Filled.LockOpen
                 NoteMenuAction.Delete -> "delete_note" to Icons.Filled.DeleteOutline
@@ -154,6 +156,7 @@ fun NotesSnackbar?.say(message: String) {
 internal fun runNoteMenuAction(
     action: NoteMenuAction,
     copyableText: String,
+    imagePath: String? = null,
     snackbar: NotesSnackbar?,
     onLock: () -> Unit,
     onDelete: () -> Unit
@@ -162,6 +165,11 @@ internal fun runNoteMenuAction(
         NoteMenuAction.Copy -> {
             PlatformClipboard.setSystemClipboardText(copyableText)
             snackbar.say(AppI18n.t("copied_to_clipboard"))
+        }
+        NoteMenuAction.CopyImage -> {
+            if (!imagePath.isNullOrBlank() && copyImageFileToClipboard(imagePath)) {
+                snackbar.say(AppI18n.t("image_copied"))
+            }
         }
         NoteMenuAction.Lock, NoteMenuAction.Unlock -> onLock()
         NoteMenuAction.Delete -> onDelete()

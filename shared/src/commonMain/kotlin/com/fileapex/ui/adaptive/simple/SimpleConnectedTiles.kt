@@ -90,6 +90,14 @@ internal fun BrowseActionCard(
     }
 }
 
+internal fun resolveClipboardCardClickAction(
+    sharingEnabled: Boolean?,
+    onSendClipboard: () -> Unit,
+    onPromptSetup: () -> Unit
+): () -> Unit = {
+    if (sharingEnabled == false) onPromptSetup() else onSendClipboard()
+}
+
 @Composable
 internal fun ClipboardActionCard(
     sharingEnabled: Boolean?,
@@ -108,7 +116,7 @@ internal fun ClipboardActionCard(
     Surface(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = sharingEnabled == false, onClick = onClick),
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         color = SimpleModernPalette.CardSurface,
         border = BorderStroke(1.dp, SimpleModernPalette.CardBorder)

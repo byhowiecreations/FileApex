@@ -34,11 +34,11 @@ data class ThemePreviewSpec(
 object ThemePreviewCatalog {
     fun specFor(theme: AppTheme): ThemePreviewSpec = when (theme) {
         AppTheme.SIMPLE -> ThemePreviewSpec(theme, 0xFF0A1115, 0xFF1A2C30, 0xFF2DD4BF, 0xFF152227, "theme_thumb_simple")
-        AppTheme.CLEAN -> ThemePreviewSpec(theme, 0xFFFFFFFF, 0xFF0F766E, 0xFF0F766E, 0xFFF1F5F9, "theme_thumb_clean")
+        AppTheme.CLEAN -> ThemePreviewSpec(theme, 0xFFF8FAFC, 0xFFFFFFFF, 0xFF0F766E, 0xFFFFFFFF, "theme_thumb_clean")
         AppTheme.CAROUSEL -> ThemePreviewSpec(theme, 0xFF0E1418, 0xFF1D2830, 0xFF5EEAD4, 0xFF1A252C, "theme_thumb_carousel")
         AppTheme.KINETIC_SPHERE -> ThemePreviewSpec(theme, 0xFF02050B, 0xFF0C1524, 0xFF00E5FF, 0xFF132238, "theme_thumb_kinetic_sphere")
         AppTheme.FREESTYLE -> ThemePreviewSpec(theme, 0xFF000000, 0xFF121212, 0xFF5BB5AE, 0xFF1E1E1E, "theme_thumb_freestyle")
-        AppTheme.FLUX_GLASS -> ThemePreviewSpec(theme, 0xFF09131E, 0xFF162535, 0xFF60A5FA, 0xFF1F3349, "theme_thumb_flux_glass")
+        AppTheme.FLUX_GLASS -> ThemePreviewSpec(theme, 0xFF070F12, 0xFF121B1F, 0xFF5EEAD4, 0xFF18242B, "theme_thumb_flux_glass")
     }
 
     fun allSpecs(): List<ThemePreviewSpec> = AppTheme.entries.map(::specFor)

@@ -1,20 +1,12 @@
 package com.fileapex.ui.explorer
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
@@ -32,27 +24,21 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
-import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.isDesktopHost
@@ -60,21 +46,18 @@ import com.fileapex.presentation.ExplorerSortMode
 import com.fileapex.presentation.ExplorerUiState
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.presentation.ExplorerViewModel
+import com.fileapex.ui.ExpandableSearchPillRow
 import com.fileapex.ui.ExplorerIcon
 import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.NavDockPositionToggle
-import com.fileapex.ui.tools.ToolsHeaderButton
 import com.fileapex.ui.adaptive.JadedRaisedTile
 import com.fileapex.ui.explorerIcon
 import com.fileapex.ui.theme.KineticStyleLook
-import com.fileapex.ui.theme.LocalJadedHazeState
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.isFileApexFluentUi
 import com.fileapex.ui.theme.isFileApexTiledChrome
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
+import com.fileapex.ui.tools.ToolsHeaderButton
 
 @Composable
 internal fun ExplorerTopBarActions(
@@ -236,125 +219,14 @@ internal fun ExplorerTopBarActions(
     }
 }
 
-private val FilterRowHeight = 44.dp
-
-/**
- * The leading slot (a drop area) and the filter share one row. The filter is a search icon until
- * tapped, then the two slide past each other; tapping the shrunken slot closes the filter again.
- */
-@Composable
-private fun SlidingFilterWithLeading(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    leading: @Composable (modifier: Modifier, compact: Boolean) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var open by remember { mutableStateOf(false) }
-    var wasFocused by remember { mutableStateOf(false) }
-    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
-    val showField = open || query.isNotEmpty()
-    val fraction by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (showField) 1f else 0f,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 260)
-    )
-    LaunchedEffect(open) {
-        if (open) {
-            androidx.compose.runtime.withFrameNanos { }
-            focus.requestFocus()
-        }
-    }
-    val pill = RoundedCornerShape(50)
-    BoxWithConstraints(modifier = modifier.height(FilterRowHeight)) {
-        val gap = 8.dp
-        val filterWidth = androidx.compose.ui.unit.lerp(FilterRowHeight, maxWidth - FilterRowHeight - gap, fraction)
-        val leadingWidth = maxWidth - gap - filterWidth
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .width(leadingWidth)
-                    .height(FilterRowHeight)
-                    .clip(pill)
-                    .clickable(enabled = showField) {
-                        onQueryChange("")
-                        wasFocused = false
-                        open = false
-                    }
-            ) {
-                leading(Modifier.fillMaxSize(), leadingWidth < 170.dp)
-            }
-            Spacer(modifier = Modifier.width(gap))
-            Row(
-                modifier = Modifier
-                    .width(filterWidth)
-                    .height(FilterRowHeight)
-                    .clip(pill)
-                    .border(
-                        width = if (showField) 2.dp else 1.dp,
-                        color = if (showField) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        shape = pill
-                    )
-                    .clickable(enabled = !showField) { open = true }
-                    .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Filled.Search,
-                    contentDescription = stringRes(ExplorerFilterLabelPolicy.placeholderKey()),
-                    modifier = Modifier.size(22.dp)
-                )
-                if (showField) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    BasicTextField(
-                        value = query,
-                        onValueChange = onQueryChange,
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(focus)
-                            .onFocusChanged { state ->
-                                if (state.isFocused) {
-                                    wasFocused = true
-                                } else if (wasFocused && query.isEmpty()) {
-                                    wasFocused = false
-                                    open = false
-                                }
-                            },
-                        decorationBox = { inner ->
-                            Box(contentAlignment = Alignment.CenterStart) {
-                                if (query.isEmpty()) {
-                                    Text(
-                                        stringRes(ExplorerFilterLabelPolicy.placeholderKey()),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                inner()
-                            }
-                        }
-                    )
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { onQueryChange("") }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Filled.Close, contentDescription = stringRes("clear"), modifier = Modifier.size(18.dp))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 internal fun ExplorerFilterBar(
     query: String,
     onQueryChange: (String) -> Unit,
     sortMode: ExplorerSortMode,
     onSortModeChange: (ExplorerSortMode) -> Unit,
-    leading: (@Composable (modifier: Modifier, compact: Boolean) -> Unit)? = null
+    leading: (@Composable (modifier: Modifier, compact: Boolean) -> Unit)? = null,
+    searchPillModifier: Modifier = Modifier
 ) {
     var sortMenuOpen by remember { mutableStateOf(false) }
     Row(
@@ -363,83 +235,20 @@ internal fun ExplorerFilterBar(
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val jadedField = LocalAppTheme.current.traits.orbitalHome &&
+        val currentTheme = LocalAppTheme.current
+        val jadedField = currentTheme.traits.orbitalHome &&
             LocalKineticStyle.current == KineticStyle.JADED_STEEL
-        val curvedField = LocalAppTheme.current.let { it == AppTheme.SIMPLE || it == AppTheme.CLEAN || it == AppTheme.FLUX_GLASS || it == AppTheme.CAROUSEL } && !isFileApexFluentUi()
-        if (leading != null) {
-            SlidingFilterWithLeading(
+        val curvedField = currentTheme.let { it == AppTheme.SIMPLE || it == AppTheme.CLEAN || it == AppTheme.FLUX_GLASS || it == AppTheme.CAROUSEL } && !isFileApexFluentUi()
+        if (ExplorerFilterBarPolicy.usesExpandableSearch(currentTheme, hasLeading = leading != null)) {
+            ExpandableSearchPillRow(
                 query = query,
                 onQueryChange = onQueryChange,
-                leading = leading,
-                modifier = Modifier.weight(1f)
-            )
-        } else if (jadedField) {
-            val pill = RoundedCornerShape(50)
-            val ink = Color(0xFFE4EEEF)
-            val hint = Color(0xFFB7C4C6)
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = ink),
-                cursorBrush = SolidColor(ink),
-                modifier = Modifier.weight(1f).height(44.dp),
-                decorationBox = { inner ->
-                    val haze = LocalJadedHazeState.current
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .clip(pill)
-                            .then(
-                                if (haze != null) {
-                                    Modifier.hazeEffect(
-                                        state = haze,
-                                        style = HazeStyle(
-                                            backgroundColor = Color.Transparent,
-                                            tints = listOf(HazeTint(Color.White.copy(alpha = 0.09f))),
-                                            blurRadius = 24.dp,
-                                            noiseFactor = 0.04f
-                                        )
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .background(Color.White.copy(alpha = 0.09f))
-                            .border(
-                                width = 1.dp,
-                                brush = Brush.verticalGradient(
-                                    0f to Color.White.copy(alpha = 0.28f),
-                                    1f to Color.White.copy(alpha = 0.10f)
-                                ),
-                                shape = pill
-                            )
-                            .padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Search, contentDescription = null, tint = hint)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                            if (query.isEmpty()) {
-                                Text(
-                                    text = stringRes(ExplorerFilterLabelPolicy.placeholderKey()),
-                                    color = hint,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            inner()
-                        }
-                        if (query.isNotEmpty()) {
-                            IconButton(onClick = { onQueryChange("") }) {
-                                Icon(Icons.Filled.Close, contentDescription = stringRes("clear"), tint = hint)
-                            }
-                        }
-                    }
-                }
+                placeholder = stringRes(ExplorerFilterLabelPolicy.placeholderKey()),
+                leading = leading ?: { _, _ -> },
+                collapseLeadingCompletely = leading == null,
+                useJadedStyle = jadedField && leading == null,
+                modifier = Modifier.weight(1f),
+                searchPillModifier = searchPillModifier
             )
         } else {
             OutlinedTextField(
@@ -467,7 +276,7 @@ internal fun ExplorerFilterBar(
                     contentDescription = stringRes("sort_by"),
                     tint = when {
                         jadedField -> KineticStyleLook.steel
-                        LocalAppTheme.current.traits.glassChrome -> Color.White
+                        currentTheme.traits.glassChrome -> Color.White
                         else -> LocalContentColor.current
                     }
                 )
@@ -493,6 +302,11 @@ internal fun ExplorerFilterBar(
             }
         }
     }
+}
+
+object ExplorerFilterBarPolicy {
+    fun usesExpandableSearch(theme: AppTheme, hasLeading: Boolean): Boolean =
+        hasLeading || theme.traits.orbitalHome
 }
 
 object ExplorerFilterLabelPolicy {

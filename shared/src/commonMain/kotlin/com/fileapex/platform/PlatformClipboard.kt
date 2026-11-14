@@ -2,9 +2,11 @@ package com.fileapex.platform
 
 expect object PlatformClipboard {
     fun getSystemClipboardText(): String?
+    fun getSystemClipboardImageBytes(): ByteArray?
     fun getSystemClipboardTimestamp(): Long?
     fun setSystemClipboardText(text: String)
     fun applyRemoteText(text: String, sourceDeviceName: String = "")
+    fun applyRemoteImage(bytes: ByteArray, mimeType: String, sourceDeviceName: String = "")
     fun openUrlInDefaultBrowser(url: String)
     fun sharePlainText(text: String, title: String = "")
 }

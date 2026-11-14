@@ -314,6 +314,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.fileapex.action.CLIPBOARD_COPY" />
+                <action android:name="com.fileapex.action.CLIPBOARD_SAVE_IMAGE" />
             </intent-filter>
         </receiver>
 

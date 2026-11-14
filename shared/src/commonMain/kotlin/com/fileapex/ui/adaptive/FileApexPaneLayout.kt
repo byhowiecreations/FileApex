@@ -19,7 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.fileapex.ui.ExpandableSearchPillRow
+import com.fileapex.ui.theme.isFileApexJadedSteel
 
 /** Shared list-pane header spacing for wide Devices / Settings / explorer panes. */
 object FileApexPaneLayout {
@@ -29,14 +32,19 @@ object FileApexPaneLayout {
 
 @Composable
 fun FileApexPaneSectionHeader(
-
     title: String,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    searchQuery: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    searchPlaceholder: String = "",
+    searchButtonModifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
     val isGlassTheme = currentTheme.traits.glassChrome
+    val jadedStyle = isFileApexJadedSteel()
+    val titleColor = if (isGlassTheme) Color.White else MaterialTheme.colorScheme.onSurface
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -46,23 +54,62 @@ fun FileApexPaneSectionHeader(
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (onBack != null) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringRes("back"),
-                    tint = if (isGlassTheme) Color.White else MaterialTheme.colorScheme.onSurface
-                )
+        if (onSearchQueryChange != null) {
+            ExpandableSearchPillRow(
+                query = searchQuery,
+                onQueryChange = onSearchQueryChange,
+                placeholder = searchPlaceholder,
+                collapseLeadingCompletely = true,
+                useJadedStyle = jadedStyle,
+                useLightChrome = isGlassTheme && !jadedStyle,
+                modifier = Modifier.weight(1f),
+                searchPillModifier = searchButtonModifier,
+                leading = { leadingModifier, _ ->
+                    Row(
+                        modifier = leadingModifier,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringRes("back"),
+                                    tint = titleColor
+                                )
+                            }
+                        }
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = titleColor,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            )
+            actions()
+        } else {
+            if (onBack != null) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringRes("back"),
+                        tint = titleColor
+                    )
+                }
             }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = titleColor,
+                modifier = Modifier.weight(1f)
+            )
+            actions()
         }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isGlassTheme) Color.White else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
-        actions()
     }
 }
 

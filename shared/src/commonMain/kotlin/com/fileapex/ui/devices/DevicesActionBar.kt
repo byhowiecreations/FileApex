@@ -43,11 +43,13 @@ import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DevicesUiState
+import com.fileapex.ui.adaptive.DockedDevicesActionBar
 import com.fileapex.ui.devices.SendClipboardActionChip
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
 import com.fileapex.ui.theme.isFileApexCleanCurved
+import com.fileapex.ui.theme.isFileApexCleanModern
 
 @Composable
 internal fun DevicesActionBar(
@@ -59,14 +61,18 @@ internal fun DevicesActionBar(
     onJoinDevice: () -> Unit
 ) {
     val isFlux = LocalAppTheme.current.traits.fluxSurfaces
-    val isCleanPills = isFileApexCleanCurved()
-    if (isFlux || isCleanPills) {
-        val pillColor = if (isFlux) FluxGlassPalette.actionPill else MaterialTheme.colorScheme.surface
-        val clipTint = if (isFlux) FluxGlassPalette.cyan else FileApexTeal
-        val clipText = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
-        val addColor = if (isFlux) FluxGlassPalette.actionPill else FileApexTeal
-        val addTint = if (isFlux) FluxGlassPalette.accent else Color.White
+    if (isFileApexCleanModern() || isFlux) {
+        DockedDevicesActionBar(state, addMenuOpen, onAddMenuOpenChange, onSendClipboard, onGenerateQr, onJoinDevice)
+        return
+    }
+    if (isFileApexCleanCurved()) {
+        val pillColor = MaterialTheme.colorScheme.surface
+        val clipTint = FileApexTeal
+        val clipText = MaterialTheme.colorScheme.onSurface
+        val addColor = FileApexTeal
+        val addTint = Color.White
         val addText = Color.White
+        val isCleanPills = true
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -170,32 +176,7 @@ internal fun DevicesActionBar(
                             )
                         }
                     }
-                    DropdownMenu(
-                        expanded = addMenuOpen,
-                        onDismissRequest = { onAddMenuOpenChange(false) }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringRes("generate_qr")) },
-                            onClick = {
-                                onAddMenuOpenChange(false)
-                                onGenerateQr()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringRes("join_device")) },
-                            onClick = {
-                                onAddMenuOpenChange(false)
-                                onJoinDevice()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringRes("friends_entry")) },
-                            onClick = {
-                                onAddMenuOpenChange(false)
-                                com.fileapex.friends.ui.FriendsUi.open()
-                            }
-                        )
-                    }
+                    AddDeviceDropdownMenu(addMenuOpen, onAddMenuOpenChange, onGenerateQr, onJoinDevice)
                 }
             }
         }
@@ -283,5 +264,22 @@ internal fun DevicesActionBar(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AddDeviceDropdownMenu(
+    expanded: Boolean,
+    onDismiss: (Boolean) -> Unit,
+    onGenerateQr: () -> Unit,
+    onJoinDevice: () -> Unit
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = { onDismiss(false) }) {
+        DropdownMenuItem(text = { Text(stringRes("generate_qr")) }, onClick = { onDismiss(false); onGenerateQr() })
+        DropdownMenuItem(text = { Text(stringRes("join_device")) }, onClick = { onDismiss(false); onJoinDevice() })
+        DropdownMenuItem(
+            text = { Text(stringRes("friends_entry")) },
+            onClick = { onDismiss(false); com.fileapex.friends.ui.FriendsUi.open() }
+        )
     }
 }

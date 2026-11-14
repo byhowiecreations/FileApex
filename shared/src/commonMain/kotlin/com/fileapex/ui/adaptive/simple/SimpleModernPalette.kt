@@ -178,6 +178,8 @@ object SimpleBottomBarLayoutPolicy {
     const val curvedBarHeightDp = 76
     const val edgeSpacerDp = 4
     const val showTopActionPills = false
+
+    fun showBulletinTab(isDesktop: Boolean): Boolean = isDesktop
 }
 
 object SimpleOverviewCardPolicy {
@@ -185,7 +187,9 @@ object SimpleOverviewCardPolicy {
 
     fun showDropHint(isDesktopHost: Boolean): Boolean = isDesktopHost
 
-    fun dropCardVerticalPaddingDp(isDesktopHost: Boolean): Int = if (isDesktopHost) 22 else 16
+    fun useCompactSendRow(isDesktopHost: Boolean): Boolean = !isDesktopHost
+
+    fun dropCardVerticalPaddingDp(isDesktopHost: Boolean): Int = if (isDesktopHost) 22 else 11
 
     fun showDevicesCard(navPosition: DesktopNavPosition): Boolean =
         navPosition == DesktopNavPosition.Bottom

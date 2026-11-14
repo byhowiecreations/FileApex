@@ -6,6 +6,9 @@ expect fun decodeImageBytes(bytes: ByteArray, maxEdge: Int = 2048): ImageBitmap?
 
 expect fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap?
 
+/** Encodes a bounded JPEG thumbnail for local image or video files, or null if unsupported. */
+expect fun encodeLocalMediaThumbnailJpeg(absolutePath: String, mimeType: String, maxEdge: Int = 256): ByteArray?
+
 /** Longest edge of the primary display in physical pixels, clamped for full-screen previews. */
 expect fun previewMaxEdgePx(): Int
 
