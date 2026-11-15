@@ -5,7 +5,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -77,7 +76,6 @@ internal fun SimpleConnectedOverview(
     onShareAsLink: () -> Unit,
     onClipboardAction: () -> Unit,
     onLocatePhone: () -> Unit,
-    showDevicesCard: Boolean = false,
     onDevicesAnchor: (Rect) -> Unit = {},
     onOpenDevices: () -> Unit = {},
     notificationContent: @Composable () -> Unit,
@@ -103,129 +101,90 @@ internal fun SimpleConnectedOverview(
             statusSummary = statusSummary
         )
 
-        UnifiedDropSendCard(
-            deviceName = active.deviceName,
-            hovered = dropHover,
-            enabled = active.online,
-            onChooseFiles = onChooseFilesToSend
-        )
-
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val twoColumns = maxWidth >= 420.dp
-            if (twoColumns) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val inlineClipboard = SimpleOverviewCardPolicy.clipboardStatusInline(twoColumns = true)
+            val shareBesideDrop = SimpleOverviewCardPolicy.shareBesideDrop(isDesktopHost(), maxWidth.value)
+            val inlineClipboard = SimpleOverviewCardPolicy.clipboardStatusInline(twoColumns = twoColumns)
+            val cardContent: @Composable (OverviewCard, Modifier) -> Unit = { card, cardModifier ->
+                when (card) {
+                    OverviewCard.Browse -> BrowseActionCard(
+                        deviceName = active.deviceName,
+                        onSplitView = onOpenSplitView,
+                        modifier = cardModifier
+                    )
+                    OverviewCard.Share -> QuickActionTile(
+                        title = stringRes("share_link_title"),
+                        subtitle = stringRes("share_link_desc_short"),
+                        icon = Icons.Outlined.Link,
+                        onClick = onShareAsLink,
+                        modifier = cardModifier
+                    )
+                    OverviewCard.Clipboard -> ClipboardActionCard(
+                        sharingEnabled = clipboardSharingEnabled,
+                        promptHint = clipboardPromptHint,
+                        onClick = onClipboardAction,
+                        statusInline = inlineClipboard,
+                        modifier = cardModifier
+                    )
+                    OverviewCard.Locate -> QuickActionTile(
+                        title = stringRes("locate_phone"),
+                        subtitle = stringRes("ring_device"),
+                        icon = Icons.Outlined.LocationOn,
+                        onClick = onLocatePhone,
+                        modifier = cardModifier
+                    )
+                    OverviewCard.Devices -> QuickActionTile(
+                        title = stringRes("devices"),
+                        subtitle = stringRes("simple_devices_card_desc"),
+                        icon = SimpleChromeIcons.devicesCardIcon,
+                        onClick = onOpenDevices,
+                        modifier = cardModifier.onGloballyPositioned { onDevicesAnchor(it.boundsInWindow()) }
+                    )
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (shareBesideDrop) {
                     Row(
                         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        BrowseActionCard(
+                        val (dropWeight, shareWeight) = SimpleOverviewCardPolicy.dropRowWeights()
+                        UnifiedDropSendCard(
                             deviceName = active.deviceName,
-                            onSplitView = onOpenSplitView,
-                            modifier = Modifier.weight(1f).fillMaxHeight()
+                            hovered = dropHover,
+                            enabled = active.online,
+                            onChooseFiles = onChooseFilesToSend,
+                            modifier = Modifier.weight(dropWeight).fillMaxHeight()
                         )
                         QuickActionTile(
                             title = stringRes("share_link_title"),
                             subtitle = stringRes("share_link_desc_short"),
                             icon = Icons.Outlined.Link,
                             onClick = onShareAsLink,
-                            modifier = Modifier.weight(1f).fillMaxHeight()
+                            modifier = Modifier.weight(shareWeight).fillMaxHeight()
                         )
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        ClipboardActionCard(
-                            sharingEnabled = clipboardSharingEnabled,
-                            promptHint = clipboardPromptHint,
-                            onClick = onClipboardAction,
-                            statusInline = inlineClipboard,
-                            modifier = Modifier.weight(1f).fillMaxHeight()
-                        )
-                        if (isPhonePeer) {
-                            QuickActionTile(
-                                title = stringRes("locate_phone"),
-                                subtitle = stringRes("ring_device"),
-                                icon = Icons.Outlined.LocationOn,
-                                onClick = onLocatePhone,
-                                modifier = Modifier.weight(1f).fillMaxHeight()
-                            )
-                        } else if (showDevicesCard) {
-                            QuickActionTile(
-                                title = stringRes("devices"),
-                                subtitle = stringRes("simple_devices_card_desc"),
-                                icon = SimpleChromeIcons.devicesCardIcon,
-                                onClick = onOpenDevices,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .onGloballyPositioned { onDevicesAnchor(it.boundsInWindow()) }
-                            )
-                        } else {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                    if (isPhonePeer && showDevicesCard) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            QuickActionTile(
-                                title = stringRes("devices"),
-                                subtitle = stringRes("simple_devices_card_desc"),
-                                icon = SimpleChromeIcons.devicesCardIcon,
-                                onClick = onOpenDevices,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .onGloballyPositioned { onDevicesAnchor(it.boundsInWindow()) }
-                            )
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            } else {
-                val inlineClipboard = SimpleOverviewCardPolicy.clipboardStatusInline(twoColumns = false)
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    BrowseActionCard(
+                } else {
+                    UnifiedDropSendCard(
                         deviceName = active.deviceName,
-                        onSplitView = onOpenSplitView,
-                        modifier = Modifier.fillMaxWidth()
+                        hovered = dropHover,
+                        enabled = active.online,
+                        onChooseFiles = onChooseFilesToSend
                     )
-                    QuickActionTile(
-                        title = stringRes("share_link_title"),
-                        subtitle = stringRes("share_link_desc_short"),
-                        icon = Icons.Outlined.Link,
-                        onClick = onShareAsLink,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    ClipboardActionCard(
-                        sharingEnabled = clipboardSharingEnabled,
-                        promptHint = clipboardPromptHint,
-                        onClick = onClipboardAction,
-                        statusInline = inlineClipboard,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (showDevicesCard) {
-                        QuickActionTile(
-                            title = stringRes("devices"),
-                            subtitle = stringRes("simple_devices_card_desc"),
-                            icon = SimpleChromeIcons.devicesCardIcon,
-                            onClick = onOpenDevices,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { onDevicesAnchor(it.boundsInWindow()) }
-                        )
-                    }
-                    if (isPhonePeer) {
-                        QuickActionTile(
-                            title = stringRes("locate_phone"),
-                            subtitle = stringRes("ring_device"),
-                            icon = Icons.Outlined.LocationOn,
-                            onClick = onLocatePhone,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(if (twoColumns) 12.dp else 10.dp)) {
+                    for (row in SimpleOverviewCardPolicy.cardRows(isPhonePeer, twoColumns, shareBesideDrop)) {
+                        if (twoColumns) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                for (card in row) cardContent(card, Modifier.weight(1f).fillMaxHeight())
+                                if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                            }
+                        } else {
+                            for (card in row) cardContent(card, Modifier.fillMaxWidth())
+                        }
                     }
                 }
             }
@@ -375,7 +334,8 @@ private fun UnifiedDropSendCard(
     deviceName: String,
     hovered: Boolean,
     enabled: Boolean,
-    onChooseFiles: () -> Unit
+    onChooseFiles: () -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth()
 ) {
     val shape = RoundedCornerShape(18.dp)
     val dashColor = if (hovered) SimpleModernPalette.AccentMint else SimpleModernPalette.AccentMint.copy(alpha = 0.55f)
@@ -387,10 +347,8 @@ private fun UnifiedDropSendCard(
         }
     )
     val desktopHost = isDesktopHost()
-    val verticalPadding = SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(desktopHost).dp
-    val showDropHint = SimpleOverviewCardPolicy.showDropHint(desktopHost)
-    val cardModifier = Modifier
-        .fillMaxWidth()
+    val verticalPadding = SimpleOverviewCardPolicy.compactDropRowVerticalPaddingDp().dp
+    val cardModifier = modifier
         .clip(shape)
         .background(gradient)
         .drawBehind {
@@ -436,30 +394,28 @@ private fun UnifiedDropSendCard(
         }
     } else {
         Column(
-            modifier = cardModifier.padding(horizontal = 20.dp, vertical = verticalPadding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(if (showDropHint) 8.dp else 6.dp)
+            modifier = cardModifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedUploadArrowIcon(modifier = Modifier.size(if (showDropHint) 28.dp else 24.dp))
-            Text(
-                text = stringRes("send_files_to_device", deviceName),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = SimpleModernPalette.TextPrimary
-            )
-            if (showDropHint) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedUploadArrowIcon(modifier = Modifier.size(18.dp))
                 Text(
-                    text = stringRes("drop_anywhere_or_choose"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SimpleModernPalette.TextSecondary
+                    text = stringRes("send_files_to_device", deviceName),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SimpleModernPalette.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
             Button(
                 onClick = onChooseFiles,
                 enabled = enabled,
                 shape = RoundedCornerShape(50),
-                contentPadding = PaddingValues(horizontal = 22.dp, vertical = if (showDropHint) 10.dp else 9.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = SimpleModernPalette.AccentMint,
                     contentColor = SimpleModernPalette.AccentOnMint

@@ -652,6 +652,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="entry_file">archivo</string>
     <string name="entry_image">imagen</string>
     <string name="browse">Explorar</string>
+    <string name="remote_files">Archivos remotos</string>
     <string name="ready">Listo</string>
     <string name="reach_lan">LAN</string>
     <string name="reach_tailscale">Tailscale</string>

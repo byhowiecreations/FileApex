@@ -11,7 +11,6 @@ class SimpleRailLayoutTest {
         SimpleRailEntry.Browse to 140,
         SimpleRailEntry.Clipboard to 100,
         SimpleRailEntry.BulletinBoard to 100,
-        SimpleRailEntry.DeviceManagement to 140,
         SimpleRailEntry.Settings to 100
     )
     private val more = 100
@@ -25,15 +24,15 @@ class SimpleRailLayoutTest {
     fun shortWindowKeepsPrimaryDestinationsAndMovesTheRestToMore() {
         val hidden = hiddenRailEntries(heights, more, available = 480)
         assertEquals(
-            setOf(SimpleRailEntry.Settings, SimpleRailEntry.Clipboard, SimpleRailEntry.DeviceManagement),
+            setOf(SimpleRailEntry.Settings, SimpleRailEntry.Clipboard),
             hidden
         )
     }
 
     @Test
-    fun slightShortfallHidesOnlyTheLastActionsAndKeepsSettingsVisible() {
-        val hidden = hiddenRailEntries(heights, more, available = 670)
-        assertEquals(setOf(SimpleRailEntry.DeviceManagement), hidden)
+    fun aSlightShortfallStillKeepsTheThreeDestinationsVisible() {
+        val hidden = hiddenRailEntries(heights, more, available = 530)
+        assertEquals(setOf(SimpleRailEntry.Settings, SimpleRailEntry.Clipboard), hidden)
     }
 
     @Test

@@ -649,6 +649,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="entry_file">文件</string>
     <string name="entry_image">图片</string>
     <string name="browse">浏览</string>
+    <string name="remote_files">远程文件</string>
     <string name="ready">就绪</string>
     <string name="reach_lan">局域网</string>
     <string name="reach_tailscale">Tailscale</string>

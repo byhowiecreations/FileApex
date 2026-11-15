@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.ui.adaptive.simple.SimpleRailCapsulePaddingPolicy
 import kotlin.math.max
 
-enum class SimpleRailEntry { LocalFiles, Browse, Clipboard, BulletinBoard, DeviceManagement, Settings }
+enum class SimpleRailEntry { LocalFiles, Browse, Clipboard, BulletinBoard, Settings }
 
 /** Which popover the rail buttons open. */
 enum class SimplePopover { DeviceManagement, More }
@@ -19,8 +19,7 @@ private val keepOrder = listOf(
     SimpleRailEntry.Browse,
     SimpleRailEntry.BulletinBoard,
     SimpleRailEntry.Settings,
-    SimpleRailEntry.Clipboard,
-    SimpleRailEntry.DeviceManagement
+    SimpleRailEntry.Clipboard
 )
 
 /**

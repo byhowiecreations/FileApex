@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Devices
-import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Link
@@ -59,16 +58,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
-import com.fileapex.platform.isDesktopHost
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.ui.adaptive.AdaptiveRailColumn
 import com.fileapex.ui.adaptive.RailItem
@@ -91,7 +86,6 @@ import com.fileapex.ui.theme.isFileApexSimpleModern
 
 internal object SimpleChromeIcons {
     val devicesCardIcon: ImageVector = Icons.Outlined.Devices
-    val deviceManagementIcon: ImageVector = Icons.Outlined.Dns
 }
 
 @Composable
@@ -169,19 +163,11 @@ internal fun SimpleRail(
     onMenuAnchor: (Rect) -> Unit,
     onHiddenChanged: (Set<SimpleRailEntry>) -> Unit
 ) {
-    // The label gets the width it needs up to a cap; past the cap the short form is used.
-    val measurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val labelStyle = MaterialTheme.typography.labelMedium
-    fun neededWidth(label: String): Dp = with(density) {
-        label.split(' ').maxOf { measurer.measure(it, labelStyle).size.width.toDp() } + 8.dp
-    }
-    val managementLabel = stringRes(SimpleRailCatalog.managementLabelKey())
-    val managementWidth = neededWidth(managementLabel).coerceAtLeast(RAIL_LABEL_MIN_WIDTH)
-    val localFilesLabel = stringRes("local_files")
-    val browseLabel = stringRes("browse")
-    val bulletinLabel = stringRes("bulletin_board")
-    val settingsLabel = stringRes("settings")
+    val labelWidth = SimpleRailLabelPolicy.MAX_LABEL_WIDTH_DP.dp
+    val localFilesLabel = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.LocalFiles))
+    val browseLabel = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.Browse))
+    val bulletinLabel = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.BulletinBoard))
+    val settingsLabel = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.Settings))
     val moreLabel = stringRes("simple_more")
     val cleanCurved = isFileApexCleanCurved()
 
@@ -200,7 +186,8 @@ internal fun SimpleRail(
                         selected = destination == SimpleDestination.LocalFiles,
                         onClick = { onSelect(SimpleDestination.LocalFiles) },
                         icon = Icons.Outlined.Folder,
-                        label = localFilesLabel
+                        label = localFilesLabel,
+                        labelMaxWidth = labelWidth
                     )
                 },
                 RailSlot(SimpleRailEntry.Browse) {
@@ -208,7 +195,8 @@ internal fun SimpleRail(
                         selected = destination == SimpleDestination.Browse,
                         onClick = { onSelect(SimpleDestination.Browse) },
                         icon = Icons.Outlined.Devices,
-                        label = browseLabel
+                        label = browseLabel,
+                        labelMaxWidth = labelWidth
                     )
                 },
                 RailSlot(SimpleRailEntry.BulletinBoard) {
@@ -218,7 +206,7 @@ internal fun SimpleRail(
                             onClick = onOpenNotes,
                             icon = Icons.Outlined.PushPin,
                             label = bulletinLabel,
-                            labelMaxWidth = neededWidth(bulletinLabel).coerceAtLeast(RAIL_LABEL_MIN_WIDTH)
+                            labelMaxWidth = labelWidth
                         )
                         if (bulletinUnreadCount > 0) {
                             Box(
@@ -232,23 +220,13 @@ internal fun SimpleRail(
                         }
                     }
                 },
-                RailSlot(SimpleRailEntry.DeviceManagement) {
-                    Box(modifier = Modifier.onGloballyPositioned { onMenuAnchor(it.boundsInWindow()) }) {
-                        RailItem(
-                            selected = popover == SimplePopover.DeviceManagement || destination == SimpleDestination.Info,
-                            onClick = { onTogglePopover(SimplePopover.DeviceManagement) },
-                            icon = SimpleChromeIcons.deviceManagementIcon,
-                            label = managementLabel,
-                            labelMaxWidth = managementWidth
-                        )
-                    }
-                },
                 RailSlot(SimpleRailEntry.Settings) {
                     RailItem(
                         selected = destination == SimpleDestination.Settings,
                         onClick = { onSelect(SimpleDestination.Settings) },
                         icon = Icons.Outlined.Settings,
-                        label = settingsLabel
+                        label = settingsLabel,
+                        labelMaxWidth = labelWidth
                     )
                 }
             ),
@@ -282,8 +260,6 @@ internal fun SimpleRail(
     }
 }
 
-private val RAIL_LABEL_MIN_WIDTH = 76.dp
-
 @Composable
 internal fun SimpleCompactBottom(
     destination: SimpleDestination,
@@ -314,27 +290,27 @@ internal fun SimpleCompactBottom(
                 selected = destination == SimpleDestination.LocalFiles,
                 onClick = { onSelect(SimpleDestination.LocalFiles) },
                 icon = Icons.Outlined.Folder,
-                label = stringRes("local_files")
+                label = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.LocalFiles))
             )
             SimpleBarItem(
                 selected = destination == SimpleDestination.Browse,
                 onClick = { onSelect(SimpleDestination.Browse) },
                 icon = Icons.Outlined.Devices,
-                label = stringRes("browse")
+                label = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.Browse))
             )
-            if (SimpleBottomBarLayoutPolicy.showBulletinTab(isDesktopHost())) {
-                SimpleBarItem(
-                    selected = false,
-                    onClick = onOpenNotes,
-                    icon = Icons.Outlined.PushPin,
-                    label = if (bulletinUnreadCount > 0) "${stringRes("bulletin_board")} ($bulletinUnreadCount)" else stringRes("bulletin_board")
-                )
-            }
+            SimpleBarItem(
+                selected = false,
+                onClick = onOpenNotes,
+                icon = Icons.Outlined.PushPin,
+                label = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.BulletinBoard)).let {
+                    if (bulletinUnreadCount > 0) "$it ($bulletinUnreadCount)" else it
+                }
+            )
             SimpleBarItem(
                 selected = destination == SimpleDestination.Settings,
                 onClick = { onSelect(SimpleDestination.Settings) },
                 icon = Icons.Outlined.Settings,
-                label = stringRes("settings")
+                label = stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.Settings))
             )
             Spacer(modifier = Modifier.width(SimpleBottomBarLayoutPolicy.edgeSpacerDp.dp))
         }

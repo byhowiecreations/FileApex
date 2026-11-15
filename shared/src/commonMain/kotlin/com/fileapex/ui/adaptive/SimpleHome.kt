@@ -275,7 +275,6 @@ fun SimpleHome(
                         devicesViewModel.sendDroppedLocalFiles(device.deviceId, paths)
                     }
                 },
-                showDevicesCard = SimpleOverviewCardPolicy.showDevicesCard(navPosition),
                 onDevicesAnchor = { menuAnchor = it },
                 onOpenDevices = { popover = SimplePopover.DeviceManagement }, onSendClipboard = sendClipboard, onOpenStorageTools = { com.fileapex.ui.adaptive.simple.LocalExplorerOpenToolsSignal.requestOpenIfPermitted(hasStoragePermission); goTo(SimpleDestination.LocalFiles) }, onOpenBackupSettings = { onSettingsDeepLinkChange(SettingsDeepLink.BackupSync); goTo(SimpleDestination.Settings) }
             )

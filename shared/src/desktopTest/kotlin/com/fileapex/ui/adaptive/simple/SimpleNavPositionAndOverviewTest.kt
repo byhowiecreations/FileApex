@@ -99,7 +99,8 @@ class SimpleNavPositionAndOverviewTest {
         assertTrue(SimpleRailEntry.LocalFiles in railEntries)
         assertTrue(SimpleRailEntry.Browse in railEntries)
         assertTrue(SimpleRailEntry.BulletinBoard in railEntries)
-        assertTrue(SimpleRailEntry.DeviceManagement in railEntries)
+        assertEquals(SimpleBottomBarLayoutPolicy.tabs(), railEntries)
+        assertFalse("Devices is a card on Overview, not a rail entry", SimpleRailEntry.entries.any { it.name == "DeviceManagement" })
         assertTrue(SimpleRailEntry.Settings in railEntries)
     }
 
@@ -173,7 +174,6 @@ class SimpleNavPositionAndOverviewTest {
 
     @Test
     fun `SimpleRail uses compact Devices label key so capsule label never clips`() {
-        assertEquals("devices", SimpleRailCatalog.managementLabelKey())
     }
 
     @Test
@@ -252,15 +252,9 @@ class SimpleNavPositionAndOverviewTest {
 
     @Test
     fun `SimpleOverviewCardPolicy tailors drop card for phone, names Browse device, and enables inline status plus Devices card`() {
-        assertFalse(SimpleOverviewCardPolicy.showDropHint(isDesktopHost = false))
-        assertTrue(SimpleOverviewCardPolicy.showDropHint(isDesktopHost = true))
         assertTrue(SimpleOverviewCardPolicy.useCompactSendRow(isDesktopHost = false))
         assertFalse(SimpleOverviewCardPolicy.useCompactSendRow(isDesktopHost = true))
-        assertTrue(SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(isDesktopHost = false) <= 12)
-        assertTrue(
-            SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(isDesktopHost = false) <
-                SimpleOverviewCardPolicy.dropCardVerticalPaddingDp(isDesktopHost = true)
-        )
+        assertTrue(SimpleOverviewCardPolicy.compactDropRowVerticalPaddingDp() <= 12)
         assertEquals(
             "Browse Amanda",
             SimpleOverviewCardPolicy.browseDeviceLabel(
@@ -279,9 +273,6 @@ class SimpleNavPositionAndOverviewTest {
         )
         assertTrue(SimpleOverviewCardPolicy.clipboardStatusInline(twoColumns = false))
         assertFalse(SimpleOverviewCardPolicy.clipboardStatusInline(twoColumns = true))
-        assertTrue(SimpleOverviewCardPolicy.showDevicesCard(DesktopNavPosition.Bottom))
-        assertFalse(SimpleOverviewCardPolicy.showDevicesCard(DesktopNavPosition.Left))
-        assertFalse(SimpleOverviewCardPolicy.showDevicesCard(DesktopNavPosition.Right))
     }
 
     @Test

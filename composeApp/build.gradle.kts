@@ -152,6 +152,11 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 }
 
+// Only Ktor's config-file module loader reaches kotlin-reflect, and the server starts with an explicit module.
+configurations.matching { it.name.endsWith("ReleaseRuntimeClasspath") }.configureEach {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+}
+
 
 android {
     namespace = "com.fileapex"

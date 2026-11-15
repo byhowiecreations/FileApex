@@ -48,10 +48,9 @@
 -dontwarn io.github.alexzhirkevich.qrose.**
 -keep class com.journeyapps.barcodescanner.** { *; }
 
-# BouncyCastle: the providers load their algorithms by class name; everything else is called directly
+# BouncyCastle: Android calls only its Ed25519, X25519 and certificate classes directly and never asks a provider
+# for an algorithm by name (AndroidBouncyCastleGuardTest), so the provider classes are not kept.
 -dontwarn org.bouncycastle.**
--keep class org.bouncycastle.jce.provider.** { *; }
--keep class org.bouncycastle.jcajce.provider.** { *; }
 
 -dontwarn androidx.sharetarget.**
 -keep class androidx.sharetarget.** { *; }

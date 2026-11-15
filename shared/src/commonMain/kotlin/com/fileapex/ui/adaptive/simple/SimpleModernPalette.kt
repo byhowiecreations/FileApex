@@ -80,11 +80,16 @@ object SimpleRailCatalog {
         SimpleRailEntry.LocalFiles,
         SimpleRailEntry.Browse,
         SimpleRailEntry.BulletinBoard,
-        SimpleRailEntry.DeviceManagement,
         SimpleRailEntry.Settings
     )
 
-    fun managementLabelKey(): String = "devices"
+    fun labelKey(entry: SimpleRailEntry): String = when (entry) {
+        SimpleRailEntry.LocalFiles -> "local_files"
+        SimpleRailEntry.Browse -> "remote_files"
+        SimpleRailEntry.Clipboard -> "clipboard"
+        SimpleRailEntry.BulletinBoard -> "bulletin_board"
+        SimpleRailEntry.Settings -> "settings"
+    }
 }
 
 object SimpleHeaderLayoutPolicy {
@@ -111,6 +116,11 @@ object SimplePopoverPlacementPolicy {
         val maxTop = (windowHeightPx - fittedHeight - marginPx).coerceAtLeast(marginPx)
         return anchorTopPx.coerceIn(marginPx, maxTop)
     }
+}
+
+object SimpleRailLabelPolicy {
+    /** Rail labels wrap past this width so they keep a margin inside the rail capsule. */
+    const val MAX_LABEL_WIDTH_DP = 68
 }
 
 object SimpleRailCapsulePaddingPolicy {
@@ -179,20 +189,55 @@ object SimpleBottomBarLayoutPolicy {
     const val edgeSpacerDp = 4
     const val showTopActionPills = false
 
-    fun showBulletinTab(isDesktop: Boolean): Boolean = isDesktop
+    fun tabs(): List<SimpleRailEntry> = listOf(
+        SimpleRailEntry.LocalFiles,
+        SimpleRailEntry.Browse,
+        SimpleRailEntry.BulletinBoard,
+        SimpleRailEntry.Settings
+    )
 }
+
+enum class OverviewCard { Browse, Share, Clipboard, Locate, Devices }
 
 object SimpleOverviewCardPolicy {
     fun clipboardStatusInline(twoColumns: Boolean): Boolean = !twoColumns
 
-    fun showDropHint(isDesktopHost: Boolean): Boolean = isDesktopHost
-
     fun useCompactSendRow(isDesktopHost: Boolean): Boolean = !isDesktopHost
 
-    fun dropCardVerticalPaddingDp(isDesktopHost: Boolean): Int = if (isDesktopHost) 22 else 11
+    fun compactDropRowVerticalPaddingDp(): Int = 11
 
-    fun showDevicesCard(navPosition: DesktopNavPosition): Boolean =
-        navPosition == DesktopNavPosition.Bottom
+    /** A desktop window wide enough for two card columns puts Share as a link in the right half of the drop row. */
+    fun shareBesideDrop(isDesktopHost: Boolean, contentWidthDp: Float): Boolean =
+        isDesktopHost && contentWidthDp >= SHARE_BESIDE_DROP_MIN_WIDTH_DP
+
+    private const val SHARE_BESIDE_DROP_MIN_WIDTH_DP = 420f
+
+    /** Width weights of the split row: the drop area keeps two thirds, Share as a link a small card beside it. */
+    fun dropRowWeights(): Pair<Float, Float> = 2f to 1f
+
+    /** The cards under the drop area, row by row. Devices is always one of them: the rail has no Devices entry. */
+    fun cardRows(isPhonePeer: Boolean, twoColumns: Boolean, shareBesideDrop: Boolean): List<List<OverviewCard>> = when {
+        !twoColumns -> listOfNotNull(
+            OverviewCard.Browse,
+            OverviewCard.Share,
+            OverviewCard.Clipboard,
+            OverviewCard.Devices,
+            OverviewCard.Locate.takeIf { isPhonePeer }
+        ).map { listOf(it) }
+        shareBesideDrop -> listOf(
+            listOf(OverviewCard.Browse, OverviewCard.Devices),
+            if (isPhonePeer) listOf(OverviewCard.Clipboard, OverviewCard.Locate) else listOf(OverviewCard.Clipboard)
+        )
+        isPhonePeer -> listOf(
+            listOf(OverviewCard.Browse, OverviewCard.Share),
+            listOf(OverviewCard.Clipboard, OverviewCard.Locate),
+            listOf(OverviewCard.Devices)
+        )
+        else -> listOf(
+            listOf(OverviewCard.Browse, OverviewCard.Share),
+            listOf(OverviewCard.Clipboard, OverviewCard.Devices)
+        )
+    }
 
     fun browseDeviceLabel(
         deviceName: String,

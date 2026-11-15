@@ -202,12 +202,11 @@ internal fun SimpleHomePopoverLayer(
                 if (active != null) SimpleManagementItem(Icons.Filled.Delete, stringRes("remove"), danger = true) { onChangePopover(null); onConfirmRemove() }
             }
             SimplePopover.More -> {
-                if (SimpleRailEntry.LocalFiles in hiddenEntries) SimpleManagementItem(Icons.Filled.Folder, stringRes("local_files")) { onChangePopover(null); onNavigate(SimpleDestination.LocalFiles) }
-                if (SimpleRailEntry.Browse in hiddenEntries) SimpleManagementItem(Icons.Filled.Devices, stringRes("browse")) { onChangePopover(null); onNavigate(SimpleDestination.Browse) }
+                if (SimpleRailEntry.LocalFiles in hiddenEntries) SimpleManagementItem(Icons.Filled.Folder, stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.LocalFiles))) { onChangePopover(null); onNavigate(SimpleDestination.LocalFiles) }
+                if (SimpleRailEntry.Browse in hiddenEntries) SimpleManagementItem(Icons.Filled.Devices, stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.Browse))) { onChangePopover(null); onNavigate(SimpleDestination.Browse) }
                 if (SimpleRailEntry.Clipboard in hiddenEntries) SimpleManagementItem(Icons.Filled.ContentPaste, stringRes("send_clipboard")) { onChangePopover(null); onSendClipboard() }
-                if (SimpleRailEntry.BulletinBoard in hiddenEntries) SimpleManagementItem(Icons.Outlined.PushPin, stringRes("bulletin_board")) { onChangePopover(null); onOpenNotes() }
-                if (SimpleRailEntry.DeviceManagement in hiddenEntries) SimpleManagementItem(Icons.Filled.Link, stringRes("simple_device_management")) { onChangePopover(SimplePopover.DeviceManagement) }
-                if (SimpleRailEntry.Settings in hiddenEntries) SimpleManagementItem(Icons.Filled.Settings, stringRes("settings")) { onChangePopover(null); onNavigate(SimpleDestination.Settings) }
+                if (SimpleRailEntry.BulletinBoard in hiddenEntries) SimpleManagementItem(Icons.Outlined.PushPin, stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.BulletinBoard))) { onChangePopover(null); onOpenNotes() }
+                if (SimpleRailEntry.Settings in hiddenEntries) SimpleManagementItem(Icons.Filled.Settings, stringRes(SimpleRailCatalog.labelKey(SimpleRailEntry.Settings))) { onChangePopover(null); onNavigate(SimpleDestination.Settings) }
             }
         }
     }

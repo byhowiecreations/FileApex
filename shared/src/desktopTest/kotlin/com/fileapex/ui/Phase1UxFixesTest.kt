@@ -19,7 +19,6 @@ import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.i18n.AppI18n
 import com.fileapex.ui.adaptive.simple.ClipboardActionCard
-import com.fileapex.ui.adaptive.simple.SimpleBottomBarLayoutPolicy
 import com.fileapex.ui.adaptive.simple.SimpleChromeIcons
 import com.fileapex.ui.adaptive.simple.SimpleWelcomeLayoutPolicy
 import com.fileapex.ui.adaptive.simple.SimpleWelcomeOverview
@@ -45,7 +44,6 @@ class Phase1UxFixesTest {
     @Test
     fun `simple chrome and devices card use device icon instead of duplicating Link icon`() {
         assertNotEquals(Icons.Outlined.Link, SimpleChromeIcons.devicesCardIcon)
-        assertNotEquals(Icons.Outlined.Link, SimpleChromeIcons.deviceManagementIcon)
     }
 
     @Test
@@ -187,11 +185,9 @@ class Phase1UxFixesTest {
     }
 
     @Test
-    fun `android hides bulletin card and nav tab while pairing qr copy stays concise`() {
+    fun `android hides the welcome bulletin card while pairing qr copy stays concise`() {
         assertFalse(SimpleWelcomeLayoutPolicy.showBulletinCard(isDesktop = false))
         assertTrue(SimpleWelcomeLayoutPolicy.showBulletinCard(isDesktop = true))
-        assertFalse(SimpleBottomBarLayoutPolicy.showBulletinTab(isDesktop = false))
-        assertTrue(SimpleBottomBarLayoutPolicy.showBulletinTab(isDesktop = true))
         assertTrue(SimpleWelcomeLayoutPolicy.soloCardsSideBySide(isDesktop = false, availableWidthDp = 320f))
 
         val qrIntro = AppI18n.t("qr_intro")
