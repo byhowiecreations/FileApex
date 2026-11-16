@@ -138,7 +138,6 @@ class CliCommandHandler(
             val name = dev.deviceName.ifBlank { "Unknown" }
             val slug = CliDeviceAliasManager.resolveEffectiveSlug(dev)
 
-            // Probe device reachability and battery
             var online = false
             var batteryStr = "--"
 
@@ -202,10 +201,8 @@ class CliCommandHandler(
         val arg1 = args[0]
         val arg2 = args.drop(1).joinToString(" ")
 
-        // Resolve bidirectional ordering
         val (targetQuery, payload) = resolveSendArgs(arg1, arg2, cwd)
 
-        // Case 1: Target is Bulletin Board ("bb")
         if (targetQuery.equals("bb", ignoreCase = true)) {
             out("Routing note to Bulletin Board...")
             FileApexServices.noteRepository.sendNote(content = payload)
@@ -213,7 +210,6 @@ class CliCommandHandler(
             return 0
         }
 
-        // Case 2: Resolve paired target device
         val repo = FileApexServices.deviceRepository
         val device = CliDeviceResolver.resolveDevice(
             query = targetQuery,
@@ -226,7 +222,6 @@ class CliCommandHandler(
             return 1
         }
 
-        // Check if payload is a valid local file path
         val candidateFile = File(payload).let { if (it.isAbsolute) it else File(cwd, payload) }
 
         if (candidateFile.exists()) {
@@ -238,7 +233,6 @@ class CliCommandHandler(
             return sendClipboardToDevice(device)
         }
 
-        // Check if payload is 'beep'
         if (payload.equals("beep", ignoreCase = true)) {
             return triggerDeviceBeep(device)
         }
@@ -399,7 +393,6 @@ class CliCommandHandler(
             return 1
         }
 
-        // Interactive Prompt if no action flag provided
         val resolvedAction = if (action == null) {
             val response = prompt("Send current clipboard or retrieve from ${device.deviceName}? (send/retrieve): ")
                 ?.trim()?.lowercase() ?: return 1

@@ -1245,6 +1245,9 @@ Tap Central Hub (+) to Pair</string>
     <string name="locate_phone_cancel">Cancel</string>
     <string name="simple_no_device_title">No device connected</string>
     <string name="simple_no_device_body">Pair a device to browse its files.</string>
+    <string name="simple_remote_offline_title">%1$s is offline</string>
+    <string name="simple_remote_offline_body">Waiting for it to come back. FileApex keeps it as your connected device.</string>
+    <string name="simple_remote_failed_title">Could not open %1$s</string>
     <string name="simple_other_themes_title">More themes available</string>
     <string name="simple_other_themes_body">Be sure to check out the other themes in Settings that may help improve your workflow as your device list grows.</string>
     <string name="simple_got_it">Got it</string>

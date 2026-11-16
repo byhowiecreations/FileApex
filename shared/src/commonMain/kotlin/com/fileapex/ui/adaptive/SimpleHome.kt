@@ -30,13 +30,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.settings.DesktopNavPosition
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.device.PhoneLocator
-import com.fileapex.domain.notifications.NotificationCompanion
-import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.FileApexBackHandler
@@ -50,6 +47,7 @@ import com.fileapex.ui.DevicesSnackbars
 import com.fileapex.ui.ExplorerHeaderCommands
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.SettingsDeepLink
+import com.fileapex.ui.adaptive.simple.OtherThemesHintEffect
 import com.fileapex.ui.adaptive.simple.SimpleBackNavigationPolicy
 import com.fileapex.ui.adaptive.simple.SimpleCompactBottom
 import com.fileapex.ui.adaptive.simple.SimpleDropBox
@@ -58,9 +56,9 @@ import com.fileapex.ui.adaptive.simple.SimpleHomePopoverLayer
 import com.fileapex.ui.adaptive.simple.SimpleHomeSplitState
 import com.fileapex.ui.adaptive.simple.SimpleInfo
 import com.fileapex.ui.adaptive.simple.SimpleNavPlacementPolicy
-import com.fileapex.ui.adaptive.simple.SimpleNoDeviceState
+import com.fileapex.ui.adaptive.simple.SimpleRemoteFilesPlaceholder
+import com.fileapex.ui.adaptive.simple.SimpleRemoteFilesPolicy
 import com.fileapex.ui.adaptive.simple.SimpleOverview
-import com.fileapex.ui.adaptive.simple.SimpleOverviewCardPolicy
 import com.fileapex.ui.adaptive.simple.SimpleRail
 import com.fileapex.ui.adaptive.simple.SimpleSplitViewPolicy
 import com.fileapex.ui.adaptive.simple.SimpleTopBar
@@ -69,7 +67,6 @@ import kotlinx.coroutines.launch
 
 enum class SimpleDestination { Home, LocalFiles, Browse, Info, Settings }
 
-private const val SIMPLE_COMFORTABLE_DEVICE_COUNT = 3
 
 @Composable
 fun SimpleHome(
@@ -92,18 +89,8 @@ fun SimpleHome(
     val settings = FileApexServices.settings
     val state by devicesViewModel.uiState.collectAsState()
     val rows by devicesViewModel.deviceRows.collectAsState()
-    val storedActiveId by settings.simpleActiveDeviceId.collectAsState()
     val hintShown by settings.otherThemesHintShown.collectAsState()
-    val active = pickActiveDevice(rows, storedActiveId, selfIsPhone = currentPlatformLabel() == "Android")
-
-    // The computer listens to notifications from the phone shown here, and only while this screen is up.
-    val activeCompanionId = active?.takeIf {
-        currentPlatformLabel() != "Android" && PeerPlatform.isAndroid(it.os, it.platform)
-    }?.deviceId.orEmpty()
-    LaunchedEffect(activeCompanionId) { NotificationCompanion.setDesired(activeCompanionId) }
-    DisposableEffect(Unit) {
-        onDispose { NotificationCompanion.setDesired("") }
-    }
+    val active = rememberSimpleActiveDevice(rows)
 
     var showSwitchDialog by remember { mutableStateOf(false) }
     var popover by remember { mutableStateOf<SimplePopover?>(null) }
@@ -158,13 +145,7 @@ fun SimpleHome(
     val scope = rememberCoroutineScope()
     val noDeviceMessage = stringRes("simple_no_device_title")
 
-    val updateOffered by com.fileapex.update.AppUpdateCoordinator.pendingUpdate.collectAsState()
-    LaunchedEffect(rows.size, hintShown, updateOffered) {
-        if (rows.size > SIMPLE_COMFORTABLE_DEVICE_COUNT && !hintShown && updateOffered == null) {
-            showOtherThemesHint = true
-            settings.setOtherThemesHintShown(true)
-        }
-    }
+    OtherThemesHintEffect(rows.size, hintShown) { showOtherThemesHint = true }
     // The top bar already shows transfer progress.
     DevicesSnackbars(state, snackbarHostState, progressShownElsewhere = true, onShown = devicesViewModel::dismissMessages)
     val explorerVisible = destination == SimpleDestination.LocalFiles || destination == SimpleDestination.Browse
@@ -327,16 +308,16 @@ fun SimpleHome(
             SimpleDestination.Browse -> {
                 val target = browseTarget
                 if (target == null) {
-                    SimpleNoDeviceState(
-                        connecting = state.connectingDeviceId != null,
-                        hasPairedDevice = active != null,
+                    SimpleRemoteFilesPlaceholder(
+                        state = SimpleRemoteFilesPolicy.of(active, rows.size, state.connectingDeviceId != null),
                         onAddDevice = onGenerateQr,
                         onRetry = {
                             val device = active
                             if (device != null) {
                                 devicesViewModel.openDeviceOrExplain(device.deviceId) { browseTarget = it }
                             }
-                        }
+                        },
+                        onSwitchDevice = { showSwitchDialog = true }
                     )
                 } else {
                     FileExplorerScreen(

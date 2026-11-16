@@ -5,7 +5,7 @@ import android.content.Intent
 import com.fileapex.domain.widget.WidgetActionTarget
 import com.fileapex.domain.widget.WidgetTargetBinding
 import com.fileapex.domain.widget.WidgetTargetBindingCodec
-import com.fileapex.platform.DirectShareShortcutCoordinator
+import com.fileapex.platform.DirectShareShortcutIds
 
 object WidgetDeepLinks {
     const val ACTION_QUICK_POST = "com.fileapex.action.WIDGET_QUICK_POST"
@@ -39,7 +39,7 @@ object WidgetDeepLinks {
             ROUTE_BULLETIN -> MainDestination.BulletinBoard
             ROUTE_FRIENDS -> MainDestination.Friends
             ROUTE_BROWSE_DEVICE -> {
-                val id = intent.getStringExtra(DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID)
+                val id = intent.getStringExtra(DirectShareShortcutIds.EXTRA_TARGET_DEVICE_ID)
                     ?.trim().orEmpty()
                 if (id.isNotEmpty()) MainDestination.BrowseDevice(id) else null
             }

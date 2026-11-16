@@ -1,6 +1,5 @@
 package com.fileapex.domain.presence
 
-import com.fileapex.domain.notifications.NotificationCompanion
 import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.PairedDeviceEntity
@@ -187,7 +186,7 @@ class PeerPresenceMonitor(
                 val mode = if (appInForeground) PresenceMode.Full else PresenceMode.Light
                 // The connected phone's grant rides on this poll, so it is never skipped as fresh.
                 if (mode == PresenceMode.Light &&
-                    NotificationCompanion.desiredDeviceId().isEmpty() &&
+                    com.fileapex.domain.link.PairLinkState.partnerId().isEmpty() &&
                     allPeersRecentlyReachable(LanPresenceTiming.PEER_FRESH_SKIP_SWEEP_MS)
                 ) {
                     refreshOnlineSnapshot()
@@ -409,7 +408,7 @@ class PeerPresenceMonitor(
             if (round != null && !isSource) {
                 // Bounded: the sources are devices that just answered, and a dead one only costs this short wait.
                 withTimeoutOrNull(PresenceDigestRounds.WAIT_MS) { round.done.await() }
-                if (!alreadyFresh(peer, freshMs) && digests.allowsSkip(peer, round.hints)) return
+                if (!alreadyFresh(peer, freshMs) && !com.fileapex.domain.link.PairLinkState.carriesLink(peer.deviceId) && digests.allowsSkip(peer, round.hints)) return
             }
             probe(peer, mode, freshMs)
             book.dropStaleLanRoute(deviceId, freshMs)
@@ -428,7 +427,7 @@ class PeerPresenceMonitor(
     private fun alreadyFresh(peer: PairedDeviceEntity, freshMs: Long): Boolean {
         val isMetadataComplete = hasUsableEndpoint(peer) && peer.rootPath.isNotBlank() && peer.rootPath != "/"
         return isMetadataComplete &&
-            !NotificationCompanion.isCompanion(peer.deviceId) &&
+            !com.fileapex.domain.link.PairLinkState.carriesLink(peer.deviceId) &&
             wasRecentlyReachable(peer.deviceId, freshMs)
     }
 
@@ -579,8 +578,8 @@ class PeerPresenceMonitor(
 
     private val nodeStateClaims = NodeStateClaims()
     private val storedEndpoint = StoredEndpointProbe(object : StoredEndpointHost {
-        override suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, companion: Boolean?) =
-            client.probeHealth(host, port, timeoutMs, companion)
+        override suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, signal: com.fileapex.domain.link.HealthSignal?) =
+            client.probeHealth(host, port, timeoutMs, signal)
         override suspend fun recordEndpointMismatch(peerId: String, host: String, answeredAs: String) {
             mutex.withLock { repository.recordEndpointMismatch(peerId, host, answeredAs) }
         }

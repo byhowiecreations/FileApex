@@ -165,7 +165,11 @@ private fun readGenericProcessor(): ProcessorDiagnostics {
 
 private fun readDisplay(): DisplayDiagnostics {
     val base = readDisplayBase()
-    return if (DesktopPlatformPaths.isWindows()) base.copy(gpus = WindowsDiagnostics.gpus(WindowsRegistry)) else base
+    return when {
+        DesktopPlatformPaths.isWindows() -> base.copy(gpus = WindowsDiagnostics.gpus(WindowsRegistry))
+        DesktopPlatformPaths.isLinux() -> base.copy(gpus = LinuxGraphics.read())
+        else -> base
+    }
 }
 
 private fun readDisplayBase(): DisplayDiagnostics {
@@ -207,7 +211,7 @@ private fun readMacDisplayViaSystemProfiler(): DisplayDiagnostics? {
             ?.trim()
             .orEmpty()
         if (fallback.isBlank()) return null
-        return DisplayDiagnostics(resolution = fallback, refreshRateHz = null)
+        return DisplayDiagnostics(resolution = fallback, refreshRateHz = null, gpus = MacGraphics.parse(output))
     }
     val atIndex = resolutionLine.indexOf('@')
     val resolution = if (atIndex > 0) {
@@ -222,7 +226,8 @@ private fun readMacDisplayViaSystemProfiler(): DisplayDiagnostics? {
         ?.toFloatOrNull()
     return DisplayDiagnostics(
         resolution = resolution,
-        refreshRateHz = refreshRateHz?.takeIf { it > 0f }
+        refreshRateHz = refreshRateHz?.takeIf { it > 0f },
+        gpus = MacGraphics.parse(output)
     )
 }
 

@@ -42,7 +42,8 @@ import com.fileapex.ui.theme.isFileApexCleanCurved
 class ExplorerHeaderCommands(
     val onSelect: () -> Unit,
     val onPaste: (() -> Unit)?,
-    val onOpenTools: (() -> Unit)? = null
+    val onOpenTools: (() -> Unit)? = null,
+    val onOpenFavorites: (() -> Unit)? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

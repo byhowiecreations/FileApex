@@ -21,7 +21,6 @@ internal object DesktopBulletinClipboard {
         if (transferable != null) {
             if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
                 val paths = runCatching {
-                    @Suppress("UNCHECKED_CAST")
                     (transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>)
                         ?.mapNotNull { entry -> (entry as? File)?.absolutePath }
                         ?.filter { File(it).isFile }

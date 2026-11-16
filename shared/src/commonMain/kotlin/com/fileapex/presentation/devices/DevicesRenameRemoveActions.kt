@@ -10,12 +10,10 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.purgeDirectShareTarget
 import com.fileapex.presentation.DevicesUiState
-import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 

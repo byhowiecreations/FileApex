@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -46,7 +45,6 @@ import kotlin.math.roundToInt
 internal fun FreestyleScope.FreestylePinnedActions() {
     with(inputs) { with(persisted) { with(geometry) { with(live) {
         val hasFriendsNow = com.fileapex.friends.ui.rememberFriendsCount() > 0
-        // Render Pinned Canvas Action Buttons
         currentPinnedActionsMap.forEach { (actionKey, offsetFraction) ->
             val optAction = FreestyleOptionAction.entries.firstOrNull { it.key == actionKey } ?: return@forEach
             if (optAction == FreestyleOptionAction.GROUPS && !hasFriendsNow) return@forEach
@@ -161,7 +159,6 @@ internal fun FreestyleScope.FreestylePinnedActions() {
                         }
                     }
 
-                    // Delete / Unpin button in edit mode on top-right
                     if (isEditMode) {
                         Box(
                             modifier = Modifier
@@ -187,7 +184,6 @@ internal fun FreestyleScope.FreestylePinnedActions() {
                     }
                 }
 
-                // Action Label placed directly below the button
                 Column(
                     modifier = Modifier
                         .offset {

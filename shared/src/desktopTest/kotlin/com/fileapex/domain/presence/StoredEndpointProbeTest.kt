@@ -16,7 +16,7 @@ class StoredEndpointProbeTest {
 
     private class Host(var health: FileApexClient.HealthProbe, var state: PeerNodeState? = null) : StoredEndpointHost {
         val log = mutableListOf<String>()
-        override suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, companion: Boolean?): FileApexClient.HealthProbe {
+        override suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, signal: com.fileapex.domain.link.HealthSignal?): FileApexClient.HealthProbe {
             log += "probe"
             return health
         }

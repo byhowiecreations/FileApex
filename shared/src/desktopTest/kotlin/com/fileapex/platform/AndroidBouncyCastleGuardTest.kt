@@ -1,10 +1,5 @@
 package com.fileapex.platform
 
-import com.fileapex.cloud.diagnostics.DiagnosticsCrypto
-import com.fileapex.domain.clipboard.ClipboardCrypto
-import com.fileapex.drop.ed25519PublicKey
-import com.fileapex.notice.NoticeVerifier
-import com.fileapex.security.tls.TlsIdentityFactory
 import java.io.File
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals

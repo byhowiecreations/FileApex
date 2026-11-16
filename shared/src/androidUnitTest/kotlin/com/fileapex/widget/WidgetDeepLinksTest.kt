@@ -4,7 +4,7 @@ import android.content.Intent
 import com.fileapex.domain.widget.WidgetActionTarget
 import com.fileapex.domain.widget.WidgetTargetBinding
 import com.fileapex.domain.widget.WidgetTargetBindingCodec
-import com.fileapex.platform.DirectShareShortcutCoordinator
+import com.fileapex.platform.DirectShareShortcutIds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -27,7 +27,7 @@ class WidgetDeepLinksTest {
 
         val browse = Intent()
             .putExtra(WidgetDeepLinks.EXTRA_WIDGET_ROUTE, WidgetDeepLinks.ROUTE_BROWSE_DEVICE)
-            .putExtra(DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID, "fx-peer-99")
+            .putExtra(DirectShareShortcutIds.EXTRA_TARGET_DEVICE_ID, "fx-peer-99")
         assertEquals(WidgetDeepLinks.MainDestination.BrowseDevice("fx-peer-99"), WidgetDeepLinks.parseMainDestination(browse))
 
         val emptyBrowse = Intent().putExtra(WidgetDeepLinks.EXTRA_WIDGET_ROUTE, WidgetDeepLinks.ROUTE_BROWSE_DEVICE)

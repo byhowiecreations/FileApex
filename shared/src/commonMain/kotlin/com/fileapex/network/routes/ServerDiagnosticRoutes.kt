@@ -36,6 +36,9 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
             runCatching { com.fileapex.di.FileApexServices.bulletinSyncEngine.latestChange() }.getOrNull()?.let { version ->
                 call.response.headers.append(com.fileapex.network.PeerHttpHeaders.BULLETIN_VERSION, version.toString())
             }
+            com.fileapex.domain.link.PairLinkState.partnerId().takeIf { it.isNotEmpty() }?.let {
+                call.response.headers.append(com.fileapex.network.PeerHttpHeaders.LINKED_TO, it)
+            }
             cancellableCatching { server.chainStateOf() }
                 .onFailure { server.onLog("chain state unavailable for a health answer", it) }
                 .getOrNull()?.let { call.response.headers.append(com.fileapex.membership.ChainStateField.HEADER, it.encode()) }

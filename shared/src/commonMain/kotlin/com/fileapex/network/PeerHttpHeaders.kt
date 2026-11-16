@@ -8,6 +8,12 @@ object PeerHttpHeaders {
     /** Latest change in the node's bulletin board, on its own clock; a peer behind it pulls the difference. */
     const val BULLETIN_VERSION = "X-FileApex-Bulletin-Version"
 
+    /** Sent on a paired peer's health answer: the device this node shows on Simple Home right now, so others skip it when they guess. */
+    const val LINKED_TO = "X-FileApex-Linked-To"
+
+    fun linkedTo(headers: Map<String, String>): String? =
+        headers[LINKED_TO.lowercase()]?.trim()?.takeIf { it.isNotEmpty() }
+
     fun bulletinVersion(headers: Map<String, String>): Long? =
         headers[BULLETIN_VERSION.lowercase()]?.toLongOrNull()
 

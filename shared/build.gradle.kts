@@ -310,6 +310,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     sourceSets.getByName("test").assets.srcDir("src/androidMain/assets")
 }
 

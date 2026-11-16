@@ -3,7 +3,6 @@ package com.fileapex.platform
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import java.awt.Window
-import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

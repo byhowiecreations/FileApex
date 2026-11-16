@@ -85,7 +85,6 @@ actual object BulletinApkUpdateCoordinator {
                     }
                 }
 
-                // Download / fetch attachment payload
                 val localPath = FileApexServices.noteRepository.fetchAttachmentIfNeeded(note.noteId)
                 if (localPath.isNullOrBlank() || !File(localPath).isFile) {
                     println("BulletinApkUpdateCoordinator: fetch failed for $fileName")
@@ -98,7 +97,6 @@ actual object BulletinApkUpdateCoordinator {
                     return@launch
                 }
 
-                // Prepare installer offer in PendingUpdateStore
                 val txId = "bb_${note.noteId}"
                 TransferTransactionJournal.recordCompleted(
                     transactionId = txId,
@@ -125,7 +123,6 @@ actual object BulletinApkUpdateCoordinator {
                 AppUpdateCoordinator.setPendingOffer(offer)
                 com.fileapex.data.bulletin.BulletinRemoteFilePurgeHandler.pruneStaleAutoUpdateApks()
 
-                // Dismiss progress notification
                 notificationManager?.cancel(NOTIFICATION_ID_PROGRESS)
 
                 // Release WakeLock strictly before launching installer intent
@@ -134,7 +131,6 @@ actual object BulletinApkUpdateCoordinator {
                     wakeLock = null
                 }
 
-                // Route into the established GitHub update installation manager
                 notifyAppUpdateAvailable(offer)
 
                 PendingUpdateStore.setNoteInstallStatus(note.noteId, "PENDING")
@@ -161,7 +157,6 @@ actual object BulletinApkUpdateCoordinator {
                 println("BulletinApkUpdateCoordinator: failed processing $fileName - ${error.message}")
                 error.printStackTrace()
             } finally {
-                // Ensure WakeLock is released
                 if (wakeLock?.isHeld == true) {
                     wakeLock.release()
                 }

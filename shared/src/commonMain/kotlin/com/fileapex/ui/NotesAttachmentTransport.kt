@@ -34,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.fileapex.data.bulletin.BulletinMediaHelper
 import com.fileapex.domain.preview.FilePreviewManager
 import com.fileapex.platform.decodeBase64Bytes
 import com.fileapex.platform.decodeImageBytes
@@ -81,9 +82,18 @@ suspend fun loadNotesAttachmentBitmap(path: String?, fileName: String?): ImageBi
         runCatching {
             val bytes = FilePreviewManager.readLocalBytesCapped(path, NOTES_THUMB_MAX_BYTES)
             decodeImageBytes(bytes, maxEdge = NOTES_THUMB_MAX_EDGE)
+        }.getOrNull() ?: runCatching {
+            // Over the read cap: the preview helper samples the file instead of reading it whole.
+            BulletinMediaHelper.buildImagePreviewBase64(path)
+                ?.let { decodeBase64Bytes(it) }
+                ?.let { decodeImageBytes(it, maxEdge = NOTES_THUMB_MAX_EDGE) }
         }.getOrNull()
     }
 }
+
+/** The embedded preview is tiny and always local to the message, so it comes first; the file is the fallback within its size cap. */
+suspend fun loadNotesBubbleThumbnail(path: String?, fileName: String?, previewBase64: String?): ImageBitmap? =
+    loadNotesInlinePreviewBitmap(previewBase64) ?: loadNotesAttachmentBitmap(path, fileName)
 
 suspend fun loadNotesInlinePreviewBitmap(previewBase64: String?): ImageBitmap? {
     if (previewBase64.isNullOrBlank()) return null

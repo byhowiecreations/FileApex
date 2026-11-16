@@ -8,7 +8,7 @@ import java.util.Base64
 
 actual object BulletinMediaHelper {
     private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
-    private const val MAX_DIMENSION = 320
+    private const val SAMPLE_TARGET_EDGE = 320
 
     actual fun isImageFile(fileName: String): Boolean {
         val ext = fileName.substringAfterLast('.', "").lowercase()
@@ -22,36 +22,32 @@ actual object BulletinMediaHelper {
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= MAX_DIMENSION && bounds.outHeight / (sample * 2) >= MAX_DIMENSION) sample *= 2
+        while (bounds.outWidth / (sample * 2) >= SAMPLE_TARGET_EDGE && bounds.outHeight / (sample * 2) >= SAMPLE_TARGET_EDGE) sample *= 2
         val decoded = BitmapFactory.decodeFile(
             file.absolutePath,
             BitmapFactory.Options().apply { inSampleSize = sample }
         ) ?: return null
-        val scale = minOf(MAX_DIMENSION.toFloat() / decoded.width, MAX_DIMENSION.toFloat() / decoded.height, 1f)
-        val scaled = if (scale < 1f) {
-            Bitmap.createScaledBitmap(
-                decoded,
-                (decoded.width * scale).toInt().coerceAtLeast(1),
-                (decoded.height * scale).toInt().coerceAtLeast(1),
-                true
-            )
-        } else {
-            decoded
-        }
         try {
-            val output = ByteArrayOutputStream()
-            var quality = 75
-            repeat(4) {
-                output.reset()
-                scaled.compress(Bitmap.CompressFormat.JPEG, quality, output)
-                if (output.size() <= BulletinBoardPolicy.IMAGE_PREVIEW_MAX_BYTES) {
-                    return Base64.getEncoder().encodeToString(output.toByteArray())
+            val fitted = BulletinPreviewFit.encode(BulletinBoardPolicy.IMAGE_PREVIEW_MAX_BYTES) { edge, quality ->
+                val scale = minOf(edge.toFloat() / decoded.width, edge.toFloat() / decoded.height, 1f)
+                val scaled = if (scale < 1f) {
+                    Bitmap.createScaledBitmap(
+                        decoded,
+                        (decoded.width * scale).toInt().coerceAtLeast(1),
+                        (decoded.height * scale).toInt().coerceAtLeast(1),
+                        true
+                    )
+                } else {
+                    decoded
                 }
-                quality -= 15
-            }
-            return null
+                try {
+                    ByteArrayOutputStream().also { scaled.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+                } finally {
+                    if (scaled !== decoded) scaled.recycle()
+                }
+            } ?: return null
+            return Base64.getEncoder().encodeToString(fitted.bytes)
         } finally {
-            if (scaled !== decoded) scaled.recycle()
             decoded.recycle()
         }
     }

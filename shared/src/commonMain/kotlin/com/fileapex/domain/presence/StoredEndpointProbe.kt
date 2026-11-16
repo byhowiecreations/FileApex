@@ -2,6 +2,9 @@ package com.fileapex.domain.presence
 
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.isDockerNode
+import com.fileapex.domain.link.HealthSignal
+import com.fileapex.domain.link.LinkedElsewhere
+import com.fileapex.domain.link.PhoneLink
 import com.fileapex.domain.notifications.NotificationCompanion
 import com.fileapex.domain.notifications.NotificationDebugLog
 import com.fileapex.domain.peer.PeerNodeState
@@ -42,7 +45,7 @@ internal class NodeStateClaims(private val now: () -> Long = TimeUtils::now) {
 }
 
 internal interface StoredEndpointHost {
-    suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, companion: Boolean?): FileApexClient.HealthProbe
+    suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, signal: HealthSignal?): FileApexClient.HealthProbe
     suspend fun recordEndpointMismatch(peerId: String, host: String, answeredAs: String)
     suspend fun markReachable(deviceId: String)
     fun onBulletinVersion(peer: PairedDeviceEntity, version: Long)
@@ -68,12 +71,13 @@ internal class StoredEndpointProbe(
             tailnetPeerIsOnline(TailscaleNodeRuntime.observedTailnetPeers(), peer.deviceId, peer.deviceName)
         val endpoint = resolvePeerEndpoint(peer, tailnetUsable) ?: return false
         repeat(attempts) { attempt ->
-            val companion = NotificationCompanion.pollValueFor(
+            val signal = NotificationCompanion.pollSignalFor(
                 peer.deviceId, peer.isDockerNode(), peer.os, peer.platform, peer.tlsPin
-            )
-            val probe = host.probeHealth(endpoint.host, endpoint.port, timeoutMs, companion)
+            ) ?: PhoneLink.pollSignalFor(peer)
+            val probe = host.probeHealth(endpoint.host, endpoint.port, timeoutMs, signal)
             val reached = probe.reached
-            if (companion != null) NotificationDebugLog.log("sweep grant poll to ${NotificationDebugLog.short(peer.deviceId)} value=$companion reached=$reached")
+            if (signal != null) NotificationDebugLog.log("sweep link poll to ${NotificationDebugLog.short(peer.deviceId)} ${signal.query()} reached=$reached")
+            if (reached) LinkedElsewhere.shared.note(peer.deviceId, probe.linkedTo)
             val answeredAs = probe.respondedAs
             if (reached && answeredAs != null && answeredAs != peer.deviceId) {
                 // Someone answers at this address, but not the device stored for it.

@@ -44,4 +44,46 @@ class SimpleActiveDeviceTest {
     fun noDevicesMeansNoActiveDevice() {
         assertNull(pickActiveDevice(emptyList(), "", selfIsPhone = true))
     }
+
+    private val amanda = row("amanda", "macos")
+
+    @Test
+    fun aPhoneFollowsTheComputerThatIsShowingItInsteadOfTheFirstOnlineComputer() {
+        assertEquals("macbook", pickActiveDevice(listOf(amanda, mac, phone), "", selfIsPhone = true, followingComputerId = "macbook")?.deviceId)
+    }
+
+    @Test
+    fun withoutAFollowedComputerTheFirstOnlineComputerIsStillUsed() {
+        assertEquals("amanda", pickActiveDevice(listOf(amanda, mac, phone), "", selfIsPhone = true)?.deviceId)
+    }
+
+    @Test
+    fun aChosenDeviceBeatsTheFollowedComputer() {
+        assertEquals("amanda", pickActiveDevice(listOf(amanda, mac, phone), "amanda", selfIsPhone = true, followingComputerId = "macbook")?.deviceId)
+    }
+
+    @Test
+    fun aFollowedComputerStaysEvenOfflineAndAnUnknownOneIsIgnored() {
+        val offlineMac = row("macbook", "macos", online = false)
+        assertEquals("macbook", pickActiveDevice(listOf(amanda, offlineMac, phone), "", selfIsPhone = true, followingComputerId = "macbook")?.deviceId)
+        assertEquals("amanda", pickActiveDevice(listOf(amanda, phone), "", selfIsPhone = true, followingComputerId = "gone")?.deviceId)
+    }
+
+    @Test
+    fun aComputerFollowsThePhoneThatAnnouncedItself() {
+        val honor = row("honor", "android")
+        assertEquals("honor", pickActiveDevice(listOf(mac, phone, honor), "", selfIsPhone = false, followingComputerId = "honor")?.deviceId)
+    }
+
+    @Test
+    fun aGuessSkipsPeersThatAreLinkedElsewhere() {
+        val honor = row("honor", "android")
+        assertEquals("honor", pickActiveDevice(listOf(mac, phone, honor), "", selfIsPhone = false, excludedIds = setOf("moto-signature"))?.deviceId)
+        assertEquals("macbook", pickActiveDevice(listOf(amanda, mac, phone), "", selfIsPhone = true, excludedIds = setOf("amanda"))?.deviceId)
+    }
+
+    @Test
+    fun ifEverythingIsExcludedTheListIsNotEmptied() {
+        assertEquals("moto-signature", pickActiveDevice(listOf(mac, phone), "", selfIsPhone = false, excludedIds = setOf("moto-signature"))?.deviceId)
+    }
 }

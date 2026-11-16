@@ -49,7 +49,6 @@ fun EmptyDevicesQuickStartCard(
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Quick Start Card
         val cleanModern = isFileApexCleanModern()
         val isFlux = LocalAppTheme.current.traits.fluxSurfaces
         Card(
@@ -125,7 +124,6 @@ fun EmptyDevicesQuickStartCard(
             }
         }
 
-        // Demo Mode Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),

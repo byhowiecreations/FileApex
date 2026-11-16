@@ -234,7 +234,7 @@ internal fun StorageToolsScreen(
                     else Modifier.fillMaxHeight().widthIn(max = ListMaxWidth).fillMaxWidth()
                     Column(pageModifier) {
                         when (val p = page) {
-                            ToolsPage.Home -> ToolsHome(current, trash, wide, columns, { page = it }, onOpenFolder)
+                            ToolsPage.Home -> ToolsHome(current, trash, wide, columns) { page = it }
                             ToolsPage.Largest -> FileListPage(current.largest, scope, ::reload, onError = { error = it })
                             is ToolsPage.Category -> FileListPage(
                                 current.byCategory[p.category].orEmpty(), scope, ::reload, onError = { error = it }

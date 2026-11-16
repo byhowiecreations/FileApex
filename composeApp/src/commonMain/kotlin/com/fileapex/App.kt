@@ -33,7 +33,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.data.settings.backgroundBrush
-import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.ui.theme.JadedSteelWash

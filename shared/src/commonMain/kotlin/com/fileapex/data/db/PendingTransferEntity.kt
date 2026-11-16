@@ -14,9 +14,7 @@ data class PendingTransferEntity(
     @PrimaryKey val id: String,
     /** Epoch millis when queued (UTC). */
     val createdAtEpochMs: Long,
-    /** [PendingTransferStatus.name] */
     val status: String,
-    /** [QueuedTransferSourceKind.name] */
     val sourceKind: String,
     /** JSON payload, root paths or serialized [QueuedSourceSnapshot] list. */
     val sourceJson: String,

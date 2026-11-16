@@ -11,28 +11,14 @@ import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
-import com.fileapex.domain.presence.RouteUse
 import com.fileapex.domain.browse.BrowseListing
 import com.fileapex.domain.browse.BrowserCoordinator
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.preview.FilePreviewManager
 import com.fileapex.domain.transfer.ExplorerTransferManager
-import com.fileapex.platform.DownloadsPaths
-import com.fileapex.platform.decodeImageBytes
-import com.fileapex.platform.decodeLocalImageFile
-import com.fileapex.platform.DirectoryWatch
-import com.fileapex.platform.moveLocalEntryInto
-import com.fileapex.platform.renameLocalEntry
-import com.fileapex.platform.trashLocalEntries
-import com.fileapex.platform.unzipLocalEntry
-import com.fileapex.platform.watchLocalDirectory
-import com.fileapex.platform.zipLocalEntry
-import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.util.cancellableCatching
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +26,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
 

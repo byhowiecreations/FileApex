@@ -2,6 +2,7 @@ package com.fileapex.ui.adaptive
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import com.fileapex.ui.tools.FavoritesHeaderButton
 import com.fileapex.ui.tools.ToolsHeaderButton
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexTiledChrome
@@ -93,6 +94,12 @@ internal fun RowScope.ExplorerHeaderCommandButtons(commands: ExplorerHeaderComma
                     text = stringRes("select"),
                     color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
                     fontWeight = FontWeight.SemiBold
+                )
+            }
+            commands.onOpenFavorites?.let { onOpenFavorites ->
+                FavoritesHeaderButton(
+                    onClick = onOpenFavorites,
+                    tint = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor()
                 )
             }
             commands.onOpenTools?.let { onOpenTools ->

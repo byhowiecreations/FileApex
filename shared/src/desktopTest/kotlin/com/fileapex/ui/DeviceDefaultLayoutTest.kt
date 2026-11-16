@@ -4,7 +4,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Density
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.devices.resolveFreestyleNodePositions
-import com.fileapex.ui.kinetic.kineticStaticNodePositions
 import com.fileapex.ui.kinetic.resolveKineticNodePositions
 import kotlin.math.PI
 import kotlin.math.abs

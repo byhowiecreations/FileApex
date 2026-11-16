@@ -12,7 +12,6 @@ import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DevicesUiState
-import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.PendingPinUnlock
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.util.TimeUtils
@@ -21,7 +20,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

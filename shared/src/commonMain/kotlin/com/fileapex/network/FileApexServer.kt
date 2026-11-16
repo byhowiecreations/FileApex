@@ -212,7 +212,7 @@ class FileApexServer(
                             }
                         }
                     }
-                    recordCompanionGrant(call)
+                    recordPairLink(call)
                     rememberInboundPeer(call)
                 }
 
@@ -339,15 +339,6 @@ class FileApexServer(
      * Any request from a paired computer on mutual TLS may carry `companion`: 1 renews this phone's
      * notification grant, 0 stands it down. Plain HTTP and unpaired senders are ignored.
      */
-    private suspend fun recordCompanionGrant(call: ApplicationCall) {
-        val value = call.request.queryParameters["companion"] ?: return
-        if (com.fileapex.cloud.currentPlatformLabel() != "Android") return
-        val computerId = bridgedPeer(call)?.deviceId ?: return
-        val computer = FileApexServices.deviceRepository.getDevice(computerId) ?: return
-        if (computer.isRemoved || !com.fileapex.domain.peer.PeerPlatform.isDesktop(computer.os, computer.platform)) return
-        com.fileapex.domain.notifications.NotificationCompanionGrant.record(computer.deviceId, active = value == "1")
-    }
-
     private data class InboundPeerWrite(val ip: String, val epochMs: Long)
 
     private val inboundPeerWrites = java.util.concurrent.ConcurrentHashMap<String, InboundPeerWrite>()

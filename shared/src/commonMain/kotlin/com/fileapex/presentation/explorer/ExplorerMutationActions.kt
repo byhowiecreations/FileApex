@@ -123,7 +123,7 @@ internal class ExplorerMutationActions(
             }
             outcome.onSuccess {
                 _uiState.update {
-                    it.copy(
+                    it.afterDeleting(items.map { gone -> gone.absolutePath }).copy(
                         isSelectionMode = false,
                         selectedFileIds = emptySet(),
                         canDownloadSelection = false,
@@ -163,7 +163,10 @@ internal class ExplorerMutationActions(
                         canPaste = TransferClipboard.hasContent()
                     )
                 }
-                if (finished) afterMutation()
+                if (finished) {
+                    _uiState.update { it.afterDeleting(items.map { gone -> gone.absolutePath }) }
+                    afterMutation()
+                }
             }.onFailure { error ->
                 _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "trash_failed")) }
             }

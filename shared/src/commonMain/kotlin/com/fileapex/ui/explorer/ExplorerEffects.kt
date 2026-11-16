@@ -30,7 +30,7 @@ internal fun ExplorerScope.ExplorerEffects() {
     LaunchedEffect(state.isRefreshing, viewModel) {
         onRegisterRefresh?.invoke(state.isRefreshing, viewModel::refresh)
     }
-    LaunchedEffect(state.isSelectionMode, state.canPaste, viewModel, toolsAvailable) {
+    LaunchedEffect(state.isSelectionMode, state.canPaste, viewModel, toolsAvailable, favoritesAvailable) {
         onRegisterHeaderCommands?.invoke(
             if (state.isSelectionMode) {
                 null
@@ -38,7 +38,8 @@ internal fun ExplorerScope.ExplorerEffects() {
                 ExplorerHeaderCommands(
                     onSelect = viewModel::enterSelectionMode,
                     onPaste = if (state.canPaste) viewModel::pasteHere else null,
-                    onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
+                    onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null,
+                    onOpenFavorites = if (favoritesAvailable) ({ favoritesOpen = true }) else null
                 )
             }
         )

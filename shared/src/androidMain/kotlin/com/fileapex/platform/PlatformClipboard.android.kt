@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.fileapex.data.settings.androidAppContextOrNull
+import com.fileapex.domain.clipboard.ClipboardImageStorage
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 import com.fileapex.domain.clipboard.ClipboardImageEnvelope
 import android.graphics.Bitmap
@@ -148,10 +149,7 @@ actual object PlatformClipboard {
 
     actual fun applyRemoteImage(bytes: ByteArray, mimeType: String, sourceDeviceName: String) {
         val context = androidAppContextOrNull() ?: return
-        val cacheFolder = File(context.cacheDir, "note-attachments").apply { mkdirs() }
-        val ext = if (mimeType.contains("png")) "png" else "jpg"
-        val target = File(cacheFolder, "clipboard-remote.$ext")
-        runCatching { target.writeBytes(bytes) }.getOrNull() ?: return
+        val target = ClipboardImageStorage.writeClipboardCopy(File(context.cacheDir, "note-attachments").path, mimeType, bytes) ?: return
         val uri = runCatching {
             FileProvider.getUriForFile(context, FileApexFileProvider.authority(context), target)
         }.getOrNull() ?: return
@@ -227,6 +225,20 @@ actual object PlatformClipboard {
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        val tapPendingIntent = if (isWebUrl(text)) {
+            // A map link opens the phone's maps app when there is one; the notification cannot fall back after the tap.
+            val geo = RichHandoff.mapTarget(text)?.let(RichHandoff::geoUri)
+            val canOpenGeo = geo != null &&
+                Intent(Intent.ACTION_VIEW, Uri.parse(geo)).resolveActivity(context.packageManager) != null
+            val openIntent = Intent(Intent.ACTION_VIEW, Uri.parse(RichHandoff.openTarget(text, canOpenGeo))).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            PendingIntent.getActivity(context, notificationId + 1, openIntent, flags)
+        } else {
+            copyPendingIntent
+        }
+
         val builder = NotificationCompat.Builder(context, AndroidNotificationChannels.NOTE_MESSAGES)
             .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
             .setLargeIcon(
@@ -238,31 +250,10 @@ actual object PlatformClipboard {
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(copyPendingIntent)
-            .addAction(
-                0,
-                AppI18n.t("copy"),
-                copyPendingIntent
-            )
+            .setContentIntent(tapPendingIntent)
+            .addAction(0, AppI18n.t("copy"), copyPendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-
-        if (isWebUrl(text)) {
-            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(text)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            val browserPending = PendingIntent.getActivity(
-                context,
-                notificationId + 1,
-                browserIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
-            )
-            builder.addAction(
-                0,
-                AppI18n.t("open"),
-                browserPending
-            )
-        }
 
         runCatching {
             manager.notify(ClipboardActionReceiver.CLIPBOARD_NOTIFICATION_TAG, notificationId, builder.build())
@@ -272,11 +263,17 @@ actual object PlatformClipboard {
     actual fun openUrlInDefaultBrowser(url: String) {
         val context = androidAppContextOrNull() ?: return
         val launch = Runnable {
-            runCatching {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
+            fun view(target: String): Boolean = try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } catch (error: android.content.ActivityNotFoundException) {
+                false
+            } catch (error: SecurityException) {
+                false
             }
+            // A map link opens the phone's own maps app; a link no maps app takes falls back to the browser.
+            val geo = RichHandoff.mapTarget(url)?.let(RichHandoff::geoUri)
+            if (geo == null || !view(geo)) view(RichHandoff.canonicalVideoUrl(url))
         }
         if (Looper.myLooper() == Looper.getMainLooper()) launch.run() else Handler(Looper.getMainLooper()).post(launch)
     }

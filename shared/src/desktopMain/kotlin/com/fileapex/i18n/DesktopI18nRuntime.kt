@@ -1,6 +1,5 @@
 package com.fileapex.i18n
 
-import com.fileapex.platform.DesktopAwtTrayCoordinator
 import com.fileapex.platform.DesktopMacTrayBridge
 import com.fileapex.platform.DesktopPlatformPaths
 import java.io.File

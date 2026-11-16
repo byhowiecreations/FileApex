@@ -24,7 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.OpenWith
@@ -51,7 +50,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.fileapex.data.settings.LocalThemeIconStyle
 import com.fileapex.friends.FriendsHub
-import com.fileapex.friends.ui.friendFiles
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.ui.DeviceEntryIcon
@@ -92,7 +90,6 @@ internal fun FreestyleScope.FreestyleFilesWindow() {
                         FreestyleFilesWindowBody(this@FreestyleFilesWindow)
                     }
 
-                    // Resize Grip on Bottom-Right Corner
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -267,7 +264,6 @@ internal fun ColumnScope.FreestyleFilesWindowBody(scope: FreestyleScope) {
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                // Category 1: Local Files
                 Text(
                     text = "LOCAL FILES",
                     style = MaterialTheme.typography.labelSmall.copy(
@@ -320,7 +316,6 @@ internal fun ColumnScope.FreestyleFilesWindowBody(scope: FreestyleScope) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Category 2: Remote Devices
                 Text(
                     text = "REMOTE DEVICES",
                     style = MaterialTheme.typography.labelSmall.copy(

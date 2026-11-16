@@ -79,8 +79,13 @@ object ClipboardImageStorage {
                 tmp.delete()
             }
             target.absolutePath
-        } catch (_: Throwable) {
+        } catch (error: java.io.IOException) {
             tmp.delete()
+            println("ClipboardImageStorage: could not save a received image (${error::class.simpleName})")
+            null
+        } catch (error: SecurityException) {
+            tmp.delete()
+            println("ClipboardImageStorage: could not save a received image (${error::class.simpleName})")
             null
         }
     }
@@ -95,6 +100,34 @@ object ClipboardImageStorage {
             .take(40)
         return cleaned.ifEmpty { "device" }
     }
+
+    /**
+     * The copy of a received image that is handed to the system clipboard. Other apps read it through a content URI, so
+     * it cannot be sealed. One copy is kept: written atomically, replacing the last, whatever its type.
+     */
+    fun writeClipboardCopy(cacheDir: String, mimeType: String, bytes: ByteArray): File? {
+        if (bytes.isEmpty()) return null
+        val dir = File(cacheDir)
+        if (!dir.isDirectory && !dir.mkdirs()) return null
+        val target = File(dir, "$CLIPBOARD_COPY_STEM.${extensionForMime(mimeType)}")
+        val tmp = File(dir, ".${target.name}.tmp")
+        return try {
+            tmp.writeBytes(bytes)
+            java.nio.file.Files.move(tmp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            dir.listFiles { file -> file.name.startsWith("$CLIPBOARD_COPY_STEM.") && file != target }?.forEach { it.delete() }
+            target
+        } catch (error: java.io.IOException) {
+            tmp.delete()
+            println("ClipboardImageStorage: could not write the clipboard copy (${error::class.simpleName})")
+            null
+        } catch (error: SecurityException) {
+            tmp.delete()
+            println("ClipboardImageStorage: could not write the clipboard copy (${error::class.simpleName})")
+            null
+        }
+    }
+
+    private const val CLIPBOARD_COPY_STEM = "clipboard-remote"
 
     private fun extensionForMime(mimeType: String): String {
         val lower = mimeType.lowercase()

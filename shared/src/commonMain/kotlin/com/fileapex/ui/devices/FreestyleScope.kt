@@ -1,7 +1,6 @@
 package com.fileapex.ui.devices
 
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -113,7 +112,6 @@ internal fun rememberFreestyleScope(
             mutableStateOf(Offset(initX, initY))
         }
 
-        // Draggable Options Button per layout mode
         val savedOptionsFractionX = when (freestyleMode) {
             FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardOptionsX
             FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalOptionsX ?: persistedCardOptionsX

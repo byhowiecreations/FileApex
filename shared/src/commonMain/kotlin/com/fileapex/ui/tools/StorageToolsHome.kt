@@ -78,8 +78,7 @@ internal fun ToolsHome(
     trash: List<TrashedEntry>,
     wide: Boolean,
     columns: Int,
-    onNavigate: (ToolsPage) -> Unit,
-    onOpenFolder: (String) -> Unit,
+    onNavigate: (ToolsPage) -> Unit
 ) {
     val tiles = homeTiles(scan, trash)
     if (wide) {
@@ -89,7 +88,6 @@ internal fun ToolsHome(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 UsageCard(scan) { onNavigate(ToolsPage.Largest) }
-                FavoritesSection(onOpenFolder)
                 Spacer(Modifier.height(24.dp))
             }
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
@@ -104,7 +102,6 @@ internal fun ToolsHome(
         ) {
             UsageCard(scan) { onNavigate(ToolsPage.Largest) }
             TileGrid(tiles, columns, onNavigate)
-            FavoritesSection(onOpenFolder)
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -211,64 +208,6 @@ private fun CategoryTile(icon: ExplorerIcon, label: String, summary: String, mod
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-        }
-    }
-}
-
-@Composable
-private fun FavoritesSection(onOpenFolder: (String) -> Unit) {
-    val favorites by FileApexServices.settings.explorerFavorites.collectAsState()
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-            Icon(explorerIcon(ExplorerIcon.FavoriteOn), contentDescription = null, tint = RingUsed, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(stringRes("storage_favorites"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        }
-        if (favorites.isEmpty()) {
-            Text(
-                stringRes("storage_no_favorites"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        favorites.forEach { path ->
-            val info = remember(path) { localPathInfo(path) }
-            val name = path.trimEnd('/').substringAfterLast('/').ifBlank { path }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable {
-                        when {
-                            info == null -> Unit
-                            info.isDirectory -> onOpenFolder(path)
-                            else -> openLocalFile(path, name)
-                        }
-                    }
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    explorerIcon(if (info?.isDirectory == false) ExplorerIcon.File else ExplorerIcon.Folder),
-                    contentDescription = null,
-                    tint = if (info == null) MaterialTheme.colorScheme.error else RingUsed,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        path.substringBeforeLast('/'),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                IconButton(onClick = { FileApexServices.settings.toggleExplorerFavorite(path) }) {
-                    Icon(explorerIcon(ExplorerIcon.FavoriteOn), contentDescription = stringRes("unfavorite"), tint = RingUsed)
-                }
-            }
         }
     }
 }

@@ -8,6 +8,7 @@ import com.fileapex.presentation.ExplorerSortMode
 
 internal class ExplorerLive {
     var toolsOpen by mutableStateOf(false)
+    var favoritesOpen by mutableStateOf(false)
     var pinText by mutableStateOf("")
     var sortMode by mutableStateOf(ExplorerSortMode.Name)
     val snackbarHostState = SnackbarHostState()

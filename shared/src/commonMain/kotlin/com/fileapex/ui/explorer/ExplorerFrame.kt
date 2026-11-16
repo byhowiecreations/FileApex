@@ -10,6 +10,7 @@ import com.fileapex.ui.ExplorerPaneFocus
 internal class ExplorerFrame(
     val state: ExplorerUiState,
     val toolsAvailable: Boolean,
+    val favoritesAvailable: Boolean,
     val showCopyFabs: Boolean,
     val topBarTitle: String,
     val paneFocus: ExplorerPaneFocus?,

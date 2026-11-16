@@ -66,17 +66,7 @@ import com.fileapex.ui.theme.KineticStyleLook
 @Composable
 internal fun ExplorerScope.ExplorerBody(dropHighlight: ExplorerDropHighlight, openFolder: String, acceptDrop: (List<String>) -> Unit) {
     with(inputs) { with(frame) { with(live) {
-        if (toolsOpen && toolsAvailable) {
-            StorageToolsScreen(
-                onCopyItem = viewModel::copyItem,
-                onSendItem = viewModel::sendItemToDevices,
-                onClose = { toolsOpen = false },
-                onOpenFolder = { path ->
-                    toolsOpen = false
-                    viewModel.openPath(path)
-                }
-            )
-        } else {
+        if (!ExplorerOpenPage()) {
         val thumbnailFetcher = rememberRemoteThumbnailFetcher(target)
         CompositionLocalProvider(
             LocalExplorerDropHighlight provides dropHighlight,
@@ -159,6 +149,7 @@ internal fun ExplorerScope.ExplorerHeader() {
                         embeddedInCompactShell = true,
                         viewModel = viewModel,
                         onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null,
+                        onOpenFavorites = if (favoritesAvailable) ({ favoritesOpen = true }) else null,
                         onPickFiles = onPickFiles
                     )
                 }

@@ -9,7 +9,6 @@ import com.fileapex.domain.preview.FilePreviewManager
 import com.fileapex.platform.openLocalFile
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
-import com.fileapex.presentation.ExplorerViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update

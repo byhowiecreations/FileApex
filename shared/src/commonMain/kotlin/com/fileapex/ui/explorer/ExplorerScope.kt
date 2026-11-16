@@ -41,6 +41,7 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
         isPicker = onPickFiles != null,
         supported = storageToolsSupported()
     )
+    val favoritesAvailable = ExplorerFavoritesPolicy.isAvailable(isLocal = target is BrowseTarget.Local, isPicker = onPickFiles != null)
     val fabMode = ExplorerFabMode.of(onPickFiles != null, state.isSelectionMode, state.selectedFileIds.size, state.isMultiCopying)
     val showCopyFabs = fabMode != ExplorerFabMode.None
     val topBarTitle = titleOverride
@@ -88,7 +89,7 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
     val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
         val frame = ExplorerFrame(
-            state, toolsAvailable, showCopyFabs, topBarTitle, paneFocus, splitOpen, folderPane, backEnabled, visibleDirectories, visibleFiles,
+            state, toolsAvailable, favoritesAvailable, showCopyFabs, topBarTitle, paneFocus, splitOpen, folderPane, backEnabled, visibleDirectories, visibleFiles,
             openActionLabel, showInFolderLabel, ownedFocus, jadedOrbital, filterQueryState, searchSubfoldersState, canSearchSubfolders
         )
         return ExplorerScope(inputs, live, frame)
@@ -98,6 +99,10 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
 internal object ExplorerToolsPolicy {
     fun isToolsAvailable(isLocal: Boolean, isPicker: Boolean, supported: Boolean): Boolean =
         isLocal && !isPicker && supported
+}
+
+internal object ExplorerFavoritesPolicy {
+    fun isAvailable(isLocal: Boolean, isPicker: Boolean): Boolean = isLocal && !isPicker
 }
 
 internal object ExplorerSplitPolicy {

@@ -1245,6 +1245,9 @@ Toca el hub central (+) para emparejar</string>
     <string name="locate_phone_cancel">Cancelar</string>
     <string name="simple_no_device_title">Ningún dispositivo conectado</string>
     <string name="simple_no_device_body">Empareja un dispositivo para explorar sus archivos.</string>
+    <string name="simple_remote_offline_title">%1$s está sin conexión</string>
+    <string name="simple_remote_offline_body">Esperando a que vuelva. FileApex lo mantiene como tu dispositivo conectado.</string>
+    <string name="simple_remote_failed_title">No se pudo abrir %1$s</string>
     <string name="simple_other_themes_title">Más temas disponibles</string>
     <string name="simple_other_themes_body">Échale un vistazo a los otros temas en Ajustes; pueden mejorar tu flujo de trabajo a medida que crece tu lista de dispositivos.</string>
     <string name="simple_got_it">Entendido</string>

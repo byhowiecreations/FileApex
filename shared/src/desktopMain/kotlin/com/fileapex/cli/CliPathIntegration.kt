@@ -23,11 +23,9 @@ object CliPathIntegration {
             localBin.mkdirs()
         }
 
-        // Detect current app executable or bundle
         val executable = resolveMacExecutable() ?: return
         val targetScript = File(localBin, "fileapex")
 
-        // Write launcher script or symlink
         val scriptContent = """
             |#!/bin/sh
             |exec "$executable" "$@"

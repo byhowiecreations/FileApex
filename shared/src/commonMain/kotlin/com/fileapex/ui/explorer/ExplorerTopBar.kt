@@ -62,6 +62,7 @@ internal fun ExplorerScope.ExplorerTopBar() {
                         viewModel = viewModel,
                         hasExternalRefresh = false,
                         onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null,
+                        onOpenFavorites = if (favoritesAvailable) ({ favoritesOpen = true }) else null,
                         onPickFiles = onPickFiles
                     )
                 },

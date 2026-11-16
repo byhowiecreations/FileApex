@@ -6,7 +6,6 @@ import com.fileapex.network.PeerUnreachableException
 import com.fileapex.network.InboxTarget
 import com.fileapex.platform.fastScanDirectory
 import com.fileapex.platform.generateDeviceId
-import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.currentCoroutineContext

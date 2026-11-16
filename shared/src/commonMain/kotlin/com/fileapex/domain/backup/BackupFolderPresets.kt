@@ -1,6 +1,5 @@
 package com.fileapex.domain.backup
 
-import com.fileapex.platform.generateDeviceId
 import com.fileapex.util.PathUtils
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -84,7 +83,7 @@ object BackupFolderPresets {
         cameraCandidates.firstOrNull(directoryExists)?.let {
             found += DetectedPreset(PresetKind.Photos, it)
         }
-        // Pixel/Stock uses Pictures/Screenshots; Samsung, Xiaomi, Huawei, and Oppo/OnePlus use DCIM/Screenshots.
+        // Pixel/Stock uses Pictures/Screenshots; others may use DCIM/Screenshots.
         val screenshotCandidates = listOf("$root/Pictures/Screenshots", "$root/DCIM/Screenshots")
         screenshotCandidates.firstOrNull(directoryExists)?.let {
             found += DetectedPreset(PresetKind.Screenshots, it)

@@ -2,8 +2,6 @@ package com.fileapex.ui.settings
 
 import com.fileapex.ui.SettingsMenuIds
 import com.fileapex.di.FileApexServices
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.material3.Switch

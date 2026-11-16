@@ -13,9 +13,7 @@ expect object ServiceWatchdog {
     /** Schedule a near-term watchdog retry (sticky restart / blocked background FGS). */
     fun scheduleImmediateAlarmIfEnabled()
 
-    /** Cancel pending watchdog alarms. */
     fun cancelAlarm()
 
-    /** Apply preference toggle (schedule or cancel). */
     fun onPreferenceChanged(enabled: Boolean)
 }

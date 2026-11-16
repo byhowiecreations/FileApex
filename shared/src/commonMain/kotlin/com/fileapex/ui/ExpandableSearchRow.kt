@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -145,52 +146,7 @@ internal fun ExpandableSearchPillRow(
                 Spacer(modifier = Modifier.width(gap))
             }
 
-            val haze = if (useJadedStyle) LocalJadedHazeState.current else null
-            val pillVisualModifier = when {
-                useJadedStyle -> {
-                    Modifier
-                        .then(
-                            if (haze != null) {
-                                Modifier.hazeEffect(
-                                    state = haze,
-                                    style = HazeStyle(
-                                        backgroundColor = Color.Transparent,
-                                        tints = listOf(HazeTint(Color.White.copy(alpha = 0.09f))),
-                                        blurRadius = 24.dp,
-                                        noiseFactor = 0.04f
-                                    )
-                                )
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .background(Color.White.copy(alpha = 0.09f))
-                        .border(
-                            width = if (showField) 1.5.dp else 1.dp,
-                            brush = Brush.verticalGradient(
-                                0f to Color.White.copy(alpha = if (showField) 0.45f else 0.28f),
-                                1f to Color.White.copy(alpha = if (showField) 0.18f else 0.10f)
-                            ),
-                            shape = pill
-                        )
-                }
-                useLightChrome -> {
-                    Modifier
-                        .background(Color.White.copy(alpha = if (showField) 0.14f else 0.08f))
-                        .border(
-                            width = if (showField) 1.5.dp else 1.dp,
-                            color = Color.White.copy(alpha = if (showField) 0.9f else 0.45f),
-                            shape = pill
-                        )
-                }
-                else -> {
-                    Modifier.border(
-                        width = if (showField) 2.dp else 1.dp,
-                        color = if (showField) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        shape = pill
-                    )
-                }
-            }
+            val pillVisualModifier = searchPillLook(showField, useJadedStyle, useLightChrome, pill)
 
             Row(
                 modifier = searchPillModifier
@@ -275,6 +231,57 @@ internal fun ExpandableSearchPillRow(
                     }
                 }
             }
+        }
+    }
+}
+
+/** The border and fill of the search pill for the plain, light-chrome and Jaded looks. */
+@Composable
+private fun searchPillLook(showField: Boolean, useJadedStyle: Boolean, useLightChrome: Boolean, pill: Shape): Modifier {
+    val haze = if (useJadedStyle) LocalJadedHazeState.current else null
+    return when {
+        useJadedStyle -> {
+            Modifier
+                .then(
+                    if (haze != null) {
+                        Modifier.hazeEffect(
+                            state = haze,
+                            style = HazeStyle(
+                                backgroundColor = Color.Transparent,
+                                tints = listOf(HazeTint(Color.White.copy(alpha = 0.09f))),
+                                blurRadius = 24.dp,
+                                noiseFactor = 0.04f
+                            )
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+                .background(Color.White.copy(alpha = 0.09f))
+                .border(
+                    width = if (showField) 1.5.dp else 1.dp,
+                    brush = Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = if (showField) 0.45f else 0.28f),
+                        1f to Color.White.copy(alpha = if (showField) 0.18f else 0.10f)
+                    ),
+                    shape = pill
+                )
+        }
+        useLightChrome -> {
+            Modifier
+                .background(Color.White.copy(alpha = if (showField) 0.14f else 0.08f))
+                .border(
+                    width = if (showField) 1.5.dp else 1.dp,
+                    color = Color.White.copy(alpha = if (showField) 0.9f else 0.45f),
+                    shape = pill
+                )
+        }
+        else -> {
+            Modifier.border(
+                width = if (showField) 2.dp else 1.dp,
+                color = if (showField) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                shape = pill
+            )
         }
     }
 }

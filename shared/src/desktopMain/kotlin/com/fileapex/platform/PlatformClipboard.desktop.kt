@@ -144,7 +144,7 @@ actual object PlatformClipboard {
             if (Desktop.isDesktopSupported()) {
                 val desktop = Desktop.getDesktop()
                 if (desktop.isSupported(Desktop.Action.BROWSE)) {
-                    desktop.browse(URI(url))
+                    desktop.browse(URI(RichHandoff.canonicalVideoUrl(url)))
                 }
             }
         }

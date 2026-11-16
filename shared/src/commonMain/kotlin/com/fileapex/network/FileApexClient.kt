@@ -242,8 +242,8 @@ class FileApexClient(
         host: String,
         port: Int,
         timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS,
-        companion: Boolean? = null
-    ): Boolean = probeHealth(host, port, timeoutMs, companion).reached
+        signal: com.fileapex.domain.link.HealthSignal? = null
+    ): Boolean = probeHealth(host, port, timeoutMs, signal).reached
 
     /** [respondedAs] is the device id the answering node reported; null from builds that do not report one. */
     data class HealthProbe(
@@ -251,24 +251,27 @@ class FileApexClient(
         val respondedAs: String? = null,
         val membershipVersion: Long? = null,
         val bulletinVersion: Long? = null,
-        val chainState: com.fileapex.membership.ChainStateField? = null
+        val chainState: com.fileapex.membership.ChainStateField? = null,
+        /** The device the answering node says it shows on Simple Home, or null. */
+        val linkedTo: String? = null
     )
 
     suspend fun probeHealth(
         host: String,
         port: Int,
         timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS,
-        companion: Boolean? = null
+        signal: com.fileapex.domain.link.HealthSignal? = null
     ): HealthProbe {
         if (!PeerLanHttpPolicy.canRoute(host)) return HealthProbe(false)
         // The phone applies this only when the poll reached it over TLS from a paired computer.
-        val healthPath = if (companion == null) "/api/v1/health" else "/api/v1/health?companion=${if (companion) 1 else 0}"
+        val healthPath = if (signal == null) "/api/v1/health" else "/api/v1/health?${signal.query()}"
         val shown = chainStateProvider?.invoke()?.let { "&${com.fileapex.membership.ChainStateField.QUERY}=${it.encode()}" }.orEmpty()
         val health = peerHttpGet(host, port, withSenderQuery(healthPath) + shown, timeoutMs) ?: return HealthProbe(false)
         checkRevocation(host, port, health)
         if (health.statusCode in 200..299) return HealthProbe(
             true, health.body.respondedAsId(), PeerHttpHeaders.membershipVersion(health.headers),
-            PeerHttpHeaders.bulletinVersion(health.headers), PeerHttpHeaders.chainState(health.headers)
+            PeerHttpHeaders.bulletinVersion(health.headers), PeerHttpHeaders.chainState(health.headers),
+            PeerHttpHeaders.linkedTo(health.headers)
         )
         return HealthProbe(false)
     }
@@ -375,8 +378,7 @@ class FileApexClient(
     /** Every request to the connected phone renews its notification grant. */
     private fun withCompanion(pathWithQuery: String, host: String, port: Int): String {
         val id = com.fileapex.security.tls.PeerTlsRoutes.lookup(host, port)?.deviceId ?: return pathWithQuery
-        if (!com.fileapex.domain.notifications.NotificationCompanion.isCompanion(id)) return pathWithQuery
-        return pathWithQuery + (if (pathWithQuery.contains('?')) "&" else "?") + "companion=1"
+        return com.fileapex.domain.notifications.NotificationCompanion.renewal(pathWithQuery, id)
     }
 
     internal fun withSenderQuery(pathWithQuery: String): String {

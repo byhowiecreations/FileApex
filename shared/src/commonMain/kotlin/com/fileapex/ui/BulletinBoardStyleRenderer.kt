@@ -119,12 +119,9 @@ fun iosBubbleShape(isMine: Boolean): Shape {
             val tailW = tw.coerceAtMost(w * 0.15f)
             val tailH = th.coerceAtMost(h * 0.45f)
 
-            // Top-left corner
             moveTo(corner, 0f)
-            // Top edge to top-right
             lineTo(w - tailW - corner, 0f)
             quadraticTo(w - tailW, 0f, w - tailW, corner)
-            // Right edge down to tail start
             lineTo(w - tailW, h - tailH)
             // Outer curve flaring down and out to trailing tail tip at (w, h)
             cubicTo(
@@ -138,10 +135,8 @@ fun iosBubbleShape(isMine: Boolean): Shape {
                 w - tailW - 4f, h - 2f,
                 w - tailW - corner, h - 2f
             )
-            // Bottom edge to bottom-left corner
             lineTo(corner, h - 2f)
             quadraticTo(0f, h - 2f, 0f, h - 2f - corner)
-            // Left edge to top-left
             lineTo(0f, corner)
             quadraticTo(0f, 0f, corner, 0f)
         } else {
@@ -150,15 +145,11 @@ fun iosBubbleShape(isMine: Boolean): Shape {
             val tailW = tw.coerceAtMost(w * 0.15f)
             val tailH = th.coerceAtMost(h * 0.45f)
 
-            // Top-left corner
             moveTo(tailW + corner, 0f)
-            // Top edge to top-right
             lineTo(w - corner, 0f)
             quadraticTo(w, 0f, w, corner)
-            // Right edge down to bottom-right corner
             lineTo(w, h - 2f - corner)
             quadraticTo(w, h - 2f, w - corner, h - 2f)
-            // Bottom edge to tail start
             lineTo(tailW + corner, h - 2f)
             // Inner concave curve swooping smoothly to leading tail tip at (0, h)
             cubicTo(
@@ -172,7 +163,6 @@ fun iosBubbleShape(isMine: Boolean): Shape {
                 tailW * 0.9f, h - tailH * 0.35f,
                 tailW, h - tailH
             )
-            // Left edge up to top-left corner
             lineTo(tailW, corner)
             quadraticTo(tailW, 0f, tailW + corner, 0f)
         }
@@ -539,7 +529,6 @@ fun BulletinBubbleContainer(
             }
         }
 
-        // Pushpin element rendered strictly when the message is pinned
         if (isPinned && (style == BulletinBoardStyle.STICKY_NOTE || style == BulletinBoardStyle.TORN_LEDGER)) {
             val pinColor = if (style == BulletinBoardStyle.TORN_LEDGER) Color(0xFF2E7D32) else Color(0xFFD32F2F)
             PushPin(

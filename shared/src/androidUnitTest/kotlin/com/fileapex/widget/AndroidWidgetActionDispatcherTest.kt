@@ -1,5 +1,8 @@
 package com.fileapex.widget
 
+import com.fileapex.data.db.seal.FieldSealer
+import com.fileapex.data.seal.SealedText
+import org.junit.After
 import android.content.Context
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.widget.WidgetActionTarget
@@ -26,8 +29,14 @@ class AndroidWidgetActionDispatcherTest {
 
     private lateinit var store: WidgetConfigStore
 
+    @After
+    fun tearDown() {
+        SealedText.sealerProvider = { null }
+    }
+
     @Before
     fun setUp() {
+        SealedText.sealerProvider = { FieldSealer(ByteArray(32) { it.toByte() }) }
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("fileapex_widgets_dispatch_test", Context.MODE_PRIVATE).edit().clear().commit()
         store = WidgetConfigStore(context, prefsName = "fileapex_widgets_dispatch_test")

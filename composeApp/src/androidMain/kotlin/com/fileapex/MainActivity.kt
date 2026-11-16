@@ -35,7 +35,7 @@ import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.network.FileShareServerService
 import com.fileapex.platform.AndroidShareIntake
-import com.fileapex.platform.DirectShareShortcutCoordinator
+import com.fileapex.platform.DirectShareShortcutIds
 import com.fileapex.platform.AndroidOnboardingPermissions
 import com.fileapex.platform.AndroidRuntimePermissions
 import com.fileapex.platform.AndroidStorageAccess
@@ -425,11 +425,11 @@ class MainActivity : ComponentActivity() {
         val shareIntent = intent ?: return
 
         val shortcutId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            shareIntent.getStringExtra(DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID)
+            shareIntent.getStringExtra(DirectShareShortcutIds.EXTRA_SHORTCUT_ID)
         } else {
             null
         }
-        if (DirectShareShortcutCoordinator.isBulletinShortcut(shortcutId)) {
+        if (DirectShareShortcutIds.isBulletinShortcut(shortcutId)) {
             openedFromShareSheet = true
             isPreparingShare = false
             sharePrepareError = null
@@ -451,16 +451,16 @@ class MainActivity : ComponentActivity() {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            DirectShareShortcutCoordinator.friendKeyFromShortcutId(shareIntent.getStringExtra(DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID))
+            DirectShareShortcutIds.friendKeyFromShortcutId(shareIntent.getStringExtra(DirectShareShortcutIds.EXTRA_SHORTCUT_ID))
                 ?.let { com.fileapex.friends.FriendsHub.preselectShare(it) }
         }
 
         val targetDeviceId = shareIntent.getStringExtra(
-            DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID
+            DirectShareShortcutIds.EXTRA_TARGET_DEVICE_ID
         )?.trim()?.takeIf { it.isNotEmpty() }
             ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                DirectShareShortcutCoordinator.deviceIdFromShortcutId(
-                    shareIntent.getStringExtra(DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID)
+                DirectShareShortcutIds.deviceIdFromShortcutId(
+                    shareIntent.getStringExtra(DirectShareShortcutIds.EXTRA_SHORTCUT_ID)
                 )
             } else {
                 null
@@ -545,14 +545,14 @@ class MainActivity : ComponentActivity() {
             }
             return true
         }
-        val destination = DirectShareShortcutCoordinator.parseLauncherDestination(intent)
+        val destination = DirectShareShortcutIds.parseLauncherDestination(intent)
             ?: return false
         when (destination) {
-            DirectShareShortcutCoordinator.LauncherDestination.BulletinBoard -> {
+            DirectShareShortcutIds.LauncherDestination.BulletinBoard -> {
                 pendingOpenBulletinBoard = true
                 pendingOpenDeviceId = null
             }
-            is DirectShareShortcutCoordinator.LauncherDestination.Device -> {
+            is DirectShareShortcutIds.LauncherDestination.Device -> {
                 pendingOpenBulletinBoard = false
                 pendingOpenDeviceId = destination.deviceId
             }

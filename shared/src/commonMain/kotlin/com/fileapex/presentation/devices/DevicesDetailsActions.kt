@@ -17,7 +17,6 @@ import com.fileapex.presentation.BatteryStatusItem
 import com.fileapex.presentation.DeviceDetailsState
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.DevicesUiState
-import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope

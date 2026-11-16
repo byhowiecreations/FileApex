@@ -15,7 +15,6 @@ internal fun renderMainClusterView(
     val isCompact = terminalRows <= 28
     val spacing = if (isCompact) "" else "\u001b[K\r\n"
 
-    // Device Table
     sb.append(spacing).append("\u001b[1m")
     val headerRow = String.format("%-4s %-24s %-16s %-12s %-10s", "ID", "SLUG / ALIAS", "BATTERY", "CLIPBOARD", "STATUS")
     sb.append(headerRow).append("\u001b[0m\u001b[K\r\n")
@@ -49,7 +48,6 @@ internal fun renderMainClusterView(
         }
     }
 
-    // Active Transfers Section
     val activeList = clusterState.activeTransfers
     val transferCount = if (activeList.isNotEmpty()) activeList.size else clusterState.activeTransfersCount
     if (transferCount > 1) {
@@ -102,12 +100,10 @@ internal fun renderMainClusterView(
         sb.append("\u001b[90mNo active transfers\u001b[0m\u001b[K\r\n")
     }
 
-    // Message banner if any
     if (lastMessage != null) {
         val color = if (lastMessageIsError) "\u001b[31m" else "\u001b[32m"
         sb.append(spacing).append("$color>> $lastMessage\u001b[0m\u001b[K\r\n")
     }
 
-    // Footer
     sb.append(spacing).append("\u001b[7m [L] Devices  [S] Send  [R] Retrieve  [C] Clipboard  [B] Battery  [Q] Queue  [H] Help  [Esc] Exit \u001b[0m\u001b[K\r\n")
 }

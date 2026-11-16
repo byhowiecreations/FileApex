@@ -1229,6 +1229,9 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="locate_phone_cancel">取消</string>
     <string name="simple_no_device_title">没有已连接的设备</string>
     <string name="simple_no_device_body">配对设备后即可浏览其文件。</string>
+    <string name="simple_remote_offline_title">%1$s 已离线</string>
+    <string name="simple_remote_offline_body">等待其重新上线。FileApex 会将其保留为已连接设备。</string>
+    <string name="simple_remote_failed_title">无法打开 %1$s</string>
     <string name="simple_other_themes_title">更多主题</string>
     <string name="simple_other_themes_body">设备越来越多时，不妨在设置中看看其他主题，它们可能让你的工作流程更顺手。</string>
     <string name="simple_got_it">知道了</string>

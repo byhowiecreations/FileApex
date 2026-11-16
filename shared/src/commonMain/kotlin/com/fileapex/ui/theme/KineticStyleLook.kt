@@ -2,7 +2,6 @@ package com.fileapex.ui.theme
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.ui.draw.paint
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier

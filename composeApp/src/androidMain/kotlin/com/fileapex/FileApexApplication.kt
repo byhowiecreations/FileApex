@@ -61,7 +61,7 @@ class FileApexApplication : Application(), Configuration.Provider {
                             com.fileapex.widget.WidgetDeepLinks.ROUTE_BROWSE_DEVICE
                         )
                         putExtra(
-                            com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID,
+                            com.fileapex.platform.DirectShareShortcutIds.EXTRA_TARGET_DEVICE_ID,
                             dest.deviceId
                         )
                     }

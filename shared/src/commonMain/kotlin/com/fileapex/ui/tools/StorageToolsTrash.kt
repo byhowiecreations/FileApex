@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.ui.draw.clip
-import com.fileapex.ui.DesktopHoverTooltip
+import com.fileapex.ui.HeaderIconButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,14 +20,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.DonutLarge
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -186,65 +185,26 @@ internal fun TrashPage(
     }
 }
 
-/**
- * Folder with a gear tucked in the corner. The gear sits in a cut-out so both read clearly on any background.
- */
-@Composable
-internal fun ToolsGlyph(tint: Color, modifier: Modifier = Modifier, size: Dp = 24.dp) {
-    val gear = size * 0.52f
-    Box(modifier.size(size).graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
-        Icon(
-            explorerIcon(ExplorerIcon.Folder, ExplorerIconFamily.Outlined),
-            contentDescription = stringRes("tools"),
-            tint = tint,
-            modifier = Modifier.fillMaxSize()
-        )
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .size(gear + 4.dp)
-                .drawBehind { drawCircle(Color.Black, radius = this.size.minDimension / 2f, blendMode = BlendMode.Clear) }
-        )
-        Icon(
-            Icons.Filled.Settings,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp).size(gear)
-        )
-    }
-}
-
-/** Header button that opens Tools; matches the raised tiles next to it on Jaded Steel. */
+/** Header button that opens Tools: a storage ring, so it reads as storage and not as settings. */
 @Composable
 internal fun ToolsHeaderButton(onClick: () -> Unit, tint: Color, modifier: Modifier = Modifier) {
-    DesktopHoverTooltip(text = stringRes("storage_tools_title")) {
-        if (isFileApexTiledChrome()) {
-            Box(modifier.size(40.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-                JadedRaisedTile(tileSize = 28.dp) { ToolsGlyph(tint = fileApexTileTint(), size = 18.dp) }
-            }
-        } else {
-            Surface(
-                modifier = modifier
-                    .clip(RoundedCornerShape(50))
-                    .clickable(onClick = onClick),
-                shape = RoundedCornerShape(50),
-                color = tint.copy(alpha = 0.10f),
-                border = BorderStroke(1.dp, tint.copy(alpha = 0.28f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    ToolsGlyph(tint = tint, size = 16.dp)
-                    Text(
-                        text = stringRes("storage_tools_title"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = tint,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-    }
+    HeaderIconButton(Icons.Outlined.DonutLarge, stringRes("storage_tools_title"), tint, onClick, modifier)
+}
+
+/** Header button that opens the Favorites list. */
+@Composable
+internal fun FavoritesHeaderButton(onClick: () -> Unit, tint: Color, modifier: Modifier = Modifier) {
+    HeaderIconButton(explorerIcon(ExplorerIcon.Favorite), stringRes("storage_favorites"), tint, onClick, modifier)
+}
+
+/** Header button that turns the two-pane split view on or off; [active] tints it as on. */
+@Composable
+internal fun SplitViewHeaderButton(active: Boolean, onClick: () -> Unit, tint: Color, modifier: Modifier = Modifier) {
+    HeaderIconButton(
+        explorerIcon(ExplorerIcon.SplitView),
+        stringRes("split_view_label"),
+        if (active) MaterialTheme.colorScheme.primary else tint,
+        onClick,
+        modifier
+    )
 }

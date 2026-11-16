@@ -57,6 +57,8 @@ import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.isFileApexFluentUi
 import com.fileapex.ui.theme.isFileApexTiledChrome
+import com.fileapex.ui.tools.FavoritesHeaderButton
+import com.fileapex.ui.tools.SplitViewHeaderButton
 import com.fileapex.ui.tools.ToolsHeaderButton
 
 @Composable
@@ -66,6 +68,7 @@ internal fun ExplorerTopBarActions(
     viewModel: ExplorerViewModel,
     hasExternalRefresh: Boolean = false,
     onOpenTools: (() -> Unit)? = null,
+    onOpenFavorites: (() -> Unit)? = null,
     onPickFiles: ((List<String>) -> Unit)? = null
 ) {
     val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
@@ -132,6 +135,12 @@ internal fun ExplorerTopBarActions(
                     }
                 }
             }
+            if (onOpenFavorites != null) {
+                FavoritesHeaderButton(
+                    onClick = onOpenFavorites,
+                    tint = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary
+                )
+            }
             if (onOpenTools != null) {
                 ToolsHeaderButton(
                     onClick = onOpenTools,
@@ -142,7 +151,9 @@ internal fun ExplorerTopBarActions(
                 val splitAllowed = onPickFiles == null
                 if (splitAllowed) {
                     val splitOn = state.viewMode == ExplorerViewMode.Split
-                    TextButton(
+                    SplitViewHeaderButton(
+                        active = splitOn,
+                        tint = if (jadedOrbital) KineticStyleLook.steel else if (isFileApexCleanCurved()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = {
                             if (splitOn) {
                                 viewModel.toggleViewMode(includeSplit = false)
@@ -150,15 +161,7 @@ internal fun ExplorerTopBarActions(
                                 com.fileapex.di.FileApexServices.settings.setExplorerViewMode(ExplorerViewMode.Split)
                             }
                         }
-                    ) {
-                        Text(
-                            text = stringRes("split_view_label"),
-                            color = if (splitOn) MaterialTheme.colorScheme.primary
-                            else if (jadedOrbital) KineticStyleLook.steel
-                            else if (isFileApexCleanCurved()) Color.White
-                            else Color.Unspecified
-                        )
-                    }
+                    )
                 }
                 ExplorerViewModeToggle(
                     viewMode = state.viewMode,

@@ -1,8 +1,6 @@
 package com.fileapex.platform
 
 import android.app.Application
-import android.content.pm.ShortcutManager
-import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.test.core.app.ApplicationProvider
 import com.fileapex.data.db.PairedDeviceEntity
 import org.junit.Assert.assertEquals
@@ -43,9 +41,9 @@ class DirectSharePublishTest {
             friends = emptyList()
         )
         assertEquals(3, entries.size)
-        val macEntry = entries.first { it.id == DirectShareShortcutCoordinator.shortcutId("mac-1") }
-        val foldEntry = entries.first { it.id == DirectShareShortcutCoordinator.shortcutId("fold-1") }
-        val bulletinEntry = entries.first { it.id == DirectShareShortcutCoordinator.BULLETIN_SHORTCUT_ID }
+        val macEntry = entries.first { it.id == DirectShareShortcutIds.shortcutId("mac-1") }
+        val foldEntry = entries.first { it.id == DirectShareShortcutIds.shortcutId("fold-1") }
+        val bulletinEntry = entries.first { it.id == DirectShareShortcutIds.BULLETIN_SHORTCUT_ID }
 
         assertTrue(macEntry.rank < bulletinEntry.rank)
         assertTrue(foldEntry.rank < bulletinEntry.rank)
@@ -59,7 +57,7 @@ class DirectSharePublishTest {
         assertFalse(
             DirectShareShortcutCoordinator.isPublishComplete(
                 ok = true,
-                publishedIds = listOf(DirectShareShortcutCoordinator.BULLETIN_SHORTCUT_ID),
+                publishedIds = listOf(DirectShareShortcutIds.BULLETIN_SHORTCUT_ID),
                 expectedPeerCount = 2
             )
         )
@@ -67,8 +65,8 @@ class DirectSharePublishTest {
             DirectShareShortcutCoordinator.isPublishComplete(
                 ok = true,
                 publishedIds = listOf(
-                    DirectShareShortcutCoordinator.shortcutId("mac-1"),
-                    DirectShareShortcutCoordinator.BULLETIN_SHORTCUT_ID
+                    DirectShareShortcutIds.shortcutId("mac-1"),
+                    DirectShareShortcutIds.BULLETIN_SHORTCUT_ID
                 ),
                 expectedPeerCount = 1
             )
@@ -98,7 +96,7 @@ class DirectSharePublishTest {
             }
         )
         assertEquals(1, built.size)
-        assertEquals(DirectShareShortcutCoordinator.shortcutId("fold-1"), built.single().id)
+        assertEquals(DirectShareShortcutIds.shortcutId("fold-1"), built.single().id)
         assertEquals(0, built.single().rank)
     }
 

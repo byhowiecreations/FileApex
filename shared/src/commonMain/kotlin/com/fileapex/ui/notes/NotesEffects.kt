@@ -8,7 +8,7 @@ import com.fileapex.presentation.NotesListRow
 import com.fileapex.ui.NOTES_SENT_HOLD_MS
 import com.fileapex.ui.NOTES_SENT_LABEL
 import com.fileapex.ui.loadNotesAttachmentBitmap
-import com.fileapex.ui.loadNotesInlinePreviewBitmap
+import com.fileapex.ui.loadNotesBubbleThumbnail
 import com.fileapex.ui.notesAttachmentIsImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -56,12 +56,7 @@ internal fun NotesScope.NotesEffects() {
         for (note in displayNotes) {
             if (bubbleThumbs.containsKey(note.noteId)) continue
             if (!notesAttachmentIsImage(note.attachmentFileName)) continue
-            val path = note.attachmentLocalPath
-            val thumb = if (!path.isNullOrBlank()) {
-                loadNotesAttachmentBitmap(path, note.attachmentFileName)
-            } else {
-                loadNotesInlinePreviewBitmap(note.attachmentPreviewBase64)
-            }
+            val thumb = loadNotesBubbleThumbnail(note.attachmentLocalPath, note.attachmentFileName, note.attachmentPreviewBase64)
             if (thumb != null) {
                 bubbleThumbs[note.noteId] = thumb
             }

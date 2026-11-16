@@ -14,6 +14,7 @@ class PlainWriteGuardTest {
 
     /** Holds nothing about the user, or must be readable by something that cannot unseal it. */
     private val justified: Map<String, String> = mapOf(
+        "ClipboardImageStorage.kt" to "the one owner of received clipboard images: the file the user saves to Downloads and the single copy handed to the system clipboard through a content URI; both must be readable by other apps, and each is written atomically",
         "TransferRanges.kt" to "partial transfer bookkeeping inside the part file's own folder, byte ranges only",
         "NotificationDebugLog.kt" to "debug log, switched off, redacted at the sink",
         "MacOsExtensionRegistrar.kt" to "registration stamp and a redacted log read by the system installer",

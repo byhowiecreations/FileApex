@@ -2,6 +2,8 @@ package com.fileapex.widget
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.fileapex.data.seal.SealedStrings
+import com.fileapex.platform.PrefsStringSlots
 import com.fileapex.domain.widget.CachedBatteryReading
 import com.fileapex.domain.widget.WidgetActionCatalog
 import com.fileapex.domain.widget.WidgetConfig
@@ -10,7 +12,9 @@ import com.fileapex.domain.widget.WidgetTargetBinding
 import com.fileapex.domain.widget.WidgetTargetBindingCodec
 
 /**
- * Stores per-widget layout, action slots, device bindings, and last user-fetched battery readings.
+ * Stores per-widget layout, action slots, device bindings, and last user-fetched battery readings. Every value is
+ * sealed with [SealedStrings]; the key names (widget ids and device ids) are not secret. A plain value or a number
+ * left by an older version is read and sealed in place. With no key available nothing is written and reads are empty.
  */
 class WidgetConfigStore(
     context: Context,
@@ -18,20 +22,20 @@ class WidgetConfigStore(
 ) {
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+    private val sealed = SealedStrings(PrefsStringSlots(prefs), PURPOSE)
 
     fun save(config: WidgetConfig) {
         val normalized = config.normalizedActions()
-        prefs.edit()
-            .putString(keyKind(config.appWidgetId), config.kind.wireId)
-            .putString(keyBinding(config.appWidgetId), WidgetTargetBindingCodec.encode(config.binding))
-            .putString(keyActions(config.appWidgetId), normalized.joinToString(",") { it.wireId })
-            .apply()
+        val written = sealed.put(keyKind(config.appWidgetId), config.kind.wireId) &&
+            sealed.put(keyBinding(config.appWidgetId), WidgetTargetBindingCodec.encode(config.binding)) &&
+            sealed.put(keyActions(config.appWidgetId), normalized.joinToString(",") { it.wireId })
+        if (!written) println("WidgetConfigStore: no key available yet, a widget configuration was not saved")
     }
 
     fun load(appWidgetId: Int): WidgetConfig? {
-        val kind = WidgetKind.fromWireId(prefs.getString(keyKind(appWidgetId), null)) ?: return null
-        val binding = WidgetTargetBindingCodec.decode(prefs.getString(keyBinding(appWidgetId), null))
-        val actionsRaw = prefs.getString(keyActions(appWidgetId), null).orEmpty()
+        val kind = WidgetKind.fromWireId(sealed.get(keyKind(appWidgetId))) ?: return null
+        val binding = WidgetTargetBindingCodec.decode(sealed.get(keyBinding(appWidgetId)))
+        val actionsRaw = sealed.get(keyActions(appWidgetId)).orEmpty()
         val parsedActions = if (actionsRaw.isBlank()) {
             emptyList()
         } else {
@@ -46,7 +50,7 @@ class WidgetConfigStore(
     }
 
     fun hasConfig(appWidgetId: Int): Boolean =
-        WidgetKind.fromWireId(prefs.getString(keyKind(appWidgetId), null)) != null
+        WidgetKind.fromWireId(sealed.get(keyKind(appWidgetId))) != null
 
     fun listAppWidgetIds(): List<Int> {
         val ids = LinkedHashSet<Int>()
@@ -59,45 +63,34 @@ class WidgetConfigStore(
     }
 
     fun remove(appWidgetId: Int) {
-        prefs.edit()
-            .remove(keyKind(appWidgetId))
-            .remove(keyBinding(appWidgetId))
-            .remove(keyActions(appWidgetId))
-            .apply()
+        sealed.remove(keyKind(appWidgetId))
+        sealed.remove(keyBinding(appWidgetId))
+        sealed.remove(keyActions(appWidgetId))
     }
 
     fun saveBatteryReading(deviceId: String, reading: CachedBatteryReading) {
         val cleanId = deviceId.trim()
         if (cleanId.isEmpty() || reading.levelPercent !in 0..100) return
-        prefs.edit()
-            .putInt(keyBatteryPct(cleanId), reading.levelPercent)
-            .putLong(keyBatteryTs(cleanId), reading.recordedAtEpochMs)
-            .putString(keyBatteryCharging(cleanId), reading.chargingState)
-            .apply()
+        val written = sealed.put(keyBatteryPct(cleanId), reading.levelPercent.toString()) &&
+            sealed.put(keyBatteryTs(cleanId), reading.recordedAtEpochMs.toString()) &&
+            sealed.put(keyBatteryCharging(cleanId), reading.chargingState)
+        if (!written) println("WidgetConfigStore: no key available yet, a battery reading was not saved")
     }
 
     fun loadBatteryReading(deviceId: String): CachedBatteryReading? {
         val cleanId = deviceId.trim()
-        if (cleanId.isEmpty() || !prefs.contains(keyBatteryPct(cleanId))) return null
-        val pct = prefs.getInt(keyBatteryPct(cleanId), -1)
-        val ts = prefs.getLong(keyBatteryTs(cleanId), 0L)
+        if (cleanId.isEmpty()) return null
+        val pct = sealed.get(keyBatteryPct(cleanId))?.toIntOrNull() ?: return null
+        val ts = sealed.get(keyBatteryTs(cleanId))?.toLongOrNull() ?: return null
         if (pct !in 0..100 || ts <= 0L) return null
-        val charging = prefs.getString(keyBatteryCharging(cleanId), "").orEmpty()
-        return CachedBatteryReading(levelPercent = pct, recordedAtEpochMs = ts, chargingState = charging)
+        return CachedBatteryReading(levelPercent = pct, recordedAtEpochMs = ts, chargingState = sealed.get(keyBatteryCharging(cleanId)).orEmpty())
     }
 
     fun retainPairedDevices(activeDeviceIds: Set<String>) {
-        val editor = prefs.edit()
-        var dirty = false
         for (appWidgetId in listAppWidgetIds()) {
-            val cfg = load(appWidgetId) ?: continue
-            val binding = cfg.binding
+            val binding = load(appWidgetId)?.binding
             if (binding is WidgetTargetBinding.SpecificDevice && binding.deviceId !in activeDeviceIds) {
-                editor.putString(
-                    keyBinding(appWidgetId),
-                    WidgetTargetBindingCodec.encode(WidgetTargetBinding.AskEachTime)
-                )
-                dirty = true
+                sealed.put(keyBinding(appWidgetId), WidgetTargetBindingCodec.encode(WidgetTargetBinding.AskEachTime))
             }
         }
         val staleBatteryDevices = prefs.all.keys
@@ -105,12 +98,10 @@ class WidgetConfigStore(
             .map { it.removePrefix(PREFIX_BATTERY).removeSuffix(SUFFIX_BAT_PCT) }
             .filter { it !in activeDeviceIds }
         for (deviceId in staleBatteryDevices) {
-            editor.remove(keyBatteryPct(deviceId))
-            editor.remove(keyBatteryTs(deviceId))
-            editor.remove(keyBatteryCharging(deviceId))
-            dirty = true
+            sealed.remove(keyBatteryPct(deviceId))
+            sealed.remove(keyBatteryTs(deviceId))
+            sealed.remove(keyBatteryCharging(deviceId))
         }
-        if (dirty) editor.apply()
     }
 
     private fun keyKind(id: Int) = "$PREFIX_CFG$id$SUFFIX_KIND"
@@ -122,6 +113,7 @@ class WidgetConfigStore(
 
     companion object {
         const val DEFAULT_PREFS_NAME = "fileapex_widgets"
+        private const val PURPOSE = "widgets"
         private const val PREFIX_CFG = "cfg_"
         private const val SUFFIX_KIND = "_kind"
         private const val SUFFIX_BINDING = "_bind"

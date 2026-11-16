@@ -10,7 +10,6 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
-import io.ktor.http.Url
 import io.ktor.http.takeFrom
 import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.CancellationException

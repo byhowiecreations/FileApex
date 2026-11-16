@@ -50,6 +50,8 @@ import com.fileapex.ui.theme.fileApexFloatingChrome
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.isFileApexSimpleModern
+import com.fileapex.ui.tools.FavoritesHeaderButton
+import com.fileapex.ui.tools.SplitViewHeaderButton
 import com.fileapex.ui.tools.ToolsHeaderButton
 
 @Composable
@@ -155,25 +157,13 @@ internal fun SimpleTopBar(
             )
             if (splitAvailable) {
                 val splitActive = explorerViewMode == ExplorerViewMode.Split
-                Surface(
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .clip(RoundedCornerShape(50))
-                        .clickable {
-                            val next = if (splitActive) ExplorerViewMode.List else ExplorerViewMode.Split
-                            FileApexServices.settings.setExplorerViewMode(next)
-                        },
-                    shape = RoundedCornerShape(50),
-                    color = if (splitActive) SimpleModernPalette.AccentMint else SimpleModernPalette.PillTint
-                ) {
-                    Text(
-                        text = stringRes("split_view_label"),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (splitActive) SimpleModernPalette.AccentOnMint else SimpleModernPalette.AccentMintSoft,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                    )
-                }
+                SplitViewHeaderButton(
+                    active = splitActive,
+                    tint = tint,
+                    onClick = {
+                        FileApexServices.settings.setExplorerViewMode(if (splitActive) ExplorerViewMode.List else ExplorerViewMode.Split)
+                    }
+                )
             }
             val viewTooltip = stringRes(if (explorerViewMode == ExplorerViewMode.List) "switch_to_grid" else "switch_to_list")
             DesktopHoverTooltip(text = viewTooltip) {
@@ -220,6 +210,9 @@ internal fun SimpleExplorerHeaderActions(
     Row(verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = commands.onSelect, contentPadding = PaddingValues(horizontal = 8.dp)) {
             Text(stringRes("select"), color = fileApexChromeContentColor(), fontWeight = FontWeight.SemiBold)
+        }
+        commands.onOpenFavorites?.let { onOpenFavorites ->
+            FavoritesHeaderButton(onClick = onOpenFavorites, tint = tint)
         }
         commands.onOpenTools?.let { onOpenTools ->
             ToolsHeaderButton(

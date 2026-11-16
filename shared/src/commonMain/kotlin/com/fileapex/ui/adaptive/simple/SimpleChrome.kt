@@ -3,11 +3,9 @@ package com.fileapex.ui.adaptive.simple
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,14 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -41,7 +37,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,7 +53,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -360,33 +354,47 @@ private fun androidx.compose.foundation.layout.RowScope.SimpleBarItem(
 }
 
 @Composable
-internal fun SimpleNoDeviceState(
-    connecting: Boolean,
-    hasPairedDevice: Boolean,
+internal fun SimpleRemoteFilesPlaceholder(
+    state: SimpleRemoteFilesState,
     onAddDevice: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onSwitchDevice: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (connecting) {
-            CircularProgressIndicator()
-        } else {
-            Text(stringRes("simple_no_device_title"), style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                stringRes("simple_no_device_body"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            if (hasPairedDevice) {
+        when (state) {
+            SimpleRemoteFilesState.Connecting -> CircularProgressIndicator()
+            is SimpleRemoteFilesState.Offline -> {
+                PlaceholderText(stringRes("simple_remote_offline_title", state.deviceName), stringRes("simple_remote_offline_body"))
                 Button(onClick = onRetry) { Text(stringRes("refresh")) }
-            } else {
+                if (state.canSwitch) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(onClick = onSwitchDevice) { Text(stringRes("simple_switch_device")) }
+                }
+            }
+            is SimpleRemoteFilesState.Retry -> {
+                PlaceholderText(stringRes("simple_remote_failed_title", state.deviceName), null)
+                Button(onClick = onRetry) { Text(stringRes("refresh")) }
+            }
+            SimpleRemoteFilesState.AddDevice -> {
+                PlaceholderText(stringRes("simple_no_device_title"), stringRes("simple_no_device_body"))
                 Button(onClick = onAddDevice) { Text(stringRes("add_new_device")) }
             }
         }
+    }
+}
+
+@Composable
+private fun PlaceholderText(title: String, body: String?) {
+    Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+    Spacer(modifier = Modifier.height(6.dp))
+    if (body != null) {
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Spacer(modifier = Modifier.height(16.dp))
+    } else {
+        Spacer(modifier = Modifier.height(10.dp))
     }
 }

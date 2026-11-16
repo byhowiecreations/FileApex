@@ -1,7 +1,7 @@
 package com.fileapex.ui
 
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -18,25 +18,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -49,21 +40,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.fileapex.cloud.currentPlatformLabel
-import com.fileapex.data.settings.DesktopLayoutMode
-import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
-import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.BackgroundPersistenceUiState
-import com.fileapex.platform.Diagnostics
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.platform.supportsDeviceNameSettingsPage
@@ -80,7 +65,6 @@ import com.fileapex.ui.settings.LocalSettingsHomeAction
 import com.fileapex.ui.settings.SettingsPageShell
 import com.fileapex.ui.settings.SettingsSearchEngine
 import com.fileapex.ui.settings.SettingsSearchOptions
-import com.fileapex.ui.settings.clipboardShareTargetsSubtitle
 import com.fileapex.util.TimeUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -379,152 +363,6 @@ internal fun SettingsRootPage(
 
         if (showFeedbackDialog) FeedbackDialog { showFeedbackDialog = false }
     }
-}
-
-@Composable
-private fun FeedbackDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        modifier = Modifier.widthIn(max = 440.dp),
-        title = {
-            Text(
-                text = stringRes("report_issue_feedback"),
-                style = MaterialTheme.typography.titleLarge
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FeedbackOptionCard(
-                    icon = Icons.Default.Email,
-                    title = stringRes("feedback_option_email"),
-                    subtitle = stringRes("feedback_option_email_desc"),
-                    onClick = {
-                        onDismiss()
-                        Diagnostics.sendFeedbackEmail()
-                    }
-                )
-                FeedbackOptionCard(
-                    icon = Icons.Default.Feedback,
-                    title = stringRes("feedback_option_form"),
-                    subtitle = stringRes("feedback_option_form_desc"),
-                    onClick = {
-                        onDismiss()
-                        Diagnostics.openAnonymousFeedbackForm()
-                    }
-                )
-                FeedbackOptionCard(
-                    icon = Icons.Default.OpenInBrowser,
-                    title = stringRes("feedback_option_github"),
-                    subtitle = stringRes("feedback_option_github_desc"),
-                    onClick = {
-                        onDismiss()
-                        Diagnostics.openGitHubIssuesTracker()
-                    }
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringRes("cancel"))
-            }
-        }
-    )
-}
-
-@Composable
-private fun FeedbackOptionCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-internal fun backgroundPersistenceSubtitle(
-    watchdogEnabled: Boolean,
-    backgroundPersistence: BackgroundPersistenceUiState,
-    exactAlarmWarningActive: Boolean
-): String {
-    val status = if (watchdogEnabled) AppI18n.t("on") else AppI18n.t("off")
-    val warnings = buildList {
-        if (backgroundPersistence.backgroundRestricted) add(AppI18n.t("warn_background_restricted"))
-        if (backgroundPersistence.batteryOptimizationRestricted) add(AppI18n.t("warn_battery_optimized"))
-        if (backgroundPersistence.unusedAppRestrictionsActive) add(AppI18n.t("warn_hibernation"))
-        if (!com.fileapex.di.FileApexServices.isPlayStoreBuild && exactAlarmWarningActive) add(AppI18n.t("warn_alarms_off"))
-        if (backgroundPersistence.showOemSetup &&
-            !backgroundPersistence.persistenceRestricted &&
-            !backgroundPersistence.unusedAppRestrictionsActive
-        ) {
-            add(AppI18n.t("warn_oem_app_launch"))
-        }
-    }
-    return if (warnings.isEmpty()) {
-        status
-    } else {
-        AppI18n.t("status_on_warnings", status, warnings.joinToString(", "))
-    }
-}
-
-internal fun clipboardSettingsSubtitle(state: SettingsUiState): String {
-    if (!state.clipboardSharingEnabled) return AppI18n.t("off")
-    val mode = clipboardShareTargetsSubtitle(state)
-    val extras = buildList {
-        if (currentPlatformLabel() == "Android" && state.clipboardAccessibilityEnabled) add(AppI18n.t("accessibility"))
-        if (currentPlatformLabel() == "Android" && !com.fileapex.di.FileApexServices.isPlayStoreBuild && state.clipboardShizukuEnabled) add(AppI18n.t("diag_shizuku_active"))
-        if (currentPlatformLabel() != "Android" && state.clipboardAutoSendEnabled) add(AppI18n.t("auto_send"))
-        if (state.clipboardViaCellularEnabled && currentPlatformLabel() == "Android") add(AppI18n.t("cellular"))
-    }
-    return if (extras.isEmpty()) {
-        AppI18n.t("clipboard_on_mode", mode)
-    } else {
-        AppI18n.t("clipboard_on_mode_extras", mode, extras.joinToString(" · "))
-    }
-}
-
-@Composable
-internal fun localizedDesktopLayout(mode: DesktopLayoutMode): String = when (mode) {
-    DesktopLayoutMode.Compact -> stringRes("layout_compact")
-    DesktopLayoutMode.Expanded -> stringRes("layout_expanded")
-}
-
-@Composable
-internal fun localizedDesktopUiStyle(style: DesktopUiStyle): String = when (style) {
-    DesktopUiStyle.Standard -> stringRes("windows_standard")
-    DesktopUiStyle.WindowsFluent -> stringRes("windows_fluent")
 }
 
 private const val VERSION_EASTER_EGG_TAP_COUNT = 5

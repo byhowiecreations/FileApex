@@ -124,11 +124,7 @@ private fun readDisplay(context: Context?): DisplayDiagnostics {
                 ((it * 100f) / 255f).roundToInt().coerceIn(0, 100)
             }
         }.getOrNull()
-        DisplayDiagnostics(
-            resolution = "$width x $height",
-            refreshRateHz = refreshRate,
-            brightnessPercent = brightnessPercent
-        )
+        DisplayDiagnostics("$width x $height", refreshRate, brightnessPercent, AndroidGraphics.read())
     }.getOrDefault(DisplayDiagnostics())
 }
 

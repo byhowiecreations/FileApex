@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -309,6 +310,20 @@ internal fun SimplePopoverHost(
                     content = content
                 )
             }
+        }
+    }
+}
+
+private const val SIMPLE_COMFORTABLE_DEVICE_COUNT = 3
+
+/** Past the device count Simple suits, offers the other themes once, and not while an update is on offer. */
+@Composable
+internal fun OtherThemesHintEffect(deviceCount: Int, hintShown: Boolean, onShow: () -> Unit) {
+    val updateOffered by com.fileapex.update.AppUpdateCoordinator.pendingUpdate.collectAsState()
+    LaunchedEffect(deviceCount, hintShown, updateOffered) {
+        if (deviceCount > SIMPLE_COMFORTABLE_DEVICE_COUNT && !hintShown && updateOffered == null) {
+            onShow()
+            com.fileapex.di.FileApexServices.settings.setOtherThemesHintShown(true)
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.fileapex.platform
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

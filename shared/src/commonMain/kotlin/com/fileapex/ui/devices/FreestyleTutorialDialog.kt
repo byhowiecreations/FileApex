@@ -41,7 +41,6 @@ import kotlin.math.min
 @Composable
 internal fun FreestyleScope.FreestyleTutorialDialog() {
     with(inputs) { with(persisted) { with(geometry) { with(live) {
-        // One-time Edit Mode Tutorial Dialog
         if (showTutorialDialog) {
             Box(
                 modifier = Modifier

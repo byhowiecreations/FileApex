@@ -12,7 +12,6 @@ import com.fileapex.platform.openLocalFile
 import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
-import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

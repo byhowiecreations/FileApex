@@ -42,17 +42,14 @@ class CliDashboard(
     @Volatile
     private var isShowingTransferCompletion = false
 
-    // Local Picker State
     private var localCurrentDir: File = File(initialCwd).absoluteFile
     private var localEntries: List<File> = emptyList()
     private var localCursorIndex = 0
     private val localSelectedPaths = mutableSetOf<String>()
 
-    // Target Picker State
     private var targetCursorIndex = 0
     private val targetSelectedDeviceIds = mutableSetOf<String>()
 
-    // Remote Browser State
     private var remoteSelectedDevice: CliDeviceStatus? = null
     private var remoteCurrentPath: String = "/"
     private var remoteEntries: List<CliRemoteFile> = emptyList()
@@ -83,7 +80,6 @@ class CliDashboard(
 
                     renderCurrentView()
 
-                    // Poll key (non-blocking)
                     val key = TerminalConsole.readKey()
                     if (key != null) {
                         handleKey(key)
@@ -91,7 +87,6 @@ class CliDashboard(
                         delay(35)
                     }
 
-                    // Periodic background refresh in MAIN or BATTERY view
                     if (currentView == DashboardView.MAIN || currentView == DashboardView.BATTERY) {
                         val interval = if (clusterState.activeTransfersCount > 0) 80L else 350L
                         if (now - lastStateFetchEpochMs >= interval) {
@@ -245,7 +240,6 @@ class CliDashboard(
         TerminalConsole.clearScreen()
     }
 
-    // --- Local Picker (Send) ---
     private fun openLocalPicker() {
         localSelectedPaths.clear()
         localCursorIndex = 0
@@ -466,7 +460,6 @@ class CliDashboard(
         }
     }
 
-    // --- Remote Browser (Retrieve) ---
     private fun openRetrieveDevicePicker() {
         targetCursorIndex = 0
         currentView = DashboardView.RETRIEVE_DEVICE_PICKER
@@ -572,7 +565,6 @@ class CliDashboard(
         }
     }
 
-    // --- Clipboard Prompt ---
     private suspend fun handleClipboardAction() {
         val action = TerminalConsole.readLinePrompt("\r\nAction? [1] Send current clipboard to peer [2] Retrieve clipboard from peer: ").trim()
         if (action != "1" && action != "2") {
@@ -621,7 +613,6 @@ class CliDashboard(
         TerminalConsole.clearScreen()
     }
 
-    // --- Rendering Logic ---
 
     private fun renderCurrentView() {
         val sb = StringBuilder()

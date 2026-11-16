@@ -18,45 +18,39 @@ actual object BulletinMediaHelper {
         if (!file.isFile) return null
         if (!isImageFile(file.name)) return null
         val image = runCatching { ImageIO.read(file) }.getOrNull() ?: return null
-        val maxDim = 320
-        val scale = minOf(
-            maxDim.toDouble() / image.width.coerceAtLeast(1),
-            maxDim.toDouble() / image.height.coerceAtLeast(1),
-            1.0
-        )
-        val width = (image.width * scale).toInt().coerceAtLeast(1)
-        val height = (image.height * scale).toInt().coerceAtLeast(1)
-        val scaled = image.getScaledInstance(width, height, java.awt.Image.SCALE_SMOOTH)
-        val buffered = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
-        val graphics = buffered.createGraphics()
-        graphics.drawImage(scaled, 0, 0, null)
-        graphics.dispose()
+        val fitted = BulletinPreviewFit.encode(BulletinBoardPolicy.IMAGE_PREVIEW_MAX_BYTES) { edge, quality ->
+            val scale = minOf(
+                edge.toDouble() / image.width.coerceAtLeast(1),
+                edge.toDouble() / image.height.coerceAtLeast(1),
+                1.0
+            )
+            val width = (image.width * scale).toInt().coerceAtLeast(1)
+            val height = (image.height * scale).toInt().coerceAtLeast(1)
+            val buffered = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
+            val graphics = buffered.createGraphics()
+            graphics.drawImage(image.getScaledInstance(width, height, java.awt.Image.SCALE_SMOOTH), 0, 0, null)
+            graphics.dispose()
+            encodeJpeg(buffered, quality / 100f)
+        } ?: return null
+        return Base64.getEncoder().encodeToString(fitted.bytes)
+    }
+
+    private fun encodeJpeg(image: java.awt.image.BufferedImage, quality: Float): ByteArray {
+        val writer = ImageIO.getImageWritersByFormatName("jpg").next()
+        val param = writer.defaultWriteParam
+        if (param.canWriteCompressed()) {
+            param.compressionMode = javax.imageio.ImageWriteParam.MODE_EXPLICIT
+            param.compressionQuality = quality
+        }
         val output = ByteArrayOutputStream()
-        var quality = 0.75f
-        repeat(4) {
-            output.reset()
-            val writers = ImageIO.getImageWritersByFormatName("jpg")
-            if (!writers.hasNext()) return null
-            val writer = writers.next()
-            val param = writer.defaultWriteParam
-            if (param.canWriteCompressed()) {
-                param.compressionMode = javax.imageio.ImageWriteParam.MODE_EXPLICIT
-                param.compressionQuality = quality
-            }
+        try {
             ImageIO.createImageOutputStream(output).use { stream ->
                 writer.output = stream
-                writer.write(null, javax.imageio.IIOImage(buffered, null, null), param)
+                writer.write(null, javax.imageio.IIOImage(image, null, null), param)
             }
+        } finally {
             writer.dispose()
-            if (output.size() <= BulletinBoardPolicy.IMAGE_PREVIEW_MAX_BYTES) {
-                return Base64.getEncoder().encodeToString(output.toByteArray())
-            }
-            quality -= 0.15f
         }
-        return if (output.size() <= BulletinBoardPolicy.IMAGE_PREVIEW_MAX_BYTES) {
-            Base64.getEncoder().encodeToString(output.toByteArray())
-        } else {
-            null
-        }
+        return output.toByteArray()
     }
 }
