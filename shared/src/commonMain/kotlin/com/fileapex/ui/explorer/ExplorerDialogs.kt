@@ -1,5 +1,7 @@
 package com.fileapex.ui.explorer
 
+import com.fileapex.ui.transfer.TransferRowDensity
+import com.fileapex.ui.transfer.LiveTransferRow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -41,7 +43,6 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.iroh.IrohRuntime
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ExplorerActionCopy
-import com.fileapex.ui.TransferProgressBlock
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -196,7 +197,7 @@ internal fun ExplorerScope.ExplorerMultiCopyPicker() {
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 if (state.isMultiCopying) {
-                    TransferProgressBlock(modifier = Modifier.padding(bottom = 4.dp))
+                    LiveTransferRow(TransferRowDensity.Inline, Modifier.padding(bottom = 4.dp))
                     Text(
                         text = stringRes("send_continues_in_background"),
                         style = MaterialTheme.typography.bodySmall,

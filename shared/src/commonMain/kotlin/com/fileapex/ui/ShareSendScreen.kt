@@ -1,5 +1,7 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.transfer.TransferRowDensity
+import com.fileapex.ui.transfer.LiveTransferRow
 import com.fileapex.i18n.stringRes
 
 import com.fileapex.i18n.AppI18n
@@ -175,7 +177,7 @@ fun ShareSendScreen(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             if (state.isSending && !state.isPreparing) {
-                                TransferProgressBlock()
+                                LiveTransferRow(TransferRowDensity.Inline)
                             } else {
                                 CircularProgressIndicator()
                             }
@@ -258,7 +260,7 @@ fun ShareSendScreen(
             }
 
             if (state.isSending && !state.isDirectSend) {
-                TransferProgressBlock(modifier = Modifier.padding(bottom = 8.dp))
+                LiveTransferRow(TransferRowDensity.Inline, Modifier.padding(bottom = 8.dp))
             }
 
             SingleFileShareLinkRow(payload = payload, eligible = state.filesReady && !state.isDirectSend)

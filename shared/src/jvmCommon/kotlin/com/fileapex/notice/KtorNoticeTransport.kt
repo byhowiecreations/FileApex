@@ -11,7 +11,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
 import io.ktor.http.takeFrom
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
 import kotlinx.coroutines.CancellationException
 import kotlinx.io.readByteArray
 import java.io.IOException
@@ -68,7 +68,7 @@ class KtorNoticeTransport(
     private suspend fun readBody(response: HttpResponse): NoticeHttpResponse {
         val declared = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
         if (declared != null && declared > NoticeEnvelopeParser.MAX_FILE_BYTES) return NoticeHttpResponse.Failed
-        val bytes = response.bodyAsChannel().readRemaining(NoticeEnvelopeParser.MAX_FILE_BYTES + 1L).readByteArray()
+        val bytes = response.bodyAsChannel().readBuffer(NoticeEnvelopeParser.MAX_FILE_BYTES + 1L).readByteArray()
         if (bytes.size > NoticeEnvelopeParser.MAX_FILE_BYTES) return NoticeHttpResponse.Failed
         return NoticeHttpResponse.Ok(bytes, response.headers[HttpHeaders.ETag])
     }

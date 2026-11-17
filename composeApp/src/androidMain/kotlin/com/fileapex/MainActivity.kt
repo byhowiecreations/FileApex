@@ -584,6 +584,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun exitFileApex() {
+        if (com.fileapex.di.FileApexServices.isDatabaseReady()) {
+            kotlinx.coroutines.runBlocking { com.fileapex.di.FileApexServices.presenceMonitor.sayGoodbyeToOnlinePeers() }
+        }
         stopShareServer()
         finishAffinity()
     }

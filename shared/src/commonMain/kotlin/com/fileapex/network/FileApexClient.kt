@@ -253,7 +253,9 @@ class FileApexClient(
         val bulletinVersion: Long? = null,
         val chainState: com.fileapex.membership.ChainStateField? = null,
         /** The device the answering node says it shows on Simple Home, or null. */
-        val linkedTo: String? = null
+        val linkedTo: String? = null,
+        /** Refused outright on a direct LAN route: the host is up and nothing listens on the port. */
+        val refused: Boolean = false
     )
 
     suspend fun probeHealth(
@@ -266,7 +268,8 @@ class FileApexClient(
         // The phone applies this only when the poll reached it over TLS from a paired computer.
         val healthPath = if (signal == null) "/api/v1/health" else "/api/v1/health?${signal.query()}"
         val shown = chainStateProvider?.invoke()?.let { "&${com.fileapex.membership.ChainStateField.QUERY}=${it.encode()}" }.orEmpty()
-        val health = peerHttpGet(host, port, withSenderQuery(healthPath) + shown, timeoutMs) ?: return HealthProbe(false)
+        val startedMs = com.fileapex.util.TimeUtils.now()
+        val health = peerHttpGet(host, port, withSenderQuery(healthPath) + shown, timeoutMs) ?: return HealthProbe(false, refused = failedFastAndRefused(host, port, com.fileapex.util.TimeUtils.now() - startedMs, timeoutMs))
         checkRevocation(host, port, health)
         if (health.statusCode in 200..299) return HealthProbe(
             true, health.body.respondedAsId(), PeerHttpHeaders.membershipVersion(health.headers),

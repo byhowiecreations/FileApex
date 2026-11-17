@@ -205,7 +205,10 @@ object TransferActivityGuard {
     fun endTransfer(deviceId: String = "", streamKey: String = "") {
         val key = streamKey.ifBlank { deviceId }
         if (key.isNotBlank()) {
-            streams.remove(key)?.let { batchFinishedBytes.addAndGet(it.totalBytes.coerceAtLeast(it.sentBytes)) }
+            streams.remove(key)?.let {
+                batchFinishedBytes.addAndGet(it.totalBytes.coerceAtLeast(it.sentBytes))
+                recordIfFinished(it)
+            }
         } else if (anonymousActive.updateAndGet { current -> (current - 1).coerceAtLeast(0) } == 0) {
             streams.remove(ANONYMOUS_STREAM)?.let { batchFinishedBytes.addAndGet(it.totalBytes) }
         }
@@ -215,6 +218,12 @@ object TransferActivityGuard {
             return
         }
         publish(force = true)
+    }
+
+    private fun recordIfFinished(stream: Stream) {
+        if (stream.totalBytes <= 0L || stream.sentBytes < stream.totalBytes) return
+        val now = TimeUtils.now()
+        TransferHistory.record(TransferHistoryEntry("$now-${stream.fileName}", stream.fileName, stream.deviceName, stream.totalBytes, now), now)
     }
 
     fun reset() {

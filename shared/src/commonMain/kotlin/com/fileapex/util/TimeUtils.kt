@@ -92,3 +92,6 @@ object TimestampDiagnostics {
 internal expect fun formatEpochMsToLocal(epochMs: Long, zoneId: String): String
 
 internal expect fun localizeNoteListStamp(epochMs: Long, zoneId: String): NoteListStamp
+
+/** The device's own zone (not the notes default), for labels that show the user's local time. */
+expect fun systemZoneId(): String

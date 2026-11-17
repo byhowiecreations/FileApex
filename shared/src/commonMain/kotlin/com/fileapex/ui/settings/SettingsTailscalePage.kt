@@ -1,11 +1,9 @@
 package com.fileapex.ui.settings
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import com.fileapex.ui.SettingsScreenLayoutMode
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -147,8 +145,8 @@ internal fun TailscaleSettingsPage(
                     }
                     AnimatedVisibility(
                         visible = setupExpanded,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
+                        enter = FileApexMotion.expandIn(LocalReducedMotion.current),
+                        exit = FileApexMotion.shrinkOut(LocalReducedMotion.current)
                     ) {
                         Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                             Text(
@@ -310,8 +308,8 @@ private fun TailscaleAdvancedSection(
         }
         AnimatedVisibility(
             visible = advancedOpen,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
+            enter = FileApexMotion.expandIn(LocalReducedMotion.current),
+            exit = FileApexMotion.shrinkOut(LocalReducedMotion.current)
         ) {
             Column(modifier = Modifier.padding(bottom = 4.dp)) {
                 TailscaleSetupStep(number = "1") {

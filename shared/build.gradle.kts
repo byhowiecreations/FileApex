@@ -315,6 +315,7 @@ android {
     }
 
     sourceSets.getByName("test").assets.srcDir("src/androidMain/assets")
+    sourceSets.getByName("test").resources.srcDir("src/commonMain/composeResources/files")
 }
 
 dependencies {

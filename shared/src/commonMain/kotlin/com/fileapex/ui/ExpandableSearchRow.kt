@@ -1,7 +1,9 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
+import com.fileapex.ui.motion.MotionKind
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -80,7 +82,7 @@ internal fun ExpandableSearchPillRow(
     val showField = open || query.isNotEmpty()
     val fraction by animateFloatAsState(
         targetValue = if (showField) 1f else 0f,
-        animationSpec = tween(durationMillis = 260)
+        animationSpec = if (showField) FileApexMotion.enter(MotionKind.Move, LocalReducedMotion.current) else FileApexMotion.exit(MotionKind.Move, LocalReducedMotion.current)
     )
     LaunchedEffect(open) {
         if (open) {

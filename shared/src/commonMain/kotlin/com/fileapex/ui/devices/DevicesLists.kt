@@ -1,5 +1,6 @@
 package com.fileapex.ui.devices
 
+import com.fileapex.ui.motion.LocalReducedMotion
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,7 +42,7 @@ import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.DeviceOrderDragHandle
 import com.fileapex.ui.DeviceOrderEdgeAutoScrollEffect
-import com.fileapex.ui.DeviceOrderItemPlacementSpec
+import com.fileapex.ui.deviceOrderPlacementSpec
 import com.fileapex.ui.DevicesScreenLayoutMode
 import com.fileapex.ui.EmptyDevicesQuickStartCard
 import com.fileapex.ui.adaptive.FileApexWidthSizeClass
@@ -393,7 +394,7 @@ private fun PairedDevicesBrowseList(
                     modifier = Modifier.animateItem(
                         fadeInSpec = null,
                         fadeOutSpec = null,
-                        placementSpec = DeviceOrderItemPlacementSpec
+                        placementSpec = deviceOrderPlacementSpec(LocalReducedMotion.current)
                     )
                 )
             }

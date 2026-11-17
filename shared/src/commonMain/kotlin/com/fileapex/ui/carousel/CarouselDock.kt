@@ -1,8 +1,9 @@
 package com.fileapex.ui.carousel
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,7 +39,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -103,7 +103,8 @@ fun CarouselDock(
     val targets = items.indices.map { i ->
         pointerX?.let { CarouselMath.dockScale(abs(it - centers[i]), sigmaPx = 70f) } ?: 1f
     }
-    val scales = targets.map { animateFloatAsState(it, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium)).value }
+    val reduced = LocalReducedMotion.current
+    val scales = targets.map { animateFloatAsState(it, FileApexMotion.drag(reduced, 0.7f, Spring.StiffnessMedium)).value }
     val extraPx = scales.map { (it - 1f) * with(androidx.compose.ui.platform.LocalDensity.current) { ITEM_SIZE.toPx() } }
     val growth = CarouselMath.dockPillGrowth(extraPx)
     val shifts = CarouselMath.dockShifts(extraPx)

@@ -1,7 +1,8 @@
 package com.fileapex.ui.carousel
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -73,7 +74,7 @@ internal fun CarouselCard(
     onFilesDropped: (List<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val rotation by animateFloatAsState(if (flipped) 180f else 0f, tween(durationMillis = 550))
+    val rotation by animateFloatAsState(if (flipped) 180f else 0f, FileApexMotion.decorative(550, LocalReducedMotion.current))
     val density = LocalDensity.current
     var dropHover by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(26.dp)
@@ -206,7 +207,7 @@ private fun CarouselBack(
 @Composable
 private fun StatusPill(row: DeviceListRow) {
     val dot = if (row.online) CarouselPalette.ready else Color(0xFFFFC107)
-    val label = if (row.online) DeviceListRow.localizedOnlineLabel(row.reachedBy) else stringRes("tap_to_wake")
+    val label = if (row.online) DeviceListRow.localizedOnlineLabel(row.reachedBy) else DeviceListRow.offlineLabel(row.canWake)
     Row(
         modifier = Modifier
             .clip(CircleShape)

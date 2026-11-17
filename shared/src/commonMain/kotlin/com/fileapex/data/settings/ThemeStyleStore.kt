@@ -57,6 +57,24 @@ class ThemeStyleStore(private val store: SettingsKvStore) {
         fallback.value = previous
     }
 
+    /**
+     * Run once, before any theme flow reads the store, so the first frame already has the right theme. An existing
+     * install keeps the theme it had (saved as the default when none was stored) and skips the other-themes hint.
+     */
+    fun decideDefaultTheme(existingInstall: Boolean) {
+        if (defaultThemeDecided()) return
+        markDefaultDecided()
+        val hasStoredTheme = store.contains(BaseAppSettings.KEY_APP_THEME)
+        if (existingInstall && !hasStoredTheme) store.putString(BaseAppSettings.KEY_APP_THEME, AppTheme.DEFAULT.name)
+        if (existingInstall || hasStoredTheme) store.putBoolean(BaseAppSettings.KEY_OTHER_THEMES_HINT_SHOWN, true)
+    }
+
+    fun defaultThemeDecided(): Boolean = store.getBoolean(BaseAppSettings.KEY_THEME_DEFAULT_MIGRATED, false)
+
+    fun markDefaultDecided() {
+        store.putBoolean(BaseAppSettings.KEY_THEME_DEFAULT_MIGRATED, true)
+    }
+
     fun reset() {
         flux.value = ThemeIconStyle.FLUX
         kinetic.value = ThemeIconStyle.STANDARD

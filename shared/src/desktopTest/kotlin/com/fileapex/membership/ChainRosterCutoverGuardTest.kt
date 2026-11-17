@@ -26,7 +26,7 @@ class ChainRosterCutoverGuardTest {
 
     @Test
     fun aHardwareTwinIsRemovedThroughTheChain() {
-        val body = functionBody(source("shared/src/commonMain/kotlin/com/fileapex/domain/presence/PeerPresenceMonitor.kt"), "supersedeHardwareTwins")
+        val body = functionBody(source("shared/src/commonMain/kotlin/com/fileapex/domain/presence/MonitorStoredEndpointHost.kt"), "supersedeHardwareTwins")
         assertTrue("HardwareTwins" in body)
         assertEquals(false, "peerAdmission" in body)
         assertTrue("removeMember" in source("shared/src/commonMain/kotlin/com/fileapex/domain/pairing/HardwareTwins.kt"))

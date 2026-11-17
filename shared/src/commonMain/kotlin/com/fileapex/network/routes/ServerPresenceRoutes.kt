@@ -22,6 +22,31 @@ private val digestGap = BulletinPeerBackoff(
 )
 
 internal fun Route.registerPresenceRoutes(server: FileApexServer) {
+    post("/api/v1/presence") {
+        val body = try {
+            call.receiveBoundedText(limit = 1024L)
+        } catch (_: RequestBodyTooLargeException) {
+            call.respond(HttpStatusCode.PayloadTooLarge, "presence_too_large")
+            return@post
+        }
+        val message = try {
+            server.json.decodeFromString(com.fileapex.domain.presence.PresenceMessage.serializer(), body)
+        } catch (_: kotlinx.serialization.SerializationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+        val signal = message?.let { com.fileapex.domain.presence.PresenceSignal.parse(it.state) }
+        val sender = server.authenticatedPeerId(call)
+        when {
+            signal == null -> call.respond(HttpStatusCode.BadRequest, "presence_invalid")
+            sender == null -> call.respond(HttpStatusCode.Unauthorized, "authentication_required")
+            else -> {
+                server.onPresenceGoodbye(sender)
+                call.respond(HttpStatusCode.OK, "ok")
+            }
+        }
+    }
     post("/api/v1/presence/digest") {
         cancellableCatching {
             val body = call.receiveBoundedText(limit = 16L * 1024)

@@ -1,11 +1,9 @@
 package com.fileapex.ui.adaptive.simple
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
+import com.fileapex.ui.motion.MotionKind
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
@@ -289,11 +287,10 @@ internal fun SimplePopoverHost(
         AnimatedVisibility(
             visible = visible && anchorLocal != null,
             modifier = placement.width(popoverWidth),
-            enter = scaleIn(
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
-                transformOrigin = origin
-            ) + fadeIn(tween(120)),
-            exit = scaleOut(tween(170), transformOrigin = origin) + fadeOut(tween(140))
+            enter = scaleIn(FileApexMotion.enter(MotionKind.Scale, LocalReducedMotion.current), transformOrigin = origin) +
+                FileApexMotion.fadeInSpec(LocalReducedMotion.current),
+            exit = scaleOut(FileApexMotion.exit(MotionKind.Scale, LocalReducedMotion.current), transformOrigin = origin) +
+                FileApexMotion.fadeOutSpec(LocalReducedMotion.current)
         ) {
             Surface(
                 shape = RoundedCornerShape(20.dp),

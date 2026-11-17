@@ -17,6 +17,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -43,6 +44,8 @@ import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.MacLaunchSplash
 import com.fileapex.platform.DesktopScreenGeometry
 import com.fileapex.platform.DesktopTraySupport
+import androidx.compose.ui.graphics.toArgb
+import com.fileapex.ui.theme.windowBackdrop
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.platform.DesktopWindowBoundsStore
 import com.fileapex.platform.MacOsExtensionRegistrar
@@ -229,10 +232,11 @@ private fun startDesktopApplication() {
         }
         val appTheme by themeFlow.collectAsState(initial = null)
         var sizedTheme by remember { mutableStateOf<AppTheme?>(null) }
+        val fileManagerWindow = rememberFileManagerWindow(windowState, appTheme, windowState.isMinimized)
         // Each theme keeps its own window size; switching themes restores the size last used with that theme.
         LaunchedEffect(appTheme) {
             val theme = appTheme ?: return@LaunchedEffect
-            sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), windowState.size) }
+            if (fileManagerWindow.persistable) sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), windowState.size) }
             val remembered = DesktopWindowBoundsStore.loadSize(sizeKey(theme))
             if (remembered != null) {
                 windowState.size = remembered
@@ -261,7 +265,7 @@ private fun startDesktopApplication() {
                 .distinctUntilChanged()
                 .debounce(400)
                 .collect { (size, position, minimized) ->
-                    if (!minimized) {
+                    if (!minimized && fileManagerWindow.persistable) {
                         DesktopWindowBoundsStore.persist(size, position)
                         sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), size) }
                     }
@@ -271,10 +275,14 @@ private fun startDesktopApplication() {
         fun shutdownDesktop() {
             DesktopLifecycleLog.log("shutdownDesktop")
             if (!windowState.isMinimized) {
-                DesktopWindowBoundsStore.persist(windowState.size, windowState.position)
-                sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), windowState.size) }
+                val (size, position) = fileManagerWindow.boundsToPersist()
+                DesktopWindowBoundsStore.persist(size, position)
+                sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), size) }
             }
             com.fileapex.cloud.DesktopAuthCoordinator.cancelPending()
+            if (com.fileapex.di.FileApexServices.isDatabaseReady()) {
+                kotlinx.coroutines.runBlocking { com.fileapex.di.FileApexServices.presenceMonitor.sayGoodbyeToOnlinePeers() }
+            }
             DesktopShareServerController.shutdownForQuit()
             DesktopTraySupport.dispose()
             DesktopUriHandler.stop()
@@ -310,6 +318,12 @@ private fun startDesktopApplication() {
             }
             LaunchedEffect(window) {
                 DesktopMacWindowChrome.apply(window)
+                fileManagerWindow.window = window
+            }
+            LaunchedEffect(window, appTheme) {
+                val backdrop = java.awt.Color((appTheme ?: AppTheme.DEFAULT).windowBackdrop().toArgb())
+                window.background = backdrop
+                window.contentPane.background = backdrop
             }
             // Light shell first so splash hide + tray attach are not stuck behind Kinetic/PNG
             // first composition (that path was ~6 to 10s of Dock bounce / frozen splash).

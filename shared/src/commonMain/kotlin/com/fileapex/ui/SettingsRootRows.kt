@@ -148,12 +148,11 @@ internal fun SettingsRootInputs.MenuRow(
         )
         SettingsMenuIds.NOTIFICATIONS -> ResolvedMenuRow(
             title = stringRes("notifications"),
-            subtitle = if (
-                state.notesNotificationsEnabled ||
-                state.driveRelayNotificationsEnabled ||
-                state.fileTransferNotificationsEnabled ||
-                state.liveTransferCapsuleEnabled
-            ) stringRes("on") else stringRes("off"),
+            subtitle = when (val summary = notificationsRowSummary(state)) {
+                NotificationsRowSummary.Off -> stringRes("off")
+                NotificationsRowSummary.CriticalOnly -> stringRes("notifications_row_critical_only")
+                is NotificationsRowSummary.Count -> stringRes("notifications_row_count", summary.on, summary.of)
+            },
             onClick = openRowPage
         )
         SettingsMenuIds.CLIPBOARD -> ResolvedMenuRow(
@@ -322,4 +321,26 @@ internal fun OnboardingPermissionsCard(onOpenOnboardingPermissions: () -> Unit) 
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
+}
+
+internal sealed interface NotificationsRowSummary {
+    data object Off : NotificationsRowSummary
+    data object CriticalOnly : NotificationsRowSummary
+    data class Count(val on: Int, val of: Int) : NotificationsRowSummary
+}
+
+/** The live capsule belongs to file transfer notifications, so it is not a kind of its own. */
+internal fun notificationsRowSummary(state: SettingsUiState): NotificationsRowSummary {
+    val kinds = listOf(
+        state.noticesEnabled,
+        state.notesNotificationsEnabled,
+        state.driveRelayNotificationsEnabled,
+        state.fileTransferNotificationsEnabled
+    )
+    val on = kinds.count { it }
+    return when {
+        on == 0 -> NotificationsRowSummary.Off
+        on == 1 && state.noticesEnabled -> NotificationsRowSummary.CriticalOnly
+        else -> NotificationsRowSummary.Count(on, kinds.size)
+    }
 }

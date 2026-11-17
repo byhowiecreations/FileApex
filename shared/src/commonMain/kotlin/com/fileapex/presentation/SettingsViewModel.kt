@@ -63,6 +63,7 @@ data class SettingsUiState(
     val clipboardConfigPeers: List<PairedDeviceEntity> = emptyList(),
     val fileTransferNotificationsEnabled: Boolean = false,
     val driveRelayNotificationsEnabled: Boolean = false,
+    val noticesEnabled: Boolean = true,
     val notesNotificationsEnabled: Boolean = false,
     val liveTransferCapsuleEnabled: Boolean = false,
     val liveTransferShowQueueEnabled: Boolean = false,
@@ -99,11 +100,7 @@ data class SettingsUiState(
     val kineticSphereConnectedLinesEnabled: Boolean = true,
     val kineticSphereOrbitalRingsEnabled: Boolean = true,
     val kineticSpherePersistentWallpaperEnabled: Boolean = false,
-    val generalExpanded: Boolean = true,
-    val systemPerformanceExpanded: Boolean = true,
-    val appearanceBehaviorExpanded: Boolean = true,
-    val securityAccountExpanded: Boolean = true,
-    val remoteAccessExpanded: Boolean = true,
+    val collapsedSections: Set<String> = emptySet(),
     val showAdvancedSettings: Boolean = false,
     val tailscaleSetupExpanded: Boolean = false,
     val showAccessibilityRestrictedHelp: Boolean = false,
@@ -136,6 +133,7 @@ class SettingsViewModel : ViewModel() {
             clipboardImagesEnabled = settings.clipboardImagesEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             driveRelayNotificationsEnabled = settings.driveRelayNotificationsEnabled.value,
+            noticesEnabled = settings.noticeSettings.enabled.value,
             notesNotificationsEnabled = settings.notesNotificationsEnabled.value,
             liveTransferCapsuleEnabled = settings.liveTransferCapsuleEnabled.value,
             liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
@@ -167,11 +165,7 @@ class SettingsViewModel : ViewModel() {
             kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
             kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value,
             kineticSpherePersistentWallpaperEnabled = settings.kineticSpherePersistentWallpaperEnabled.value,
-            generalExpanded = settings.settingsGroupGeneralExpanded.value,
-            systemPerformanceExpanded = settings.settingsGroupSystemPerformanceExpanded.value,
-            appearanceBehaviorExpanded = settings.settingsGroupAppearanceBehaviorExpanded.value,
-            securityAccountExpanded = settings.settingsGroupSecurityAccountExpanded.value,
-            remoteAccessExpanded = settings.settingsGroupRemoteAccessExpanded.value,
+            collapsedSections = settings.settingsGroups.collapsed.value,
             showAdvancedSettings = settings.showAdvancedSettings.value,
             tailscaleSetupExpanded = settings.tailscaleSetupExpanded.value
         )
@@ -217,22 +211,8 @@ class SettingsViewModel : ViewModel() {
         SettingsStateMirror(_uiState, viewModelScope).start()
     }
 
-    fun toggleGeneralGroup() {
-        val newExpanded = !_uiState.value.generalExpanded
-        settings.setSettingsGroupGeneralExpanded(newExpanded)
-        _uiState.update { it.copy(generalExpanded = newExpanded) }
-    }
-
-    fun toggleSystemPerformanceGroup() {
-        val newExpanded = !_uiState.value.systemPerformanceExpanded
-        settings.setSettingsGroupSystemPerformanceExpanded(newExpanded)
-        _uiState.update { it.copy(systemPerformanceExpanded = newExpanded) }
-    }
-
-    fun toggleAppearanceBehaviorGroup() {
-        val newExpanded = !_uiState.value.appearanceBehaviorExpanded
-        settings.setSettingsGroupAppearanceBehaviorExpanded(newExpanded)
-        _uiState.update { it.copy(appearanceBehaviorExpanded = newExpanded) }
+    fun toggleSection(sectionId: String) {
+        settings.settingsGroups.setExpanded(sectionId, sectionId in _uiState.value.collapsedSections)
     }
 
     fun setTailscaleSetupExpanded(expanded: Boolean) {
@@ -243,18 +223,6 @@ class SettingsViewModel : ViewModel() {
     fun setShowAdvancedSettings(show: Boolean) {
         settings.setShowAdvancedSettings(show)
         _uiState.update { it.copy(showAdvancedSettings = show) }
-    }
-
-    fun toggleRemoteAccessGroup() {
-        val newExpanded = !_uiState.value.remoteAccessExpanded
-        settings.setSettingsGroupRemoteAccessExpanded(newExpanded)
-        _uiState.update { it.copy(remoteAccessExpanded = newExpanded) }
-    }
-
-    fun toggleSecurityAccountGroup() {
-        val newExpanded = !_uiState.value.securityAccountExpanded
-        settings.setSettingsGroupSecurityAccountExpanded(newExpanded)
-        _uiState.update { it.copy(securityAccountExpanded = newExpanded) }
     }
 
     fun setKineticSphereCleanMode(enabled: Boolean) {

@@ -443,6 +443,8 @@ internal fun ColumnScope.ExplorerSingleFolderView(notes: ExplorerScope, breadcru
         )
         AdaptiveExplorerView(
             isWideDisplay = folderPane,
+            sortMode = sortMode,
+            onSortModeChange = { sortMode = it },
             viewMode = if (state.viewMode == ExplorerViewMode.Split) ExplorerViewMode.List else state.viewMode,
             panePath = state.panePath,
             paneDirectories = state.paneDirectories,

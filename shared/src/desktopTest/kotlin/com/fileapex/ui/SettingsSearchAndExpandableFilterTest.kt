@@ -113,10 +113,12 @@ class SettingsSearchAndExpandableFilterTest {
     }
 
     @Test
-    fun `Kinetic explorer filter bar uses expandable search icon just like Simple Home`() {
+    fun `Kinetic, Clean and Flux explorer filter bars use the expandable search icon`() {
         assertTrue(ExplorerFilterBarPolicy.usesExpandableSearch(AppTheme.KINETIC_SPHERE, hasLeading = false))
         assertTrue(ExplorerFilterBarPolicy.usesExpandableSearch(AppTheme.SIMPLE, hasLeading = true))
-        assertFalse(ExplorerFilterBarPolicy.usesExpandableSearch(AppTheme.CLEAN, hasLeading = false))
+        assertTrue(ExplorerFilterBarPolicy.usesExpandableSearch(AppTheme.CLEAN, hasLeading = false))
+        assertTrue(ExplorerFilterBarPolicy.usesExpandableSearch(AppTheme.FLUX_GLASS, hasLeading = false))
+        assertFalse(ExplorerFilterBarPolicy.usesExpandableSearch(AppTheme.FREESTYLE, hasLeading = false))
     }
 
     @Test

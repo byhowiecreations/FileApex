@@ -1,9 +1,10 @@
 package com.fileapex.friends.ui
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
+import com.fileapex.ui.motion.MotionKind
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -74,10 +75,8 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.util.TimeUtils
 import com.fileapex.platform.PlatformClipboard
 import com.fileapex.platform.isDesktopHost
-import com.fileapex.platform.rememberDownloadsFilePicker
 import io.github.alexzhirkevich.qrose.options.QrErrorCorrectionLevel
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
-import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -126,18 +125,19 @@ fun FriendsHost() {
         ) {
             // The window stays full screen and never changes size: a size animation inside a wrap-content dialog resizes the window every frame and MagicOS takes seconds to follow. Only the panel inside animates.
             var shown by remember { mutableStateOf(false) }
+            val reduced = LocalReducedMotion.current
             LaunchedEffect(Unit) { shown = true }
             Box(
                 Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { FriendsUi.stage.value = FriendsUi.Stage.Closed },
                 contentAlignment = Alignment.Center
             ) {
-                AnimatedVisibility(shown, enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.92f)) {
+                AnimatedVisibility(shown, enter = FileApexMotion.fadeInSpec(reduced) + scaleIn(FileApexMotion.enter(MotionKind.Scale, reduced), initialScale = 0.92f)) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 1f),
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(16.dp).widthIn(max = 520.dp).fillMaxWidth().heightIn(max = 640.dp)
-                            .animateContentSize(tween(220))
+                            .animateContentSize(FileApexMotion.enter(MotionKind.Move, reduced))
                             .onGloballyPositioned { FriendsUi.panelBounds = it.boundsInRoot() }
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
                     ) { FriendsPanel(onClose = { FriendsUi.stage.value = FriendsUi.Stage.Closed }) }

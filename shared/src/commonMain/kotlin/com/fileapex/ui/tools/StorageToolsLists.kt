@@ -1,5 +1,9 @@
 package com.fileapex.ui.tools
 
+import com.fileapex.ui.EmptyState
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -192,7 +196,7 @@ internal fun FileListPage(
     Column(Modifier.fillMaxSize()) {
         header()
         if (files.isEmpty()) {
-            CenteredNote(stringRes("storage_empty_list"))
+            EmptyState(icon = Icons.Filled.FolderOpen, title = stringRes("storage_empty_list"), modifier = Modifier.fillMaxSize())
             return@Column
         }
         Row(
@@ -271,7 +275,7 @@ internal fun DuplicatesPage(
         return
     }
     if (groups.isEmpty()) {
-        CenteredNote(stringRes("storage_duplicates_none"))
+        EmptyState(icon = Icons.Filled.ContentCopy, title = stringRes("storage_duplicates_none"), modifier = Modifier.fillMaxSize())
         return
     }
     var selected by remember(groups) { mutableStateOf(emptySet<String>()) }
@@ -356,7 +360,7 @@ internal fun FolderSizesPage(
             TextButton(onClick = { onOpenFolder(folderPath) }) { Text(stringRes("storage_open_in_files")) }
         }
         if (children.isEmpty()) {
-            CenteredNote(stringRes("storage_empty_list"))
+            EmptyState(icon = Icons.Filled.FolderOpen, title = stringRes("storage_empty_list"), modifier = Modifier.fillMaxSize())
             return@Column
         }
         LazyColumn(Modifier.weight(1f)) {

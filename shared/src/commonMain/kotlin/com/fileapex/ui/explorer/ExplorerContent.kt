@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -42,6 +43,7 @@ import com.fileapex.ui.dnd.reportDropSpot
 import com.fileapex.ui.dropDestinationFrame
 import com.fileapex.ui.dropTargetHot
 import com.fileapex.ui.dropTargetTint
+import com.fileapex.ui.EmptyState
 import com.fileapex.ui.explorerInk
 import com.fileapex.ui.formatBytes
 import com.fileapex.ui.listingDropChrome
@@ -75,7 +77,8 @@ internal fun ExplorerContentPane(
     onFileActivate: (RemoteFileItem) -> Unit,
     onCopyItem: (RemoteFileItem) -> Unit,
     onSendItemToDevice: (RemoteFileItem) -> Unit,
-    onDownloadItem: (RemoteFileItem) -> Unit
+    onDownloadItem: (RemoteFileItem) -> Unit,
+    details: ExplorerDetails? = null
 ) {
     when (viewMode) {
         ExplorerViewMode.List -> ExplorerListContent(
@@ -103,7 +106,8 @@ internal fun ExplorerContentPane(
             onFileActivate = onFileActivate,
             onCopyItem = onCopyItem,
             onSendItemToDevice = onSendItemToDevice,
-            onDownloadItem = onDownloadItem
+            onDownloadItem = onDownloadItem,
+            details = details
         )
         ExplorerViewMode.Split -> ExplorerListContent(
             canNavigateUp = canNavigateUp,
@@ -130,7 +134,8 @@ internal fun ExplorerContentPane(
             onFileActivate = onFileActivate,
             onCopyItem = onCopyItem,
             onSendItemToDevice = onSendItemToDevice,
-            onDownloadItem = onDownloadItem
+            onDownloadItem = onDownloadItem,
+            details = details
         )
         ExplorerViewMode.Grid -> ExplorerGridContent(
             canNavigateUp = canNavigateUp,
@@ -189,12 +194,18 @@ private fun ExplorerListContent(
     onFileActivate: (RemoteFileItem) -> Unit,
     onCopyItem: (RemoteFileItem) -> Unit,
     onSendItemToDevice: (RemoteFileItem) -> Unit,
-    onDownloadItem: (RemoteFileItem) -> Unit
+    onDownloadItem: (RemoteFileItem) -> Unit,
+    details: ExplorerDetails? = null
 ) {
     LazyColumn(
         modifier = modifier.listingDropChrome(),
         contentPadding = listPadding
     ) {
+        if (details != null) {
+            stickyHeader(key = "details-header") {
+                ExplorerDetailsHeader(details, leadingInset = if (isSelectionMode) 108.dp else 68.dp)
+            }
+        }
         if (canNavigateUp) {
             item(key = "parent") {
                 ParentRow(
@@ -226,7 +237,8 @@ private fun ExplorerListContent(
                 onActivate = { onDirectoryClick(dir) },
                 onCopy = { onCopyItem(dir) },
                 onSendToDevice = { onSendItemToDevice(dir) },
-                onDownload = { onDownloadItem(dir) }
+                onDownload = { onDownloadItem(dir) },
+                details = details
             )
         }
         items(files, key = { "file-${it.id}" }) { file ->
@@ -245,7 +257,8 @@ private fun ExplorerListContent(
                 onActivate = { onFileActivate(file) },
                 onCopy = { onCopyItem(file) },
                 onSendToDevice = { onSendItemToDevice(file) },
-                onDownload = { onDownloadItem(file) }
+                onDownload = { onDownloadItem(file) },
+                details = details
             )
         }
     }
@@ -412,11 +425,5 @@ internal fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
 
 @Composable
 internal fun EmptyHint(text: String) {
-    val ink = explorerInk()
-    Text(
-        text = text,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
-        style = MaterialTheme.typography.bodyMedium,
-        color = ink.muted
-    )
+    EmptyState(icon = Icons.Filled.FolderOpen, title = text, modifier = Modifier.padding(vertical = 24.dp))
 }

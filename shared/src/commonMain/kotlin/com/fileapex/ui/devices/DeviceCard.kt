@@ -1,5 +1,7 @@
 package com.fileapex.ui.devices
 
+import com.fileapex.ui.motion.pressScale
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -273,7 +275,7 @@ internal fun DeviceCard(
                 }
                 .then(if (allowHoverPopOver || cleanModern || isFlux) Modifier.hoverable(cardInteractionSource) else Modifier)
                 .then(dropModifier)
-                .clickable(enabled = !connecting && !editMode, onClick = onClick),
+                .pressScale(cardInteractionSource).clickable(interactionSource = cardInteractionSource, indication = LocalIndication.current, enabled = !connecting && !editMode, onClick = onClick),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(

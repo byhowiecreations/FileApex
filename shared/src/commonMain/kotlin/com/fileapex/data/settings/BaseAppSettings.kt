@@ -36,48 +36,13 @@ class BaseAppSettings(
     /** True when this install ran an earlier version (platform checks for its database file). */
     existingInstall: Boolean = false
 ) : AppSettings {
-    private val google = MutableStateFlow(store.getBoolean(KEY_GOOGLE, false))
-    private val googleEmail = MutableStateFlow(store.getString(KEY_GOOGLE_EMAIL, ""))
-    private val googleUid = MutableStateFlow(store.getString(KEY_GOOGLE_UID, ""))
-    private val googleRestorePendingFlow = MutableStateFlow(store.getBoolean(KEY_GOOGLE_RESTORE_PENDING, false))
-    private val googleBackupEmailHintFlow = MutableStateFlow(store.getString(KEY_GOOGLE_BACKUP_EMAIL_HINT, ""))
-    private val multiCopyIntro = MutableStateFlow(store.getBoolean(KEY_MULTI_COPY_INTRO, false))
-    private val clipboardSharing = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHARING, false))
-    private val clipboardDisclosureAckFlow =
-        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_DISCLOSURE_ACK, false))
-    private val accessibilityDisclosureAckFlow =
-        MutableStateFlow(store.getBoolean(KEY_ACCESSIBILITY_DISCLOSURE_ACK, false))
-    private val installPackagesDisclosureAckFlow =
-        MutableStateFlow(store.getBoolean(KEY_INSTALL_PACKAGES_DISCLOSURE_ACK, false))
-    private val clipboardShareModeFlow = MutableStateFlow(
-        ClipboardShareMode.fromStorage(store.getString(KEY_CLIPBOARD_SHARE_MODE, ""))
-    )
-    private val clipboardTargetDeviceIdsFlow = MutableStateFlow(
-        ClipboardSharePolicy.parseDeviceIdSet(store.getString(KEY_CLIPBOARD_TARGET_DEVICES, ""))
-    )
-    private val clipboardTargetConfiguredFlow =
-        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_TARGET_CONFIGURED, false))
-    private val clipboardOptInPromptShownFlow =
-        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_OPT_IN_PROMPT_SHOWN, false))
-    private val clipboardViaCellularFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_VIA_CELLULAR, false))
-    private val clipboardAccessibilityFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_ACCESSIBILITY, false))
-    private val clipboardSendNotificationFlow =
-        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SEND_NOTIFICATION, false))
-    private val clipboardShizukuFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHIZUKU, false))
-    private val clipboardAutoSendFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_AUTO_SEND, false))
-    private val clipboardImagesFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_IMAGES, true))
+    private val googleAccount = GoogleAccountStore(store)
+    private val clipboard = ClipboardSettingsStore(store)
     private val appLanguageTagFlow = MutableStateFlow(store.getString(KEY_APP_LANGUAGE, ""))
     private val clipboardPrivateKeyBase64Stored = MutableStateFlow(
         store.getString(KEY_CLIPBOARD_PRIVATE_KEY, "")
     )
-    private val transferNotifications =
-        MutableStateFlow(store.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
-    private val driveRelayNotificationsFlow =
-        MutableStateFlow(store.getBoolean(KEY_DRIVE_RELAY_NOTIFICATIONS, false))
-    private val notesNotificationsFlow =
-        MutableStateFlow(loadNotesNotifications())
-    private val notesNotificationPromptShownFlow =
-        MutableStateFlow(store.getBoolean(KEY_NOTES_NOTIFICATION_PROMPT_SHOWN, false))
+    private val notifications = NotificationSettingsStore(store)
     private val bulletinRemoteFilePurgePreferenceFlow =
         MutableStateFlow(
             BulletinRemoteFilePurgePreference.fromStorage(
@@ -94,25 +59,12 @@ class BaseAppSettings(
     private val pinIdle = MutableStateFlow(
         PinIdleTimeout.fromStorage(store.getString(KEY_PIN_IDLE_TIMEOUT, PinIdleTimeout.DEFAULT.name))
     )
-    private val checkForUpdates = MutableStateFlow(store.getBoolean(KEY_CHECK_FOR_UPDATES, false))
-    private val updateCheckPromptShownFlow = MutableStateFlow(store.getBoolean(KEY_UPDATE_CHECK_PROMPT_SHOWN, false))
-    override val updateCheckPromptShown: StateFlow<Boolean> = updateCheckPromptShownFlow.asStateFlow()
+    private val updateCheck = UpdateCheckStore(store)
+    override val updateCheckPromptShown: StateFlow<Boolean> = updateCheck.promptShown
     private val postPairSetupDismissedFlow = MutableStateFlow(store.getBoolean(KEY_POST_PAIR_SETUP_DISMISSED, false))
     override val postPairSetupBannerDismissed: StateFlow<Boolean> = postPairSetupDismissedFlow.asStateFlow()
-    private val updateUnit = MutableStateFlow(
-        UpdateCheckUnit.fromStorage(store.getString(KEY_UPDATE_UNIT, UpdateCheckUnit.Days.name))
-    )
-    private val updateAmount = MutableStateFlow(
-        UpdateCheckFrequency.sanitizeAmount(
-            updateUnit.value,
-            store.getInt(KEY_UPDATE_AMOUNT, 1)
-        )
-    )
-    private val lastUpdateCheck = MutableStateFlow(store.getLong(KEY_LAST_UPDATE_CHECK, 0L))
-    private val skippedUpdateVersionFlow =
-        MutableStateFlow(store.getString(KEY_SKIPPED_UPDATE_VERSION, ""))
     private val serviceWatchdog = MutableStateFlow(store.getBoolean(KEY_SERVICE_WATCHDOG, true))
-    private val autoLaunchOnRebootFlow = MutableStateFlow(loadAutoLaunchOnReboot())
+    private val autoLaunchOnRebootFlow = MutableStateFlow(store.getBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, true))
     private val desktopAutostartFlow = MutableStateFlow(store.getBoolean(KEY_DESKTOP_AUTOSTART, false))
     private val deviceOrderIdsFlow = MutableStateFlow(store.getString(KEY_DEVICE_ORDER, ""))
     private val deviceOrderUpdatedAt = MutableStateFlow(store.getLong(KEY_DEVICE_ORDER_UPDATED_AT, 0L))
@@ -132,10 +84,8 @@ class BaseAppSettings(
         (store.getString(KEY_EXPLORER_SPLIT_FRACTION, "").toFloatOrNull() ?: 0.38f).coerceIn(0.20f, 0.70f)
     )
     override val explorerSplitFraction: StateFlow<Float> = explorerSplitFractionFlow.asStateFlow()
-    private val explorerFavoritesFlow = MutableStateFlow(
-        store.getString(KEY_EXPLORER_FAVORITES, "").split('\n').filter { it.isNotBlank() }
-    )
-    override val explorerFavorites: StateFlow<List<String>> = explorerFavoritesFlow.asStateFlow()
+    private val explorerFavoritesStore = ExplorerFavoritesStore(store)
+    override val explorerFavorites: StateFlow<List<String>> = explorerFavoritesStore.favorites
     private val backupConfigFlow = MutableStateFlow(
         com.fileapex.domain.backup.BackupConfig.decode(store.getString(KEY_BACKUP_CONFIG, ""))
     )
@@ -188,57 +138,29 @@ class BaseAppSettings(
     private val driveRelayOptInPromptShownFlow = MutableStateFlow(
         store.getBoolean(KEY_DRIVE_RELAY_OPT_IN_PROMPT_SHOWN, false)
     )
+    private val themeStyles = ThemeStyleStore(store)
     init {
-        // Decided before any theme flow reads the store, so the first frame already has the right theme.
-        if (!store.getBoolean(KEY_THEME_DEFAULT_MIGRATED, false)) {
-            store.putBoolean(KEY_THEME_DEFAULT_MIGRATED, true)
-            val hasStoredTheme = store.contains(KEY_APP_THEME)
-            if (existingInstall && !hasStoredTheme) {
-                val current = AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
-                store.putString(KEY_APP_THEME, current.name)
-            }
-            if (existingInstall || hasStoredTheme) store.putBoolean(KEY_OTHER_THEMES_HINT_SHOWN, true)
-        }
+        themeStyles.decideDefaultTheme(existingInstall)
     }
 
     private val otherThemesHintShownFlow = MutableStateFlow(store.getBoolean(KEY_OTHER_THEMES_HINT_SHOWN, false))
     override val otherThemesHintShown: StateFlow<Boolean> = otherThemesHintShownFlow.asStateFlow()
     private val welcomeTutorialShownFlow = MutableStateFlow(store.getBoolean(KEY_WELCOME_TUTORIAL_SHOWN, false))
     override val welcomeTutorialShown: StateFlow<Boolean> = welcomeTutorialShownFlow.asStateFlow()
-    private val notificationBroadcastEnabledFlow =
-        MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_ENABLED, false))
-    override val notificationBroadcastEnabled: StateFlow<Boolean> = notificationBroadcastEnabledFlow.asStateFlow()
-    private val notificationBroadcastTargetFlow =
-        MutableStateFlow(store.getString(KEY_NOTIFICATION_BROADCAST_TARGET, ""))
-    override val notificationBroadcastTargetDeviceId: StateFlow<String> = notificationBroadcastTargetFlow.asStateFlow()
-    private val notificationBroadcastCodesFlow =
-        MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_CODES, false))
-    override val notificationBroadcastVerificationCodes: StateFlow<Boolean> = notificationBroadcastCodesFlow.asStateFlow()
-    private val notificationDisclosureAcceptedFlow =
-        // Anyone who turned sharing on before the disclosure existed already opted in, so they are not asked again.
-        MutableStateFlow(
-            store.getBoolean(KEY_NOTIFICATION_DISCLOSURE_ACCEPTED, false) ||
-                store.getBoolean(KEY_NOTIFICATION_BROADCAST_ENABLED, false).also { wasOn ->
-                    if (wasOn) store.putBoolean(KEY_NOTIFICATION_DISCLOSURE_ACCEPTED, true)
-                }
-        )
-    override val notificationDisclosureAccepted: StateFlow<Boolean> = notificationDisclosureAcceptedFlow.asStateFlow()
-    private val notificationBroadcastDismissalFlow =
-        MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_DISMISSAL, false))
-    override val notificationBroadcastSyncDismissal: StateFlow<Boolean> = notificationBroadcastDismissalFlow.asStateFlow()
-    private val devicePopupsFlow = MutableStateFlow(store.getBoolean(KEY_DEVICE_NOTIFICATION_POPUPS, false))
-    override val deviceNotificationPopups: StateFlow<Boolean> = devicePopupsFlow.asStateFlow()
-    private val notificationBroadcastAppsFlow = MutableStateFlow(
-        ClipboardSharePolicy.parseDeviceIdSet(store.getString(KEY_NOTIFICATION_BROADCAST_APPS, ""))
-    )
-    override val notificationBroadcastApps: StateFlow<Set<String>> = notificationBroadcastAppsFlow.asStateFlow()
+    override val notificationBroadcastEnabled: StateFlow<Boolean> = notifications.broadcastEnabled
+    override val notificationBroadcastTargetDeviceId: StateFlow<String> = notifications.broadcastTargetDeviceId
+    override val notificationBroadcastVerificationCodes: StateFlow<Boolean> = notifications.broadcastVerificationCodes
+    override val notificationDisclosureAccepted: StateFlow<Boolean> = notifications.disclosureAccepted
+    override val notificationBroadcastSyncDismissal: StateFlow<Boolean> = notifications.broadcastSyncDismissal
+    override val deviceNotificationPopups: StateFlow<Boolean> = notifications.devicePopups
+    override val notificationBroadcastApps: StateFlow<Set<String>> = notifications.broadcastApps
     private val simpleActiveDeviceIdFlow = MutableStateFlow(store.getString(KEY_SIMPLE_ACTIVE_DEVICE_ID, ""))
     override val simpleActiveDeviceId: StateFlow<String> = simpleActiveDeviceIdFlow.asStateFlow()
     override val pairLink = PairLinkSettings(store)
+    override val motion = MotionSettings(store)
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
-    private val themeStyles = ThemeStyleStore(store)
     override val noticeSettings = com.fileapex.notice.NoticeSettingsStore(store)
     override val carouselFallbackTheme: StateFlow<AppTheme> = themeStyles.fallbackTheme
     override val carouselFavoriteDevice: StateFlow<String> = themeStyles.favoriteDevice
@@ -278,87 +200,8 @@ class BaseAppSettings(
     private val kineticSpherePersistentWallpaperFlow = MutableStateFlow(
         store.getBoolean(KEY_KINETIC_SPHERE_PERSISTENT_WALLPAPER, false)
     )
-    private val freestyleCardOptionsPosXFlow = MutableStateFlow(
-        store.getString(KEY_FREESTYLE_CARD_OPTIONS_X, "").toFloatOrNull()
-    )
-    private val freestyleCardOptionsPosYFlow = MutableStateFlow(
-        store.getString(KEY_FREESTYLE_CARD_OPTIONS_Y, "").toFloatOrNull()
-    )
-    private val freestyleCardVerticalOptionsPosXFlow = MutableStateFlow(
-        store.getString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_X, "").toFloatOrNull()
-            ?: store.getString(KEY_FREESTYLE_CARD_OPTIONS_X, "").toFloatOrNull()
-    )
-    private val freestyleCardVerticalOptionsPosYFlow = MutableStateFlow(
-        store.getString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_Y, "").toFloatOrNull()
-            ?: store.getString(KEY_FREESTYLE_CARD_OPTIONS_Y, "").toFloatOrNull()
-    )
-    private val freestyleTileOptionsPosXFlow = MutableStateFlow(
-        store.getString(KEY_FREESTYLE_TILE_OPTIONS_X, "").toFloatOrNull()
-    )
-    private val freestyleTileOptionsPosYFlow = MutableStateFlow(
-        store.getString(KEY_FREESTYLE_TILE_OPTIONS_Y, "").toFloatOrNull()
-    )
-    private val freestyleLayoutModeFlow = MutableStateFlow(
-        FreestyleLayoutMode.fromStorage(store.getString(KEY_FREESTYLE_LAYOUT_MODE, FreestyleLayoutMode.DEFAULT.storageKey))
-    )
-    private val freestyleEditTutorialShownFlow = MutableStateFlow(
-        store.getBoolean(KEY_FREESTYLE_EDIT_TUTORIAL_SHOWN, false)
-    )
-    private val freestyleCardPositions = DevicePositionTable(
-        store, "fcn:", listOf(KEY_FREESTYLE_CARD_NODE_OFFSETS), emptyList()
-    )
-    private val freestyleCardVerticalPositions = DevicePositionTable(
-        store, "fvn:",
-        listOf(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS, KEY_FREESTYLE_CARD_NODE_OFFSETS),
-        listOf(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS)
-    )
-    private val freestyleTilePositions = DevicePositionTable(
-        store, "ftn:", listOf(KEY_FREESTYLE_TILE_NODE_OFFSETS), listOf(KEY_FREESTYLE_TILE_NODE_OFFSETS)
-    )
-    init {
-        // The vertical layout inherits the horizontal card positions, so that legacy string is dropped last.
-        store.remove(KEY_FREESTYLE_CARD_NODE_OFFSETS)
-    }
-    private val freestyleCardMenuOrdersFlow = MutableStateFlow(
-        decodeStringMap(store.getString(KEY_FREESTYLE_CARD_MENU_ORDERS, ""))
-    )
-    private val freestyleCardVerticalMenuOrdersFlow = MutableStateFlow(
-        decodeStringMap(store.getString(KEY_FREESTYLE_CARD_VERTICAL_MENU_ORDERS, "")).ifEmpty {
-            decodeStringMap(store.getString(KEY_FREESTYLE_CARD_MENU_ORDERS, ""))
-        }
-    )
-    private val freestyleTileMenuOrdersFlow = MutableStateFlow(
-        decodeStringMap(store.getString(KEY_FREESTYLE_TILE_MENU_ORDERS, ""))
-    )
-    private val freestyleOptionsMenuOrderFlow = MutableStateFlow(
-        store.getString(KEY_FREESTYLE_OPTIONS_MENU_ORDER, "files,add_device,join_device,send_clipboard,check_batteries,settings")
-    )
-    private val freestyleCardPinnedActionsFlow = MutableStateFlow(
-        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, ""))
-    )
-    private val freestyleCardVerticalPinnedActionsFlow = MutableStateFlow(
-        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, "")).ifEmpty {
-            decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, ""))
-        }
-    )
-    private val freestyleTilePinnedActionsFlow = MutableStateFlow(
-        decodeKineticOffsets(store.getString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, ""))
-    )
-    private val settingsGroupGeneralFlow = MutableStateFlow(
-        store.getBoolean(KEY_SETTINGS_GROUP_GENERAL, true)
-    )
-    private val settingsGroupSystemPerformanceFlow = MutableStateFlow(
-        store.getBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, true)
-    )
-    private val settingsGroupAppearanceBehaviorFlow = MutableStateFlow(
-        store.getBoolean(KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR, true)
-    )
-    private val settingsGroupSecurityAccountFlow = MutableStateFlow(
-        store.getBoolean(KEY_SETTINGS_GROUP_SECURITY_ACCOUNT, true)
-    )
-    private val settingsGroupRemoteAccessFlow = MutableStateFlow(
-        store.getBoolean(KEY_SETTINGS_GROUP_REMOTE_ACCESS, true)
-    )
+    private val freestyle = FreestyleLayoutStore(store)
+    override val settingsGroups = SettingsGroupStore(store)
     private val showAdvancedSettingsFlow = MutableStateFlow(store.getBoolean(KEY_SHOW_ADVANCED_SETTINGS, false))
     private val tailscaleSetupExpandedFlow = MutableStateFlow(
         store.getBoolean(KEY_TAILSCALE_SETUP_EXPANDED, false)
@@ -387,38 +230,31 @@ class BaseAppSettings(
     )
 
 
-    override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
-    override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
-    override val googleAccountUid: StateFlow<String> = googleUid.asStateFlow()
-    override val googleRestorePending: StateFlow<Boolean> = googleRestorePendingFlow.asStateFlow()
-    override val googleBackupEmailHint: StateFlow<String> = googleBackupEmailHintFlow.asStateFlow()
-    override val multiCopyIntroAcknowledged: StateFlow<Boolean> = multiCopyIntro.asStateFlow()
-    override val clipboardSharingEnabled: StateFlow<Boolean> = clipboardSharing.asStateFlow()
-    override val clipboardDisclosureAcknowledged: StateFlow<Boolean> =
-        clipboardDisclosureAckFlow.asStateFlow()
-    override val accessibilityDisclosureAcknowledged: StateFlow<Boolean> =
-        accessibilityDisclosureAckFlow.asStateFlow()
-    override val installPackagesDisclosureAcknowledged: StateFlow<Boolean> =
-        installPackagesDisclosureAckFlow.asStateFlow()
-    override val clipboardShareMode: StateFlow<ClipboardShareMode> = clipboardShareModeFlow.asStateFlow()
-    override val clipboardTargetDeviceIds: StateFlow<Set<String>> = clipboardTargetDeviceIdsFlow.asStateFlow()
-    override val clipboardTargetConfigured: StateFlow<Boolean> = clipboardTargetConfiguredFlow.asStateFlow()
-    override val clipboardOptInPromptShown: StateFlow<Boolean> = clipboardOptInPromptShownFlow.asStateFlow()
-    override val clipboardViaCellularEnabled: StateFlow<Boolean> = clipboardViaCellularFlow.asStateFlow()
-    override val clipboardAccessibilityEnabled: StateFlow<Boolean> = clipboardAccessibilityFlow.asStateFlow()
-    override val clipboardSendNotificationEnabled: StateFlow<Boolean> = clipboardSendNotificationFlow.asStateFlow()
-    override val clipboardShizukuEnabled: StateFlow<Boolean> = clipboardShizukuFlow.asStateFlow()
-    override val clipboardAutoSendEnabled: StateFlow<Boolean> = clipboardAutoSendFlow.asStateFlow()
-    override val clipboardImagesEnabled: StateFlow<Boolean> = clipboardImagesFlow.asStateFlow()
+    override val googleAccountLinkEnabled: StateFlow<Boolean> = googleAccount.linked
+    override val googleAccountEmail: StateFlow<String> = googleAccount.email
+    override val googleAccountUid: StateFlow<String> = googleAccount.uid
+    override val googleRestorePending: StateFlow<Boolean> = googleAccount.restorePending
+    override val googleBackupEmailHint: StateFlow<String> = googleAccount.backupEmailHint
+    override val multiCopyIntroAcknowledged: StateFlow<Boolean> = clipboard.multiCopyIntroAcknowledged
+    override val clipboardSharingEnabled: StateFlow<Boolean> = clipboard.sharingEnabled
+    override val clipboardDisclosureAcknowledged: StateFlow<Boolean> = clipboard.disclosureAcknowledged
+    override val accessibilityDisclosureAcknowledged: StateFlow<Boolean> = clipboard.accessibilityDisclosureAcknowledged
+    override val installPackagesDisclosureAcknowledged: StateFlow<Boolean> = clipboard.installPackagesDisclosureAcknowledged
+    override val clipboardShareMode: StateFlow<ClipboardShareMode> = clipboard.shareMode
+    override val clipboardTargetDeviceIds: StateFlow<Set<String>> = clipboard.targetDeviceIds
+    override val clipboardTargetConfigured: StateFlow<Boolean> = clipboard.targetConfigured
+    override val clipboardOptInPromptShown: StateFlow<Boolean> = clipboard.optInPromptShown
+    override val clipboardViaCellularEnabled: StateFlow<Boolean> = clipboard.viaCellularEnabled
+    override val clipboardAccessibilityEnabled: StateFlow<Boolean> = clipboard.accessibilityEnabled
+    override val clipboardSendNotificationEnabled: StateFlow<Boolean> = clipboard.sendNotificationEnabled
+    override val clipboardShizukuEnabled: StateFlow<Boolean> = clipboard.shizukuEnabled
+    override val clipboardAutoSendEnabled: StateFlow<Boolean> = clipboard.autoSendEnabled
+    override val clipboardImagesEnabled: StateFlow<Boolean> = clipboard.imagesEnabled
     override val appLanguageTag: StateFlow<String> = appLanguageTagFlow.asStateFlow()
-    override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
-        transferNotifications.asStateFlow()
-    override val driveRelayNotificationsEnabled: StateFlow<Boolean> =
-        driveRelayNotificationsFlow.asStateFlow()
-    override val notesNotificationsEnabled: StateFlow<Boolean> =
-        notesNotificationsFlow.asStateFlow()
-    override val notesNotificationPromptShown: StateFlow<Boolean> =
-        notesNotificationPromptShownFlow.asStateFlow()
+    override val fileTransferNotificationsEnabled: StateFlow<Boolean> = notifications.fileTransferEnabled
+    override val driveRelayNotificationsEnabled: StateFlow<Boolean> = notifications.driveRelayEnabled
+    override val notesNotificationsEnabled: StateFlow<Boolean> = notifications.notesEnabled
+    override val notesNotificationPromptShown: StateFlow<Boolean> = notifications.notesPromptShownFlow
     override val bulletinRemoteFilePurgePreference: StateFlow<BulletinRemoteFilePurgePreference> =
         bulletinRemoteFilePurgePreferenceFlow.asStateFlow()
     override val liveTransferCapsuleEnabled: StateFlow<Boolean> =
@@ -431,34 +267,24 @@ class BaseAppSettings(
     override val kineticSphereConnectedLinesEnabled: StateFlow<Boolean> = kineticSphereConnectedLinesFlow.asStateFlow()
     override val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean> = kineticSphereOrbitalRingsFlow.asStateFlow()
     override val kineticSpherePersistentWallpaperEnabled: StateFlow<Boolean> = kineticSpherePersistentWallpaperFlow.asStateFlow()
-    override val freestyleCardOptionsPosX: StateFlow<Float?> = freestyleCardOptionsPosXFlow.asStateFlow()
-    override val freestyleCardOptionsPosY: StateFlow<Float?> = freestyleCardOptionsPosYFlow.asStateFlow()
-    override val freestyleCardVerticalOptionsPosX: StateFlow<Float?> = freestyleCardVerticalOptionsPosXFlow.asStateFlow()
-    override val freestyleCardVerticalOptionsPosY: StateFlow<Float?> = freestyleCardVerticalOptionsPosYFlow.asStateFlow()
-    override val freestyleTileOptionsPosX: StateFlow<Float?> = freestyleTileOptionsPosXFlow.asStateFlow()
-    override val freestyleTileOptionsPosY: StateFlow<Float?> = freestyleTileOptionsPosYFlow.asStateFlow()
-    override val freestyleLayoutMode: StateFlow<FreestyleLayoutMode> = freestyleLayoutModeFlow.asStateFlow()
-    override val freestyleEditTutorialShown: StateFlow<Boolean> = freestyleEditTutorialShownFlow.asStateFlow()
-    override val freestyleCardNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardPositions.flow
-    override val freestyleCardVerticalNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardVerticalPositions.flow
-    override val freestyleTileNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleTilePositions.flow
-    override val freestyleCardMenuOrders: StateFlow<Map<String, String>> = freestyleCardMenuOrdersFlow.asStateFlow()
-    override val freestyleCardVerticalMenuOrders: StateFlow<Map<String, String>> = freestyleCardVerticalMenuOrdersFlow.asStateFlow()
-    override val freestyleTileMenuOrders: StateFlow<Map<String, String>> = freestyleTileMenuOrdersFlow.asStateFlow()
-    override val freestyleOptionsMenuOrder: StateFlow<String> = freestyleOptionsMenuOrderFlow.asStateFlow()
-    override val freestyleCardPinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardPinnedActionsFlow.asStateFlow()
-    override val freestyleCardVerticalPinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardVerticalPinnedActionsFlow.asStateFlow()
-    override val freestyleTilePinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleTilePinnedActionsFlow.asStateFlow()
-    override val settingsGroupGeneralExpanded: StateFlow<Boolean> =
-        settingsGroupGeneralFlow.asStateFlow()
-    override val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean> =
-        settingsGroupSystemPerformanceFlow.asStateFlow()
-    override val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean> =
-        settingsGroupAppearanceBehaviorFlow.asStateFlow()
-    override val settingsGroupSecurityAccountExpanded: StateFlow<Boolean> =
-        settingsGroupSecurityAccountFlow.asStateFlow()
-    override val settingsGroupRemoteAccessExpanded: StateFlow<Boolean> =
-        settingsGroupRemoteAccessFlow.asStateFlow()
+    override val freestyleCardOptionsPosX: StateFlow<Float?> = freestyle.optionsPosX(FreestyleLayoutMode.CARDS_HORIZONTAL)
+    override val freestyleCardOptionsPosY: StateFlow<Float?> = freestyle.optionsPosY(FreestyleLayoutMode.CARDS_HORIZONTAL)
+    override val freestyleCardVerticalOptionsPosX: StateFlow<Float?> = freestyle.optionsPosX(FreestyleLayoutMode.CARDS_VERTICAL)
+    override val freestyleCardVerticalOptionsPosY: StateFlow<Float?> = freestyle.optionsPosY(FreestyleLayoutMode.CARDS_VERTICAL)
+    override val freestyleTileOptionsPosX: StateFlow<Float?> = freestyle.optionsPosX(FreestyleLayoutMode.TILES)
+    override val freestyleTileOptionsPosY: StateFlow<Float?> = freestyle.optionsPosY(FreestyleLayoutMode.TILES)
+    override val freestyleLayoutMode: StateFlow<FreestyleLayoutMode> = freestyle.layoutModeFlow
+    override val freestyleEditTutorialShown: StateFlow<Boolean> = freestyle.editTutorialShownFlow
+    override val freestyleCardNodeOffsets: StateFlow<FreestyleOffsets> = freestyle.nodeOffsets(FreestyleLayoutMode.CARDS_HORIZONTAL)
+    override val freestyleCardVerticalNodeOffsets: StateFlow<FreestyleOffsets> = freestyle.nodeOffsets(FreestyleLayoutMode.CARDS_VERTICAL)
+    override val freestyleTileNodeOffsets: StateFlow<FreestyleOffsets> = freestyle.nodeOffsets(FreestyleLayoutMode.TILES)
+    override val freestyleCardMenuOrders: StateFlow<Map<String, String>> = freestyle.menuOrders(FreestyleLayoutMode.CARDS_HORIZONTAL)
+    override val freestyleCardVerticalMenuOrders: StateFlow<Map<String, String>> = freestyle.menuOrders(FreestyleLayoutMode.CARDS_VERTICAL)
+    override val freestyleTileMenuOrders: StateFlow<Map<String, String>> = freestyle.menuOrders(FreestyleLayoutMode.TILES)
+    override val freestyleOptionsMenuOrder: StateFlow<String> = freestyle.optionsMenuOrderFlow
+    override val freestyleCardPinnedActions: StateFlow<FreestyleOffsets> = freestyle.pinnedActions(FreestyleLayoutMode.CARDS_HORIZONTAL)
+    override val freestyleCardVerticalPinnedActions: StateFlow<FreestyleOffsets> = freestyle.pinnedActions(FreestyleLayoutMode.CARDS_VERTICAL)
+    override val freestyleTilePinnedActions: StateFlow<FreestyleOffsets> = freestyle.pinnedActions(FreestyleLayoutMode.TILES)
     override val showAdvancedSettings: StateFlow<Boolean> = showAdvancedSettingsFlow.asStateFlow()
     override val tailscaleSetupExpanded: StateFlow<Boolean> = tailscaleSetupExpandedFlow.asStateFlow()
     override val tailscaleEnabled: StateFlow<Boolean> = tailscaleEnabledFlow.asStateFlow()
@@ -473,11 +299,11 @@ class BaseAppSettings(
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
     override val devicePin: StateFlow<String> = pin.asStateFlow()
     override val pinIdleTimeout: StateFlow<PinIdleTimeout> = pinIdle.asStateFlow()
-    override val checkForUpdatesEnabled: StateFlow<Boolean> = checkForUpdates.asStateFlow()
-    override val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit> = updateUnit.asStateFlow()
-    override val checkForUpdatesIntervalAmount: StateFlow<Int> = updateAmount.asStateFlow()
-    override val lastUpdateCheckEpochMs: StateFlow<Long> = lastUpdateCheck.asStateFlow()
-    override val skippedUpdateVersion: StateFlow<String> = skippedUpdateVersionFlow.asStateFlow()
+    override val checkForUpdatesEnabled: StateFlow<Boolean> = updateCheck.enabled
+    override val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit> = updateCheck.intervalUnit
+    override val checkForUpdatesIntervalAmount: StateFlow<Int> = updateCheck.intervalAmount
+    override val lastUpdateCheckEpochMs: StateFlow<Long> = updateCheck.lastCheckEpochMs
+    override val skippedUpdateVersion: StateFlow<String> = updateCheck.skippedVersion
     override val enableServiceWatchdog: StateFlow<Boolean> = serviceWatchdog.asStateFlow()
     override val autoLaunchOnReboot: StateFlow<Boolean> = autoLaunchOnRebootFlow.asStateFlow()
     override val desktopAutostart: StateFlow<Boolean> = desktopAutostartFlow.asStateFlow()
@@ -513,71 +339,33 @@ class BaseAppSettings(
         driveRelayOptInPromptShownFlow.asStateFlow()
 
 
-    override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_GOOGLE, enabled)
-        google.value = enabled
-        if (!enabled) {
-            setGoogleAccountEmail("")
-            setGoogleAccountUid("")
-            setGoogleRestorePending(false)
-            setGoogleBackupEmailHint("")
-        }
-    }
+    override fun setGoogleAccountLinkEnabled(enabled: Boolean) = googleAccount.setLinked(enabled)
 
-    override fun setGoogleAccountEmail(email: String) {
-        val cleaned = email.trim()
-        store.putString(KEY_GOOGLE_EMAIL, cleaned)
-        googleEmail.value = cleaned
-    }
+    override fun setGoogleAccountEmail(email: String) = googleAccount.setEmail(email)
 
-    override fun setGoogleAccountUid(uid: String) {
-        val cleaned = uid.trim()
-        store.putString(KEY_GOOGLE_UID, cleaned)
-        googleUid.value = cleaned
-    }
+    override fun setGoogleAccountUid(uid: String) = googleAccount.setUid(uid)
 
-    override fun setGoogleRestorePending(pending: Boolean) {
-        store.putBoolean(KEY_GOOGLE_RESTORE_PENDING, pending)
-        googleRestorePendingFlow.value = pending
-    }
+    override fun setGoogleRestorePending(pending: Boolean) = googleAccount.setRestorePending(pending)
 
-    override fun setGoogleBackupEmailHint(email: String) {
-        val cleaned = email.trim()
-        store.putString(KEY_GOOGLE_BACKUP_EMAIL_HINT, cleaned)
-        googleBackupEmailHintFlow.value = cleaned
-    }
+    override fun setGoogleBackupEmailHint(email: String) = googleAccount.setBackupEmailHint(email)
 
-    override fun setMultiCopyIntroAcknowledged(acknowledged: Boolean) {
-        store.putBoolean(KEY_MULTI_COPY_INTRO, acknowledged)
-        multiCopyIntro.value = acknowledged
-    }
+    override fun setMultiCopyIntroAcknowledged(acknowledged: Boolean) = clipboard.setMultiCopyIntroAcknowledged(acknowledged)
 
     override fun setClipboardSharingEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_SHARING, enabled)
-        clipboardSharing.value = enabled
+        clipboard.setSharingEnabled(enabled)
         com.fileapex.platform.ClipboardAccessibilityHealth.refresh()
         com.fileapex.platform.ClipboardShareChrome.fire()
     }
 
-    override fun setClipboardDisclosureAcknowledged(acknowledged: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_DISCLOSURE_ACK, acknowledged)
-        clipboardDisclosureAckFlow.value = acknowledged
-    }
+    override fun setClipboardDisclosureAcknowledged(acknowledged: Boolean) = clipboard.setDisclosureAcknowledged(acknowledged)
 
-    override fun setAccessibilityDisclosureAcknowledged(acknowledged: Boolean) {
-        store.putBoolean(KEY_ACCESSIBILITY_DISCLOSURE_ACK, acknowledged)
-        accessibilityDisclosureAckFlow.value = acknowledged
-    }
+    override fun setAccessibilityDisclosureAcknowledged(acknowledged: Boolean) =
+        clipboard.setAccessibilityDisclosureAcknowledged(acknowledged)
 
-    override fun setInstallPackagesDisclosureAcknowledged(acknowledged: Boolean) {
-        store.putBoolean(KEY_INSTALL_PACKAGES_DISCLOSURE_ACK, acknowledged)
-        installPackagesDisclosureAckFlow.value = acknowledged
-    }
+    override fun setInstallPackagesDisclosureAcknowledged(acknowledged: Boolean) =
+        clipboard.setInstallPackagesDisclosureAcknowledged(acknowledged)
 
-    override fun setClipboardShareMode(mode: ClipboardShareMode) {
-        store.putString(KEY_CLIPBOARD_SHARE_MODE, mode.name)
-        clipboardShareModeFlow.value = mode
-    }
+    override fun setClipboardShareMode(mode: ClipboardShareMode) = clipboard.setShareMode(mode)
 
     private val bulletin = BulletinSettings(store)
     override fun bulletinDeltaCursor(deviceId: String): Long = bulletin.deltaCursor(deviceId)
@@ -586,63 +374,35 @@ class BaseAppSettings(
     override val bulletinSeenAtEpochMs: StateFlow<Long> = bulletin.seenAtEpochMs
     override fun setBulletinSeenAtEpochMs(epochMs: Long) = bulletin.setSeenAt(epochMs)
 
-    override fun setClipboardTargetDeviceIds(deviceIds: Set<String>) {
-        val encoded = ClipboardSharePolicy.encodeDeviceIdSet(deviceIds)
-        store.putString(KEY_CLIPBOARD_TARGET_DEVICES, encoded)
-        clipboardTargetDeviceIdsFlow.value = ClipboardSharePolicy.parseDeviceIdSet(encoded)
-    }
+    override fun setClipboardTargetDeviceIds(deviceIds: Set<String>) = clipboard.setTargetDeviceIds(deviceIds)
 
-    override fun setClipboardTargetDevice(deviceId: String, selected: Boolean) {
-        val trimmed = deviceId.trim()
-        if (trimmed.isEmpty()) return
-        val next = if (selected) {
-            clipboardTargetDeviceIdsFlow.value + trimmed
-        } else {
-            clipboardTargetDeviceIdsFlow.value - trimmed
-        }
-        setClipboardTargetDeviceIds(next)
-    }
+    override fun setClipboardTargetDevice(deviceId: String, selected: Boolean) = clipboard.setTargetDevice(deviceId, selected)
 
-    override fun setClipboardTargetConfigured(configured: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_TARGET_CONFIGURED, configured)
-        clipboardTargetConfiguredFlow.value = configured
-    }
+    override fun setClipboardTargetConfigured(configured: Boolean) = clipboard.setTargetConfigured(configured)
 
-    override fun setClipboardOptInPromptShown(shown: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_OPT_IN_PROMPT_SHOWN, shown)
-        clipboardOptInPromptShownFlow.value = shown
-    }
+    override fun setClipboardOptInPromptShown(shown: Boolean) = clipboard.setOptInPromptShown(shown)
 
-    override fun setClipboardViaCellularEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_VIA_CELLULAR, enabled)
-        clipboardViaCellularFlow.value = enabled
-    }
+    override fun setClipboardViaCellularEnabled(enabled: Boolean) = clipboard.setViaCellularEnabled(enabled)
 
     override fun setClipboardAccessibilityEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_ACCESSIBILITY, enabled)
-        clipboardAccessibilityFlow.value = enabled
+        clipboard.setAccessibilityEnabled(enabled)
         com.fileapex.platform.ClipboardAccessibilityHealth.refresh()
         com.fileapex.platform.ClipboardShareChrome.fire()
     }
 
     override fun setClipboardSendNotificationEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_SEND_NOTIFICATION, enabled)
-        clipboardSendNotificationFlow.value = enabled
+        clipboard.setSendNotificationEnabled(enabled)
         com.fileapex.platform.ClipboardShareChrome.fire()
     }
 
     override fun setClipboardShizukuEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_SHIZUKU, enabled)
-        clipboardShizukuFlow.value = enabled
+        clipboard.setShizukuEnabled(enabled)
         com.fileapex.platform.ClipboardChangeMonitor.onShizukuOptInChanged()
     }
 
-    override fun setClipboardAutoSendEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CLIPBOARD_AUTO_SEND, enabled)
-        clipboardAutoSendFlow.value = enabled
-    }
+    override fun setClipboardAutoSendEnabled(enabled: Boolean) = clipboard.setAutoSendEnabled(enabled)
 
-    override fun setClipboardImagesEnabled(enabled: Boolean) { store.putBoolean(KEY_CLIPBOARD_IMAGES, enabled); clipboardImagesFlow.value = enabled }
+    override fun setClipboardImagesEnabled(enabled: Boolean) = clipboard.setImagesEnabled(enabled)
 
     override fun setAppLanguageTag(tag: String) {
         store.putString(KEY_APP_LANGUAGE, tag)
@@ -657,25 +417,13 @@ class BaseAppSettings(
         clipboardPrivateKeyBase64Stored.value = cleaned
     }
 
-    override fun setFileTransferNotificationsEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_TRANSFER_NOTIFICATIONS, enabled)
-        transferNotifications.value = enabled
-    }
+    override fun setFileTransferNotificationsEnabled(enabled: Boolean) = notifications.setFileTransferEnabled(enabled)
 
-    override fun setDriveRelayNotificationsEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_DRIVE_RELAY_NOTIFICATIONS, enabled)
-        driveRelayNotificationsFlow.value = enabled
-    }
+    override fun setDriveRelayNotificationsEnabled(enabled: Boolean) = notifications.setDriveRelayEnabled(enabled)
 
-    override fun setNotesNotificationsEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_NOTES_NOTIFICATIONS, enabled)
-        notesNotificationsFlow.value = enabled
-    }
+    override fun setNotesNotificationsEnabled(enabled: Boolean) = notifications.setNotesEnabled(enabled)
 
-    override fun setNotesNotificationPromptShown(shown: Boolean) {
-        store.putBoolean(KEY_NOTES_NOTIFICATION_PROMPT_SHOWN, shown)
-        notesNotificationPromptShownFlow.value = shown
-    }
+    override fun setNotesNotificationPromptShown(shown: Boolean) = notifications.setNotesPromptShown(shown)
 
     override fun setBulletinRemoteFilePurgePreference(preference: BulletinRemoteFilePurgePreference) {
         store.putString(KEY_BULLETIN_REMOTE_FILE_PURGE, preference.name)
@@ -729,31 +477,6 @@ class BaseAppSettings(
     override fun setKineticSpherePersistentWallpaperEnabled(enabled: Boolean) {
         store.putBoolean(KEY_KINETIC_SPHERE_PERSISTENT_WALLPAPER, enabled)
         kineticSpherePersistentWallpaperFlow.value = enabled
-    }
-
-    override fun setSettingsGroupGeneralExpanded(expanded: Boolean) {
-        store.putBoolean(KEY_SETTINGS_GROUP_GENERAL, expanded)
-        settingsGroupGeneralFlow.value = expanded
-    }
-
-    override fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean) {
-        store.putBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, expanded)
-        settingsGroupSystemPerformanceFlow.value = expanded
-    }
-
-    override fun setSettingsGroupAppearanceBehaviorExpanded(expanded: Boolean) {
-        store.putBoolean(KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR, expanded)
-        settingsGroupAppearanceBehaviorFlow.value = expanded
-    }
-
-    override fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean) {
-        store.putBoolean(KEY_SETTINGS_GROUP_SECURITY_ACCOUNT, expanded)
-        settingsGroupSecurityAccountFlow.value = expanded
-    }
-
-    override fun setSettingsGroupRemoteAccessExpanded(expanded: Boolean) {
-        store.putBoolean(KEY_SETTINGS_GROUP_REMOTE_ACCESS, expanded)
-        settingsGroupRemoteAccessFlow.value = expanded
     }
 
     override fun setShowAdvancedSettings(show: Boolean) {
@@ -876,30 +599,16 @@ class BaseAppSettings(
         pinIdle.value = timeout
     }
 
-    override fun setCheckForUpdatesEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CHECK_FOR_UPDATES, enabled)
-        checkForUpdates.value = enabled
-    }
+    override fun setCheckForUpdatesEnabled(enabled: Boolean) = updateCheck.setEnabled(enabled)
 
-    override fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int) {
-        val safeAmount = UpdateCheckFrequency.sanitizeAmount(unit, amount)
-        store.putString(KEY_UPDATE_UNIT, unit.name)
-        store.putInt(KEY_UPDATE_AMOUNT, safeAmount)
-        updateUnit.value = unit
-        updateAmount.value = safeAmount
-    }
+    override fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int) = updateCheck.setInterval(unit, amount)
 
     override fun setLastUpdateCheckEpochMs(epochMs: Long) {
         TimestampDiagnostics.logMutation("AppSettings.lastUpdateCheckEpochMs", epochMs)
-        store.putLong(KEY_LAST_UPDATE_CHECK, epochMs)
-        lastUpdateCheck.value = epochMs
+        updateCheck.setLastCheck(epochMs)
     }
 
-    override fun setSkippedUpdateVersion(version: String) {
-        val cleaned = version.trim()
-        store.putString(KEY_SKIPPED_UPDATE_VERSION, cleaned)
-        skippedUpdateVersionFlow.value = cleaned
-    }
+    override fun setSkippedUpdateVersion(version: String) = updateCheck.setSkippedVersion(version)
 
     override fun setEnableServiceWatchdog(enabled: Boolean) {
         store.putBoolean(KEY_SERVICE_WATCHDOG, enabled)
@@ -974,45 +683,22 @@ class BaseAppSettings(
         com.fileapex.platform.BackupScheduler.apply(next)
     }
 
-    override fun setNotificationBroadcastEnabled(enabled: Boolean) {
-        notificationBroadcastEnabledFlow.value = enabled
-        store.putBoolean(KEY_NOTIFICATION_BROADCAST_ENABLED, enabled)
-    }
+    override fun setNotificationBroadcastEnabled(enabled: Boolean) = notifications.setBroadcastEnabled(enabled)
 
-    override fun setNotificationBroadcastTargetDeviceId(deviceId: String) {
-        notificationBroadcastTargetFlow.value = deviceId
-        store.putString(KEY_NOTIFICATION_BROADCAST_TARGET, deviceId)
-    }
+    override fun setNotificationBroadcastTargetDeviceId(deviceId: String) = notifications.setBroadcastTargetDeviceId(deviceId)
 
-    override fun setNotificationDisclosureAccepted(accepted: Boolean) {
-        notificationDisclosureAcceptedFlow.value = accepted
-        store.putBoolean(KEY_NOTIFICATION_DISCLOSURE_ACCEPTED, accepted)
-    }
+    override fun setNotificationDisclosureAccepted(accepted: Boolean) = notifications.setDisclosureAccepted(accepted)
 
-    override fun setNotificationBroadcastSyncDismissal(enabled: Boolean) {
-        notificationBroadcastDismissalFlow.value = enabled
-        store.putBoolean(KEY_NOTIFICATION_BROADCAST_DISMISSAL, enabled)
-    }
+    override fun setNotificationBroadcastSyncDismissal(enabled: Boolean) = notifications.setBroadcastSyncDismissal(enabled)
 
-    override fun setDeviceNotificationPopups(enabled: Boolean) {
-        devicePopupsFlow.value = enabled
-        store.putBoolean(KEY_DEVICE_NOTIFICATION_POPUPS, enabled)
-    }
+    override fun setDeviceNotificationPopups(enabled: Boolean) = notifications.setDevicePopups(enabled)
 
-    override fun setNotificationBroadcastVerificationCodes(enabled: Boolean) {
-        notificationBroadcastCodesFlow.value = enabled
-        store.putBoolean(KEY_NOTIFICATION_BROADCAST_CODES, enabled)
-    }
+    override fun setNotificationBroadcastVerificationCodes(enabled: Boolean) =
+        notifications.setBroadcastVerificationCodes(enabled)
 
-    override fun setNotificationBroadcastApps(packages: Set<String>) {
-        val cleaned = packages.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-        notificationBroadcastAppsFlow.value = cleaned
-        store.putString(KEY_NOTIFICATION_BROADCAST_APPS, ClipboardSharePolicy.encodeDeviceIdSet(cleaned))
-    }
+    override fun setNotificationBroadcastApps(packages: Set<String>) = notifications.setBroadcastApps(packages)
 
-    override fun markThemeDefaultDecided() {
-        store.putBoolean(KEY_THEME_DEFAULT_MIGRATED, true)
-    }
+    override fun markThemeDefaultDecided() = themeStyles.markDefaultDecided()
 
     override fun setSimpleActiveDeviceId(deviceId: String) {
         pairLink.markChosen(deviceId, com.fileapex.util.TimeUtils.now())
@@ -1030,22 +716,14 @@ class BaseAppSettings(
         store.putBoolean(KEY_WELCOME_TUTORIAL_SHOWN, shown)
     }
 
-    override fun setUpdateCheckPromptShown(shown: Boolean) {
-        updateCheckPromptShownFlow.value = shown
-        store.putBoolean(KEY_UPDATE_CHECK_PROMPT_SHOWN, shown)
-    }
+    override fun setUpdateCheckPromptShown(shown: Boolean) = updateCheck.setPromptShown(shown)
 
     override fun setPostPairSetupBannerDismissed(dismissed: Boolean) {
         postPairSetupDismissedFlow.value = dismissed
         store.putBoolean(KEY_POST_PAIR_SETUP_DISMISSED, dismissed)
     }
 
-    override fun toggleExplorerFavorite(absolutePath: String) {
-        val current = explorerFavoritesFlow.value
-        val next = if (absolutePath in current) current - absolutePath else current + absolutePath
-        explorerFavoritesFlow.value = next
-        store.putString(KEY_EXPLORER_FAVORITES, next.joinToString("\n"))
-    }
+    override fun toggleExplorerFavorite(absolutePath: String) = explorerFavoritesStore.toggle(absolutePath)
 
     override fun setDesktopUiStyle(style: DesktopUiStyle) {
         store.putString(KEY_DESKTOP_UI_STYLE, style.name)
@@ -1079,151 +757,49 @@ class BaseAppSettings(
         kineticPositions.reset()
     }
 
-    override fun setFreestyleOptionsPosition(mode: FreestyleLayoutMode, x: Float?, y: Float?) {
-        when (mode) {
-            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
-                store.putString(KEY_FREESTYLE_CARD_OPTIONS_X, x?.toString().orEmpty())
-                store.putString(KEY_FREESTYLE_CARD_OPTIONS_Y, y?.toString().orEmpty())
-                freestyleCardOptionsPosXFlow.value = x
-                freestyleCardOptionsPosYFlow.value = y
-            }
-            FreestyleLayoutMode.CARDS_VERTICAL -> {
-                store.putString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_X, x?.toString().orEmpty())
-                store.putString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_Y, y?.toString().orEmpty())
-                freestyleCardVerticalOptionsPosXFlow.value = x
-                freestyleCardVerticalOptionsPosYFlow.value = y
-            }
-            FreestyleLayoutMode.TILES -> {
-                store.putString(KEY_FREESTYLE_TILE_OPTIONS_X, x?.toString().orEmpty())
-                store.putString(KEY_FREESTYLE_TILE_OPTIONS_Y, y?.toString().orEmpty())
-                freestyleTileOptionsPosXFlow.value = x
-                freestyleTileOptionsPosYFlow.value = y
-            }
-        }
-    }
+    override fun setFreestyleOptionsPosition(mode: FreestyleLayoutMode, x: Float?, y: Float?) =
+        freestyle.setOptionsPosition(mode, x, y)
 
-    override fun setFreestyleOptionsPosition(isCard: Boolean, x: Float?, y: Float?) {
-        val mode = if (isCard) FreestyleLayoutMode.CARDS_HORIZONTAL else FreestyleLayoutMode.TILES
-        setFreestyleOptionsPosition(mode, x, y)
-    }
+    override fun setFreestyleOptionsPosition(isCard: Boolean, x: Float?, y: Float?) =
+        freestyle.setOptionsPosition(if (isCard) FreestyleLayoutMode.CARDS_HORIZONTAL else FreestyleLayoutMode.TILES, x, y)
 
-    override fun setFreestyleLayoutMode(mode: FreestyleLayoutMode) {
-        store.putString(KEY_FREESTYLE_LAYOUT_MODE, mode.storageKey)
-        freestyleLayoutModeFlow.value = mode
-    }
+    override fun setFreestyleLayoutMode(mode: FreestyleLayoutMode) = freestyle.setLayoutMode(mode)
 
-    override fun setFreestyleEditTutorialShown(shown: Boolean) {
-        store.putBoolean(KEY_FREESTYLE_EDIT_TUTORIAL_SHOWN, shown)
-        freestyleEditTutorialShownFlow.value = shown
-    }
+    override fun setFreestyleEditTutorialShown(shown: Boolean) = freestyle.setEditTutorialShown(shown)
 
-    override fun setFreestyleNodeOffset(mode: FreestyleLayoutMode, deviceId: String, x: Float, y: Float) {
-        when (mode) {
-            FreestyleLayoutMode.CARDS_HORIZONTAL -> setFreestyleCardNodeOffset(deviceId, x, y)
-            FreestyleLayoutMode.CARDS_VERTICAL -> setFreestyleCardVerticalNodeOffset(deviceId, x, y)
-            FreestyleLayoutMode.TILES -> setFreestyleTileNodeOffset(deviceId, x, y)
-        }
-    }
+    override fun setFreestyleNodeOffset(mode: FreestyleLayoutMode, deviceId: String, x: Float, y: Float) =
+        freestyle.setNodeOffset(mode, deviceId, x, y)
 
-    override fun setFreestyleCardNodeOffset(deviceId: String, x: Float, y: Float) {
-        freestyleCardPositions.put(mapOf(deviceId to Pair(x, y)), persist = true)
-    }
+    override fun setFreestyleCardNodeOffset(deviceId: String, x: Float, y: Float) =
+        freestyle.setNodeOffset(FreestyleLayoutMode.CARDS_HORIZONTAL, deviceId, x, y)
 
-    override fun setFreestyleCardVerticalNodeOffset(deviceId: String, x: Float, y: Float) {
-        freestyleCardVerticalPositions.put(mapOf(deviceId to Pair(x, y)), persist = true)
-    }
+    override fun setFreestyleCardVerticalNodeOffset(deviceId: String, x: Float, y: Float) =
+        freestyle.setNodeOffset(FreestyleLayoutMode.CARDS_VERTICAL, deviceId, x, y)
 
-    override fun setFreestyleTileNodeOffset(deviceId: String, x: Float, y: Float) {
-        freestyleTilePositions.put(mapOf(deviceId to Pair(x, y)), persist = true)
-    }
+    override fun setFreestyleTileNodeOffset(deviceId: String, x: Float, y: Float) =
+        freestyle.setNodeOffset(FreestyleLayoutMode.TILES, deviceId, x, y)
 
-    override fun setFreestyleMenuOrder(mode: FreestyleLayoutMode, deviceId: String, order: String) {
-        when (mode) {
-            FreestyleLayoutMode.CARDS_HORIZONTAL -> setFreestyleCardMenuOrder(deviceId, order)
-            FreestyleLayoutMode.CARDS_VERTICAL -> setFreestyleCardVerticalMenuOrder(deviceId, order)
-            FreestyleLayoutMode.TILES -> setFreestyleTileMenuOrder(deviceId, order)
-        }
-    }
+    override fun setFreestyleMenuOrder(mode: FreestyleLayoutMode, deviceId: String, order: String) =
+        freestyle.setMenuOrder(mode, deviceId, order)
 
-    override fun setFreestyleCardMenuOrder(deviceId: String, order: String) {
-        val updated = freestyleCardMenuOrdersFlow.value + (deviceId to order)
-        freestyleCardMenuOrdersFlow.value = updated
-        store.putString(KEY_FREESTYLE_CARD_MENU_ORDERS, encodeStringMap(updated))
-    }
+    override fun setFreestyleCardMenuOrder(deviceId: String, order: String) =
+        freestyle.setMenuOrder(FreestyleLayoutMode.CARDS_HORIZONTAL, deviceId, order)
 
-    override fun setFreestyleCardVerticalMenuOrder(deviceId: String, order: String) {
-        val updated = freestyleCardVerticalMenuOrdersFlow.value + (deviceId to order)
-        freestyleCardVerticalMenuOrdersFlow.value = updated
-        store.putString(KEY_FREESTYLE_CARD_VERTICAL_MENU_ORDERS, encodeStringMap(updated))
-    }
+    override fun setFreestyleCardVerticalMenuOrder(deviceId: String, order: String) =
+        freestyle.setMenuOrder(FreestyleLayoutMode.CARDS_VERTICAL, deviceId, order)
 
-    override fun setFreestyleTileMenuOrder(deviceId: String, order: String) {
-        val updated = freestyleTileMenuOrdersFlow.value + (deviceId to order)
-        freestyleTileMenuOrdersFlow.value = updated
-        store.putString(KEY_FREESTYLE_TILE_MENU_ORDERS, encodeStringMap(updated))
-    }
+    override fun setFreestyleTileMenuOrder(deviceId: String, order: String) =
+        freestyle.setMenuOrder(FreestyleLayoutMode.TILES, deviceId, order)
 
-    override fun setFreestyleOptionsMenuOrder(order: String) {
-        store.putString(KEY_FREESTYLE_OPTIONS_MENU_ORDER, order)
-        freestyleOptionsMenuOrderFlow.value = order
-    }
+    override fun setFreestyleOptionsMenuOrder(order: String) = freestyle.setOptionsMenuOrder(order)
 
-    override fun setFreestylePinnedActionOffset(mode: FreestyleLayoutMode, actionKey: String, x: Float, y: Float) {
-        when (mode) {
-            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
-                val updated = freestyleCardPinnedActionsFlow.value + (actionKey to Pair(x, y))
-                freestyleCardPinnedActionsFlow.value = updated
-                store.putString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
-            }
-            FreestyleLayoutMode.CARDS_VERTICAL -> {
-                val updated = freestyleCardVerticalPinnedActionsFlow.value + (actionKey to Pair(x, y))
-                freestyleCardVerticalPinnedActionsFlow.value = updated
-                store.putString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
-            }
-            FreestyleLayoutMode.TILES -> {
-                val updated = freestyleTilePinnedActionsFlow.value + (actionKey to Pair(x, y))
-                freestyleTilePinnedActionsFlow.value = updated
-                store.putString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
-            }
-        }
-    }
+    override fun setFreestylePinnedActionOffset(mode: FreestyleLayoutMode, actionKey: String, x: Float, y: Float) =
+        freestyle.setPinnedActionOffset(mode, actionKey, x, y)
 
-    override fun removeFreestylePinnedAction(mode: FreestyleLayoutMode, actionKey: String) {
-        when (mode) {
-            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
-                val updated = freestyleCardPinnedActionsFlow.value - actionKey
-                freestyleCardPinnedActionsFlow.value = updated
-                store.putString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
-            }
-            FreestyleLayoutMode.CARDS_VERTICAL -> {
-                val updated = freestyleCardVerticalPinnedActionsFlow.value - actionKey
-                freestyleCardVerticalPinnedActionsFlow.value = updated
-                store.putString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
-            }
-            FreestyleLayoutMode.TILES -> {
-                val updated = freestyleTilePinnedActionsFlow.value - actionKey
-                freestyleTilePinnedActionsFlow.value = updated
-                store.putString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
-            }
-        }
-    }
+    override fun removeFreestylePinnedAction(mode: FreestyleLayoutMode, actionKey: String) =
+        freestyle.removePinnedAction(mode, actionKey)
 
-    override fun resetFreestylePinnedActions(mode: FreestyleLayoutMode) {
-        when (mode) {
-            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
-                freestyleCardPinnedActionsFlow.value = emptyMap()
-                store.putString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, "")
-            }
-            FreestyleLayoutMode.CARDS_VERTICAL -> {
-                freestyleCardVerticalPinnedActionsFlow.value = emptyMap()
-                store.putString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, "")
-            }
-            FreestyleLayoutMode.TILES -> {
-                freestyleTilePinnedActionsFlow.value = emptyMap()
-                store.putString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, "")
-            }
-        }
-    }
+    override fun resetFreestylePinnedActions(mode: FreestyleLayoutMode) = freestyle.resetPinnedActions(mode)
 
     override fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences) {
         val normalized = preferences.normalized()
@@ -1284,27 +860,6 @@ class BaseAppSettings(
         diagnosticsPrivateKeyBase64Stored.value = cleaned
     }
 
-    /**
-     * Pre-0.6.1a boot restart followed the service watchdog toggle; migrate once on first read.
-     */
-    /** Unset Notes toggle follows the documented default (on), without overriding an explicit off. */
-    private fun loadNotesNotifications(): Boolean {
-        if (!store.contains(KEY_NOTES_NOTIFICATIONS)) {
-            store.putBoolean(KEY_NOTES_NOTIFICATIONS, true)
-            return true
-        }
-        return store.getBoolean(KEY_NOTES_NOTIFICATIONS, true)
-    }
-
-    private fun loadAutoLaunchOnReboot(): Boolean {
-        if (!store.contains(KEY_AUTO_LAUNCH_ON_REBOOT)) {
-            val migrated = store.getBoolean(KEY_SERVICE_WATCHDOG, true)
-            store.putBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, migrated)
-            return migrated
-        }
-        return store.getBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, true)
-    }
-
     override fun resetToDefaults() {
         val keepWelcomeTutorial = welcomeTutorialShownFlow.value || store.getBoolean(KEY_WELCOME_TUTORIAL_SHOWN, false)
         store.clear()
@@ -1312,43 +867,18 @@ class BaseAppSettings(
             store.putBoolean(KEY_WELCOME_TUTORIAL_SHOWN, true)
         }
         noticeSettings.reload()
-        google.value = false
-        googleEmail.value = ""
-        googleUid.value = ""
-        googleRestorePendingFlow.value = false
-        googleBackupEmailHintFlow.value = ""
-        multiCopyIntro.value = false
-        clipboardSharing.value = false
-        clipboardDisclosureAckFlow.value = false
-        accessibilityDisclosureAckFlow.value = false
-        installPackagesDisclosureAckFlow.value = false
-        clipboardShareModeFlow.value = ClipboardShareMode.UNSET
-        clipboardTargetDeviceIdsFlow.value = emptySet()
-        clipboardTargetConfiguredFlow.value = false
-        clipboardOptInPromptShownFlow.value = false
-        clipboardViaCellularFlow.value = false
-        clipboardAccessibilityFlow.value = false
-        clipboardSendNotificationFlow.value = false
-        clipboardShizukuFlow.value = false
-        clipboardAutoSendFlow.value = false
-        clipboardImagesFlow.value = true
+        googleAccount.forgetInMemory()
+        clipboard.forgetInMemory()
         appLanguageTagFlow.value = ""
         clipboardPrivateKeyBase64Stored.value = ""
-        transferNotifications.value = false
-        driveRelayNotificationsFlow.value = false
-        notesNotificationsFlow.value = true
-        notesNotificationPromptShownFlow.value = false
+        notifications.forgetInMemory()
         bulletinRemoteFilePurgePreferenceFlow.value = BulletinRemoteFilePurgePreference.UNCONFIGURED
         liveTransferCapsuleFlow.value = false
         liveTransferShowQueueFlow.value = false
         pinRequired.value = false
         pin.value = ""
         pinIdle.value = PinIdleTimeout.DEFAULT
-        checkForUpdates.value = false
-        updateUnit.value = UpdateCheckUnit.Days
-        updateAmount.value = 1
-        lastUpdateCheck.value = 0L
-        skippedUpdateVersionFlow.value = ""
+        updateCheck.forgetInMemory()
         serviceWatchdog.value = true
         autoLaunchOnRebootFlow.value = true
         deviceOrderIdsFlow.value = ""
@@ -1359,20 +889,12 @@ class BaseAppSettings(
         desktopNavPositionFlow.value = DesktopNavPosition.DEFAULT
         desktopSplitFractionFlow.value = 0.35f
         explorerSplitFractionFlow.value = 0.38f
-        explorerFavoritesFlow.value = emptyList()
-        updateCheckPromptShownFlow.value = false
+        explorerFavoritesStore.forgetInMemory()
         postPairSetupDismissedFlow.value = false
         otherThemesHintShownFlow.value = false
         welcomeTutorialShownFlow.value = keepWelcomeTutorial
         simpleActiveDeviceIdFlow.value = ""
         pairLink.clear()
-        notificationBroadcastEnabledFlow.value = false
-        notificationBroadcastTargetFlow.value = ""
-        notificationBroadcastCodesFlow.value = false
-        notificationBroadcastDismissalFlow.value = false
-        notificationDisclosureAcceptedFlow.value = false
-        devicePopupsFlow.value = false
-        notificationBroadcastAppsFlow.value = emptySet()
         backupConfigFlow.value = com.fileapex.domain.backup.BackupConfig()
         com.fileapex.platform.BackupScheduler.apply(backupConfigFlow.value)
         explorerSplitEnabledFlow.value = true
@@ -1399,29 +921,8 @@ class BaseAppSettings(
         kineticSphereConnectedLinesFlow.value = true
         kineticSphereOrbitalRingsFlow.value = true
         kineticSpherePersistentWallpaperFlow.value = false
-        freestyleCardOptionsPosXFlow.value = null
-        freestyleCardOptionsPosYFlow.value = null
-        freestyleCardVerticalOptionsPosXFlow.value = null
-        freestyleCardVerticalOptionsPosYFlow.value = null
-        freestyleTileOptionsPosXFlow.value = null
-        freestyleTileOptionsPosYFlow.value = null
-        freestyleLayoutModeFlow.value = FreestyleLayoutMode.DEFAULT
-        freestyleEditTutorialShownFlow.value = false
-        freestyleCardPositions.forgetInMemory()
-        freestyleCardVerticalPositions.forgetInMemory()
-        freestyleTilePositions.forgetInMemory()
-        freestyleCardMenuOrdersFlow.value = emptyMap()
-        freestyleCardVerticalMenuOrdersFlow.value = emptyMap()
-        freestyleTileMenuOrdersFlow.value = emptyMap()
-        freestyleOptionsMenuOrderFlow.value = "files,add_device,join_device,send_clipboard,check_batteries,settings"
-        freestyleCardPinnedActionsFlow.value = emptyMap()
-        freestyleCardVerticalPinnedActionsFlow.value = emptyMap()
-        freestyleTilePinnedActionsFlow.value = emptyMap()
-        settingsGroupGeneralFlow.value = true
-        settingsGroupSystemPerformanceFlow.value = true
-        settingsGroupAppearanceBehaviorFlow.value = true
-        settingsGroupSecurityAccountFlow.value = true
-        settingsGroupRemoteAccessFlow.value = true
+        freestyle.forgetInMemory()
+        settingsGroups.reset()
         tailscaleSetupExpandedFlow.value = false
         tailscaleEnabledFlow.value = false
         irohEnabledFlow.value = false
@@ -1495,9 +996,6 @@ class BaseAppSettings(
         const val KEY_FREESTYLE_TILE_OPTIONS_Y = "freestyle_tile_options_y"
         const val KEY_FREESTYLE_LAYOUT_MODE = "freestyle_layout_mode"
         const val KEY_FREESTYLE_EDIT_TUTORIAL_SHOWN = "freestyle_edit_tutorial_shown"
-        const val KEY_FREESTYLE_CARD_NODE_OFFSETS = "freestyle_card_node_offsets"
-        const val KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS = "freestyle_card_vert_node_offsets"
-        const val KEY_FREESTYLE_TILE_NODE_OFFSETS = "freestyle_tile_node_offsets"
         const val KEY_FREESTYLE_CARD_MENU_ORDERS = "freestyle_card_menu_orders"
         const val KEY_FREESTYLE_CARD_VERTICAL_MENU_ORDERS = "freestyle_card_vert_menu_orders"
         const val KEY_FREESTYLE_TILE_MENU_ORDERS = "freestyle_tile_menu_orders"
@@ -1547,8 +1045,6 @@ class BaseAppSettings(
         const val KEY_CELLULAR_RECEIVE_PROMPT_ACK = "cellular_receive_prompt_ack"
         const val KEY_DIAGNOSTICS_PRIVATE_KEY = "diagnostics_private_key_b64"
         const val KEY_KINETIC_NODE_OFFSETS = "kinetic_node_offsets"
-        const val KEY_SETTINGS_GROUP_GENERAL = "settings_group_general_expanded"
-        const val KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE = "settings_group_system_performance_expanded"
         const val KEY_TAILSCALE_SETUP_EXPANDED = "tailscale_setup_expanded"
         const val KEY_TAILSCALE_ENABLED = "tailscale_enabled"
         const val KEY_IROH_ENABLED = "iroh_enabled"
@@ -1568,9 +1064,6 @@ class BaseAppSettings(
         const val KEY_IROH_PEERS = "iroh_peers_json"
         const val KEY_TAILSCALE_AUTH_KEY = "tailscale_auth_key"
         const val KEY_TAILSCALE_AUTH_KEY_FINGERPRINT = "tailscale_auth_key_fingerprint"
-        const val KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR = "settings_group_appearance_behavior_expanded"
-        const val KEY_SETTINGS_GROUP_SECURITY_ACCOUNT = "settings_group_security_account_expanded"
-        const val KEY_SETTINGS_GROUP_REMOTE_ACCESS = "settings_group_remote_access_expanded"
         const val KEY_SHOW_ADVANCED_SETTINGS = "show_advanced_settings"
     }
 }

@@ -33,6 +33,12 @@ data class PeerBoundStreamResult(
 /** Reads the signed membership chain from a peer's TLS port without holding it to a pin. See [UnpinnedFetch]. */
 internal expect suspend fun peerChainGetUnpinned(host: String, tlsPort: Int, timeoutMs: Long): PeerBoundHttpResponse?
 
+/**
+ * True only when a plain TCP connect to [host]:[port] is refused outright: the host is up and nothing listens there.
+ * A timeout, an unreachable network, a pipe to a tailnet or Iroh peer, or anything else is false.
+ */
+expect suspend fun peerConnectRefused(host: String, port: Int, timeoutMs: Long): Boolean
+
 expect suspend fun peerHttpGet(
     host: String,
     port: Int,

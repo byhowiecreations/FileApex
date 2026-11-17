@@ -1,12 +1,13 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.platform.usesDesktopFileSelection
+import com.fileapex.ui.EmptyState
 import com.fileapex.ui.carousel.carouselPanel
 import com.fileapex.ui.explorerIcon
 import com.fileapex.ui.ExplorerIcon
 import com.fileapex.i18n.stringRes
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -86,7 +87,6 @@ import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.isMainHomeScreen
-import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexFloatingChrome
@@ -646,34 +646,12 @@ internal fun RailItem(
 
 @Composable
 internal fun DetailEmptyState(onOpenLocalFiles: () -> Unit = {}) {
-    if (isFileApexCleanModern() || LocalAppTheme.current.traits.fluxSurfaces) {
-        ModernDetailEmptyState(onOpenLocalFiles = onOpenLocalFiles)
-        return
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = Icons.Filled.FolderOpen,
-            contentDescription = null,
-            tint = FileApexTeal.copy(alpha = 0.55f),
-            modifier = Modifier.size(56.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringRes("select_device_files"),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = stringRes("select_device_files_hint"),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-    }
+    EmptyState(
+        icon = Icons.Filled.FolderOpen,
+        title = stringRes("select_device_files"),
+        hint = stringRes(if (usesDesktopFileSelection()) "select_device_files_dnd_hint" else "select_device_files_hint"),
+        actionLabel = stringRes("open_local_files"),
+        onAction = onOpenLocalFiles,
+        modifier = Modifier.fillMaxSize()
+    )
 }

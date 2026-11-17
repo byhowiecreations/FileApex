@@ -21,36 +21,83 @@ class SettingsMenuTest {
     }
 
     @Test
-    fun phoneMenuPlacesMovedRowsInTheRequestedSections() {
+    fun rowsSitInTheSectionsOfTheOwnersLayout() {
         val entries = settingsMenuEntries(
             playStoreBuild = false,
-            desktopFileSelection = false,
+            desktopFileSelection = true,
             deviceNamePage = true,
-            windowsFluent = false
+            windowsFluent = true,
+            backupSync = true,
+            iroh = true,
+            groups = true,
+            shareLink = true,
+            autoLaunchOnDesktop = true,
+            fullDiskAccess = true
         )
-        fun sectionOf(id: String) = entries.first { it.id == id }.section
+        fun idsIn(section: SettingsMenuSection) = entries.filter { it.section == section }.map { it.id }
 
-        assertEquals(SettingsMenuSection.General, sectionOf(SettingsMenuIds.DEVICE_NAME))
-        assertEquals(SettingsMenuSection.General, sectionOf(SettingsMenuIds.LANGUAGE))
-        assertEquals(SettingsMenuSection.General, sectionOf(SettingsMenuIds.CHECK_FOR_UPDATES))
-        assertEquals(SettingsMenuSection.General, sectionOf(SettingsMenuIds.REPORT_ISSUE))
-        assertEquals(SettingsMenuSection.SystemPerformance, sectionOf(SettingsMenuIds.BACKGROUND_PERSISTENCE))
-        assertEquals(SettingsMenuSection.SystemPerformance, sectionOf(SettingsMenuIds.AUTO_LAUNCH))
-        assertEquals(SettingsMenuSection.RemoteAccess, sectionOf(SettingsMenuIds.TAILSCALE))
-        assertEquals(SettingsMenuSection.RemoteAccess, sectionOf(SettingsMenuIds.DRIVE_RELAY))
-        assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.THEMES))
-        assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.BULLETIN_BOARD))
-        assertEquals(SettingsMenuSection.Security, sectionOf(SettingsMenuIds.LEAVE_CLUSTER))
+        assertEquals(
+            listOf(SettingsMenuIds.THEMES, SettingsMenuIds.DESKTOP_LAYOUT, SettingsMenuIds.WINDOWS_DESIGN),
+            idsIn(SettingsMenuSection.Appearance)
+        )
         assertEquals(
             listOf(
-                SettingsMenuSection.General,
-                SettingsMenuSection.SystemPerformance,
-                SettingsMenuSection.RemoteAccess,
-                SettingsMenuSection.Appearance,
-                SettingsMenuSection.Security
+                SettingsMenuIds.BACKUP_SYNC, SettingsMenuIds.CLIPBOARD, SettingsMenuIds.BULLETIN_BOARD,
+                SettingsMenuIds.GROUPS, SettingsMenuIds.NOTIFICATIONS
             ),
-            entries.map { it.section }.distinct()
+            idsIn(SettingsMenuSection.SyncNotifications)
         )
+        assertEquals(
+            listOf(
+                SettingsMenuIds.DEVICE_NAME, SettingsMenuIds.DEVICE_DETAILS, SettingsMenuIds.TAILSCALE,
+                SettingsMenuIds.IROH, SettingsMenuIds.DRIVE_RELAY
+            ),
+            idsIn(SettingsMenuSection.DevicesConnectivity)
+        )
+        assertEquals(
+            listOf(
+                SettingsMenuIds.PIN_REQUIRED, SettingsMenuIds.SHARE_LINK, SettingsMenuIds.GOOGLE_ACCOUNT,
+                SettingsMenuIds.FULL_DISK_ACCESS, SettingsMenuIds.LEAVE_CLUSTER
+            ),
+            idsIn(SettingsMenuSection.Security)
+        )
+        assertEquals(
+            listOf(
+                SettingsMenuIds.LANGUAGE, SettingsMenuIds.BACKGROUND_PERSISTENCE, SettingsMenuIds.AUTO_LAUNCH,
+                SettingsMenuIds.CHECK_FOR_UPDATES
+            ),
+            idsIn(SettingsMenuSection.SystemApp)
+        )
+        assertEquals(listOf(SettingsMenuIds.REPORT_ISSUE), idsIn(SettingsMenuSection.Utility))
+        assertEquals(
+            listOf(
+                SettingsMenuSection.Appearance,
+                SettingsMenuSection.SyncNotifications,
+                SettingsMenuSection.DevicesConnectivity,
+                SettingsMenuSection.Security,
+                SettingsMenuSection.SystemApp,
+                SettingsMenuSection.Utility
+            ),
+            SettingsMenuSection.entries
+        )
+    }
+
+    @Test
+    fun everyRowIsInExactlyOneSection() {
+        val ids = settingsMenuEntries(
+            playStoreBuild = false, desktopFileSelection = true, deviceNamePage = true, windowsFluent = true,
+            backupSync = true, iroh = true, groups = true, shareLink = true, autoLaunchOnDesktop = true, fullDiskAccess = true
+        ).map { it.id }
+        assertEquals(ids.size, ids.toSet().size)
+    }
+
+    @Test
+    fun theTitlesOfTheSectionsAreTheOwnersNames() {
+        assertEquals("appearance", SettingsMenuSection.Appearance.titleKey())
+        assertEquals("sync_notifications", SettingsMenuSection.SyncNotifications.titleKey())
+        assertEquals("devices_connectivity", SettingsMenuSection.DevicesConnectivity.titleKey())
+        assertEquals("security_privacy", SettingsMenuSection.Security.titleKey())
+        assertEquals("system_app", SettingsMenuSection.SystemApp.titleKey())
     }
 
     @Test
@@ -72,7 +119,7 @@ class SettingsMenuTest {
     }
 
     @Test
-    fun backupSyncLivesUnderGeneralWhenSupported() {
+    fun backupSyncLivesUnderSyncAndNotificationsWhenSupported() {
         val entries = settingsMenuEntries(
             playStoreBuild = false,
             desktopFileSelection = false,
@@ -80,7 +127,7 @@ class SettingsMenuTest {
             windowsFluent = false,
             backupSync = true
         )
-        assertEquals(SettingsMenuSection.General, entries.first { it.id == SettingsMenuIds.BACKUP_SYNC }.section)
+        assertEquals(SettingsMenuSection.SyncNotifications, entries.first { it.id == SettingsMenuIds.BACKUP_SYNC }.section)
     }
 
     @Test
@@ -112,7 +159,7 @@ class SettingsMenuTest {
     }
 
     @Test
-    fun remoteAccessHoldsTailscaleIrohAndDriveRelayAndIsEmptyWithoutThem() {
+    fun connectivityHoldsTheTwoDeviceRowsAndTheThreeRemoteRows() {
         fun ids(tailscale: Boolean, iroh: Boolean, googleCloud: Boolean) = settingsMenuEntries(
             playStoreBuild = false,
             desktopFileSelection = false,
@@ -121,13 +168,19 @@ class SettingsMenuTest {
             googleCloud = googleCloud,
             tailscale = tailscale,
             iroh = iroh
-        ).filter { it.section == SettingsMenuSection.RemoteAccess }.map { it.id }
+        ).filter { it.section == SettingsMenuSection.DevicesConnectivity }.map { it.id }
 
         assertEquals(
-            listOf(SettingsMenuIds.TAILSCALE, SettingsMenuIds.IROH, SettingsMenuIds.DRIVE_RELAY),
+            listOf(
+                SettingsMenuIds.DEVICE_NAME, SettingsMenuIds.DEVICE_DETAILS, SettingsMenuIds.TAILSCALE,
+                SettingsMenuIds.IROH, SettingsMenuIds.DRIVE_RELAY
+            ),
             ids(tailscale = true, iroh = true, googleCloud = true)
         )
-        assertTrue(ids(tailscale = false, iroh = false, googleCloud = false).isEmpty())
+        assertEquals(
+            listOf(SettingsMenuIds.DEVICE_NAME, SettingsMenuIds.DEVICE_DETAILS),
+            ids(tailscale = false, iroh = false, googleCloud = false)
+        )
     }
 
     private val advancedIds = listOf(
@@ -162,10 +215,17 @@ class SettingsMenuTest {
     }
 
     @Test
-    fun sectionsThatAreAllAdvancedDisappearWithTheSwitchOff() {
+    fun onlyTheAllAdvancedSectionDisappearsWithTheSwitchOff() {
         val sections = menu(showAdvanced = false).map { it.section }.toSet()
-        assertFalse(sections.contains(SettingsMenuSection.RemoteAccess))
         assertFalse(sections.contains(SettingsMenuSection.Security))
+        assertTrue("Device Name and Device Details stay visible", sections.contains(SettingsMenuSection.DevicesConnectivity))
+        val devices = menu(showAdvanced = false).filter { it.section == SettingsMenuSection.DevicesConnectivity }.map { it.id }
+        assertEquals(listOf(SettingsMenuIds.DEVICE_NAME, SettingsMenuIds.DEVICE_DETAILS), devices)
+    }
+
+    @Test
+    fun theAdvancedSetStaysTheSixRowsItWas() {
+        assertEquals(advancedIds.toSet(), ADVANCED_IDS)
     }
 
     @Test
@@ -183,7 +243,7 @@ class SettingsMenuTest {
     )
 
     @Test
-    fun theShareAsLinkPageIsInSecurityAndAccessControlBeforeLeaveCluster() {
+    fun theShareAsLinkPageIsInSecurityAndPrivacyBeforeLeaveCluster() {
         val ids = shareLinkMenu(true).filter { it.section == SettingsMenuSection.Security }.map { it.id }
         assertTrue(ids.contains(SettingsMenuIds.SHARE_LINK))
         assertTrue(ids.indexOf(SettingsMenuIds.SHARE_LINK) < ids.indexOf(SettingsMenuIds.LEAVE_CLUSTER))

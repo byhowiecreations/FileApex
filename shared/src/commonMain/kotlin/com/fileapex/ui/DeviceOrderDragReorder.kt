@@ -1,8 +1,8 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.motion.FileApexMotion
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
@@ -42,11 +42,8 @@ private val DragHandleTouchTarget = 48.dp
 private const val ReorderEdgeScrollStepPx = 16f
 
 /** Spring used when non-dragged cards slide to make room during reorder. */
-val DeviceOrderItemPlacementSpec: FiniteAnimationSpec<IntOffset> = spring(
-    stiffness = Spring.StiffnessMediumLow,
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    visibilityThreshold = IntOffset(1, 1)
-)
+fun deviceOrderPlacementSpec(reduced: Boolean): FiniteAnimationSpec<IntOffset> =
+    FileApexMotion.drag(reduced, visibilityThreshold = IntOffset(1, 1))
 
 /**
  * Live drag state for paired-device reorder (handle-only gesture).

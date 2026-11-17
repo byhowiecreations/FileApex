@@ -10,6 +10,9 @@ import androidx.compose.runtime.mutableStateOf
 internal class SettingsNavigationState : androidx.lifecycle.ViewModel() {
     val page = mutableStateOf(SettingsPage.Root)
     val searchQuery = mutableStateOf("")
+
+    /** The root list's scroll, so coming back from a sub-page lands where the user left. */
+    val rootScroll = androidx.compose.foundation.ScrollState(0)
 }
 
 internal enum class SettingsPage(val parent: SettingsPage?) {

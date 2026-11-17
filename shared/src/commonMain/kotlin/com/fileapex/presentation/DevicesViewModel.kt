@@ -159,7 +159,13 @@ class DevicesViewModel : ViewModel() {
                                     tilePosY = device.tilePosY,
                                     tileSortOrder = device.tileSortOrder,
                                     tileMenuOrder = device.tileMenuOrder,
-                                    reachedBy = reachedVia[device.deviceId]
+                                    reachedBy = reachedVia[device.deviceId],
+                                    canWake = com.fileapex.domain.presence.PeerWakeSupport.canWake(
+                                        os = device.os,
+                                        platform = device.platform,
+                                        cloudReachable = com.fileapex.cloud.FcmWakeCoordinator.cachedCloudReachable(device.deviceId),
+                                        thisBuildIsFdroid = FileApexServices.isFdroidBuild
+                                    )
                                 )
                             }
                     },

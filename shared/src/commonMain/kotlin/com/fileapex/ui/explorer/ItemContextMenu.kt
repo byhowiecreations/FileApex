@@ -3,7 +3,6 @@ package com.fileapex.ui.explorer
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,18 +12,15 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -62,6 +58,7 @@ internal fun ItemContextMenu(
 ) {
     val mutations = LocalExplorerMutations.current
     var infoOpen by remember { mutableStateOf(false) }
+    var checksumOpen by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var moveOpen by remember { mutableStateOf(false) }
     var shareLinkOpen by remember { mutableStateOf(false) }
@@ -188,6 +185,16 @@ internal fun ItemContextMenu(
                 }
             )
         }
+        if (local && item != null && !item.isDirectory) {
+            DropdownMenuItem(
+                text = { Text(stringRes("checksum_sha256")) },
+                leadingIcon = { MenuGlyph(ExplorerIcon.Info) },
+                onClick = {
+                    onDismissRequest()
+                    checksumOpen = true
+                }
+            )
+        }
         if ((local || isRemoteTarget) && item != null && mutations != null) {
             Spacer(Modifier.height(14.dp))
             HorizontalDivider()
@@ -221,31 +228,13 @@ internal fun ItemContextMenu(
         )
     }
     if (infoOpen && item != null) ItemInfoDialog(item) { infoOpen = false }
+    if (checksumOpen && item != null) ItemChecksumDialog(item) { checksumOpen = false }
     if (renameOpen && item != null && mutations != null) {
-        AlertDialog(
-            onDismissRequest = { renameOpen = false },
-            title = { Text(stringRes("rename")) },
-            text = {
-                val focus = remember { androidx.compose.ui.focus.FocusRequester() }
-                LaunchedEffect(Unit) { focus.requestFocus() }
-                // Wraps over several lines so a long name is fully visible and every part can be tapped.
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    singleLine = false,
-                    maxLines = 5,
-                    modifier = Modifier.fillMaxWidth().focusRequester(focus)
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    renameOpen = false
-                    mutations.rename(item, renameText.text)
-                }) { Text(stringRes("rename")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { renameOpen = false }) { Text(stringRes("cancel")) }
-            }
+        ItemRenameDialog(
+            text = renameText,
+            onTextChange = { renameText = it },
+            onDismiss = { renameOpen = false },
+            onConfirm = { renameOpen = false; mutations.rename(item, renameText.text) }
         )
     }
 }

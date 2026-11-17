@@ -16,10 +16,11 @@ Would you like to use English? / ¿Le gustaría usar inglés?</string>
 Would you like to use English? / 您想使用英语吗？</string>
     <string name="language_use_detected">Usar %1$s</string>
     <string name="language_use_english">Usar inglés</string>
-    <string name="system_app_performance">Sistema y rendimiento</string>
-    <string name="appearance_behavior">Apariencia y comportamiento</string>
-    <string name="security_account">Seguridad y control de acceso</string>
-    <string name="settings_general">General</string>
+    <string name="appearance">Apariencia</string>
+    <string name="sync_notifications">Sincronización y notificaciones</string>
+    <string name="devices_connectivity">Dispositivos y conectividad</string>
+    <string name="security_privacy">Seguridad y privacidad</string>
+    <string name="system_app">Sistema y aplicación</string>
     <string name="tailscale_overlay">Tailscale (red superpuesta)</string>
     <string name="tailscale_header">Red superpuesta</string>
     <string name="tailscale_header_body">Tailscale crea una red superpuesta cifrada para que las transferencias crucen redes Wi-Fi distintas y datos móviles sin configurar el router.</string>
@@ -75,6 +76,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="allow_remote_file_deletion">Permitir borrado remoto de archivos</string>
     <string name="on">Activado</string>
     <string name="off">Desactivado</string>
+    <string name="notifications_row_critical_only">Activado: solo alertas críticas</string>
+    <string name="notifications_row_count">Activado (%1$d de %2$d)</string>
     <string name="ok">Aceptar</string>
     <string name="cancel">Cancelar</string>
     <string name="cancelled">Cancelado</string>
@@ -459,6 +462,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="link_google_desc">Solo si lo eliges. Inicia sesión con Google y registra el ID público y la dirección LAN de este dispositivo en tu registro privado de Firebase para que otras apps FileApex de la misma cuenta puedan encontrarte. Los archivos solo se suben si también está activado Google Drive Relay.</string>
     <string name="linked_email">Vinculada: %1$s</string>
     <string name="themes_intro">Elige el estilo visual de FileApex. Los cambios se aplican de inmediato en todas las pantallas y ventanas.</string>
+    <string name="motion">Movimiento</string>
+    <string name="reduce_motion">Reducir movimiento</string>
+    <string name="reduce_motion_desc">Sustituye las animaciones de deslizamiento, escala y giro por fundidos cortos. Sistema sigue el ajuste de tu sistema operativo.</string>
+    <string name="reduce_motion_system">Sistema</string>
+    <string name="reduce_motion_on">Activado</string>
+    <string name="reduce_motion_off">Desactivado</string>
     <string name="default_badge">PREDET.</string>
     <string name="also_remove_remote">¿También quitar el archivo del almacenamiento remoto?</string>
     <string name="onboarding_wifi_intro">FileApex envía y recibe archivos entre tus dispositivos por Wi‑Fi: en directo, sin subirlos a la nube. También puedes explorar carpetas en teléfonos y equipos emparejados cuando necesites elegir archivos a distancia.</string>
@@ -995,6 +1004,8 @@ Toca el hub central (+) para emparejar</string>
     <string name="feedback_option_form_desc">Abrir formulario con telemetría del dispositivo</string>
     <string name="feedback_option_github">Abrir seguimiento de problemas de GitHub</string>
     <string name="feedback_option_github_desc">Ver o informar problemas en GitHub</string>
+    <string name="feedback_option_reddit">Visitar r/fileapex en Reddit</string>
+    <string name="feedback_option_reddit_desc">Haz preguntas o comparte ideas con otros usuarios</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d dispositivo del clúster)</item>
         <item quantity="other">(+%d dispositivos del clúster)</item>
@@ -1076,11 +1087,20 @@ Toca el hub central (+) para emparejar</string>
     <string name="queue_retry_failed">No se pudo reintentar esta transferencia</string>
     <string name="queue_retry_now">Reintentar ahora</string>
     <string name="queue_paused">En pausa: toca reintentar para continuar</string>
+    <string name="transfer_history_sent">Enviado, %1$s</string>
+    <string name="transfer_filter_all">Todo</string>
+    <string name="transfer_filter_active">Activas</string>
+    <string name="transfer_filter_waiting">En espera</string>
+    <string name="transfer_filter_failed">Fallidas</string>
+    <string name="transfer_filter_done">Hechas</string>
+    <string name="transfer_recent">Enviado recientemente</string>
+    <string name="transfer_history_empty">Nada enviado en las últimas 24 horas</string>
     <string name="show_in_folder">Mostrar en carpeta</string>
     <string name="error_peer_timeout">El dispositivo tardó demasiado en responder. Comprueba que esté activo y en la misma red Wi-Fi.</string>
     <string name="error_peer_unreachable">No se pudo conectar con el dispositivo. Comprueba que FileApex esté en ejecución y que ambos estén en la misma red.</string>
     <string name="error_peer_not_trusted">Este dispositivo ya no confía en ti. Puede haberte eliminado de su clúster. Vuelve a emparejarlo para explorar.</string>
     <string name="error_disk_full">No hay suficiente espacio de almacenamiento para terminar.</string>
+    <string name="error_archive_refused">No se extrajo este archivo porque es demasiado grande, demasiado comprimido o inseguro.</string>
     <string name="error_connection_lost">La conexión se interrumpió. Inténtalo de nuevo.</string>
     <string name="filter_this_folder">Filtrar esta carpeta</string>
     <string name="filter">Filtrar</string>
@@ -1117,6 +1137,9 @@ Toca el hub central (+) para emparejar</string>
     <string name="pane_local">Local</string>
     <string name="leave_cluster_dialog2_title">Confirmar borrado permanente</string>
     <string name="get_info">Obtener información</string>
+    <string name="checksum_sha256">Suma de verificación (SHA-256)</string>
+    <string name="checksum_calculating">Calculando…</string>
+    <string name="checksum_failed">No se pudo leer el archivo</string>
     <string name="split_view">Dividir</string>
     <string name="leave_cluster_wipe_title">Salir del clúster y borrar todos los datos</string>
     <string name="cancel_drive_title">¿Cancelar la transferencia de Drive?</string>
@@ -1376,7 +1399,6 @@ Toca el hub central (+) para emparejar</string>
     <string name="iroh_status_no_network">Activado, esperando una red</string>
     <string name="iroh_rest">Dejar descansar a Iroh</string>
     <string name="iroh_rest_body">Ahorra batería cerrando Iroh mientras todos los dispositivos están en la misma Wi-Fi. Otros dispositivos pueden no alcanzar este hasta que despierte.</string>
-    <string name="remote_access">Acceso remoto</string>
     <string name="pairing_check_title">Comprueba el código de emparejamiento</string>
     <string name="pairing_check_body">%1$s debe mostrar el mismo código. Continúa solo si ambas pantallas coinciden:</string>
     <string name="pairing_check_match">Los códigos coinciden</string>

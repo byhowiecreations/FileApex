@@ -10,6 +10,7 @@ import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.network.FileApexClient
+import com.fileapex.network.sendPresenceGoodbye
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.network.WakeHelloOutbox
 import com.fileapex.network.sendWakeBroadcast
@@ -134,6 +135,7 @@ class PeerPresenceMonitor(
 
     fun isDeviceOnline(device: PairedDeviceEntity): Boolean {
         if (!hasUsableEndpoint(device)) return false
+        if (book.isDown(device.deviceId, device.lastSeenEpochMs)) return false
         val probeEpoch = book.epochMs.value[device.deviceId] ?: 0L
         val lastSeen = maxOf(probeEpoch, device.lastSeenEpochMs)
         return TimeUtils.isWithinWindow(lastSeen, LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS)
@@ -577,31 +579,10 @@ class PeerPresenceMonitor(
         resolvePeerEndpoint(peer, tailnetNodeUp()) != null || IrohRuntime.canReach(peer.deviceId)
 
     private val nodeStateClaims = NodeStateClaims()
-    private val storedEndpoint = StoredEndpointProbe(object : StoredEndpointHost {
-        override suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, signal: com.fileapex.domain.link.HealthSignal?) =
-            client.probeHealth(host, port, timeoutMs, signal)
-        override suspend fun recordEndpointMismatch(peerId: String, host: String, answeredAs: String) {
-            mutex.withLock { repository.recordEndpointMismatch(peerId, host, answeredAs) }
-        }
-        override suspend fun markReachable(deviceId: String) = this@PeerPresenceMonitor.markReachable(deviceId)
-        override fun onBulletinVersion(peer: PairedDeviceEntity, version: Long) {
-            FileApexServices.bulletinSyncEngine.onPeerBulletinVersion(peer, version)
-        }
-        override suspend fun touchLastSeenEpoch(deviceId: String) {
-            mutex.withLock { repository.touchPeerLastSeenEpoch(deviceId) }
-        }
-        override suspend fun touchLastSeen(deviceId: String, host: String, port: Int) {
-            mutex.withLock { repository.touchPeerLastSeen(deviceId, host, port) }
-        }
-        override suspend fun fetchNodeState(host: String, port: Int, timeoutMs: Long) =
-            client.fetchPeerNodeState(host, port, timeoutMs)
-        override suspend fun applyNodeState(state: PeerNodeState, rosterDeviceId: String) {
-            mutex.withLock { repository.applyPeerNodeState(state, rosterDeviceId = rosterDeviceId, observedDirectly = true) }
-        }
-        override suspend fun supersedeHardwareTwins(state: PeerNodeState) {
-            com.fileapex.domain.pairing.HardwareTwins.supersede(state)
-        }
-    }, nodeStateClaims)
+    private val storedEndpoint = StoredEndpointProbe(
+        MonitorStoredEndpointHost(client, repository, mutex, book) { markReachable(it) },
+        nodeStateClaims
+    )
 
     private val primer = PeerPrimer(object : PrimerHost {
         override suspend fun liveDevice(deviceId: String) = mutex.withLock { repository.getDevice(deviceId) }
@@ -623,6 +604,25 @@ class PeerPresenceMonitor(
         override suspend fun markReachable(deviceId: String, discoveredId: String) =
             this@PeerPresenceMonitor.markReachable(deviceId, discoveredId)
     })
+
+    private val presenceReceiver = PresenceReceiver(book, isPairedPeer = { id ->
+        mutex.withLock { repository.getDevice(id) }?.isRemoved == false
+    })
+
+    /** A paired peer said it is leaving: it shows offline now instead of after the grace period. */
+    suspend fun onPeerGoodbye(senderDeviceId: String) {
+        if (presenceReceiver.onGoodbye(senderDeviceId)) refreshOnlineSnapshot()
+    }
+
+    /** On a clean exit: tells the peers that are online over a direct LAN route, within the notifier's budget. */
+    suspend fun sayGoodbyeToOnlinePeers() {
+        val peers = mutex.withLock { repository.listDevices() }.filter { peer ->
+            !peer.isRemoved && hasUsableEndpoint(peer) && isDeviceOnline(peer) && book.via.value[peer.deviceId] == RouteKind.Lan
+        }
+        PresenceNotifier(send = { peer ->
+            client.sendPresenceGoodbye(peer.lastKnownIp, peer.port, PresenceNotifier.DEFAULT_BUDGET_MS)
+        }).sayGoodbye(peers)
+    }
 
     private val mdnsMatcher = MdnsPeerMatcher(object : MdnsRosterHost {
         override suspend fun device(deviceId: String) = mutex.withLock { repository.getDevice(deviceId) }

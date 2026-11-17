@@ -35,6 +35,7 @@ import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.data.settings.backgroundBrush
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.traits
+import com.fileapex.ui.rememberLayoutWidth
 import com.fileapex.ui.theme.JadedSteelWash
 import com.fileapex.ui.theme.simpleSteelBackground
 import com.fileapex.ui.theme.ProvideJadedHaze
@@ -326,10 +327,10 @@ fun App(
         appTheme = appTheme,
         themeIconStyle = themeIconStyle,
         kineticStyle = kineticStyle
-    ) {
+    ) { com.fileapex.ui.motion.ProvideReducedMotion {
         com.fileapex.friends.ui.FriendsHost()
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val widthClass = widthSizeClassFor(maxWidth)
+            val widthClass = widthSizeClassFor(rememberLayoutWidth(maxWidth))
             val isWide = appTheme.traits.dockHome || widthClass.isWide
 
             val onDevicesPage = if (isWide) {
@@ -522,7 +523,7 @@ fun App(
                                 onFocusNoteConsumed = onOpenNoteRequestConsumed
                             )
                             else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                                val widthClass = widthSizeClassFor(maxWidth)
+                                val widthClass = widthSizeClassFor(rememberLayoutWidth(maxWidth))
                                 val isWide = appTheme.traits.dockHome || widthClass.isWide
 
                                 if (appTheme == AppTheme.SIMPLE) {
@@ -859,7 +860,7 @@ fun App(
             }
         }
         }
-    }
+    } }
     }
 
     LaunchedEffect(onboardingComplete) {

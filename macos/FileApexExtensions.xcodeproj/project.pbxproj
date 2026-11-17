@@ -123,7 +123,7 @@
 				C20000000000000000000003 /* zh-rCN.xml */,
 			);
 			name = i18n;
-			path = ../shared/src/desktopMain/resources/i18n;
+			path = ../shared/src/commonMain/composeResources/files/i18n;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000006 /* ShareExtension */ = {

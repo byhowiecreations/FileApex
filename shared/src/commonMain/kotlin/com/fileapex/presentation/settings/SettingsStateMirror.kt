@@ -77,6 +77,11 @@ internal class SettingsStateMirror(
             }
         }
         viewModelScope.launch {
+            settings.noticeSettings.enabled.collect { enabled ->
+                _uiState.update { it.copy(noticesEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
             settings.notesNotificationsEnabled.collect { enabled ->
                 _uiState.update { it.copy(notesNotificationsEnabled = enabled) }
             }
@@ -107,33 +112,13 @@ internal class SettingsStateMirror(
             }
         }
         viewModelScope.launch {
-            settings.settingsGroupGeneralExpanded.collect { expanded ->
-                _uiState.update { it.copy(generalExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupSystemPerformanceExpanded.collect { expanded ->
-                _uiState.update { it.copy(systemPerformanceExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupAppearanceBehaviorExpanded.collect { expanded ->
-                _uiState.update { it.copy(appearanceBehaviorExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupSecurityAccountExpanded.collect { expanded ->
-                _uiState.update { it.copy(securityAccountExpanded = expanded) }
+            settings.settingsGroups.collapsed.collect { collapsed ->
+                _uiState.update { it.copy(collapsedSections = collapsed) }
             }
         }
         viewModelScope.launch {
             settings.showAdvancedSettings.collect { show ->
                 _uiState.update { it.copy(showAdvancedSettings = show) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupRemoteAccessExpanded.collect { expanded ->
-                _uiState.update { it.copy(remoteAccessExpanded = expanded) }
             }
         }
         viewModelScope.launch {

@@ -1,8 +1,9 @@
 package com.fileapex.ui.devices
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
+import com.fileapex.ui.motion.MotionKind
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
@@ -71,8 +72,8 @@ internal fun FreestyleScope.FreestyleHorizontalCardMenu(
 
         AnimatedVisibility(
             visible = true,
-            enter = fadeIn() + scaleIn(initialScale = 0.85f),
-            exit = fadeOut() + scaleOut(targetScale = 0.85f),
+            enter = FileApexMotion.fadeInSpec(LocalReducedMotion.current) + scaleIn(FileApexMotion.enter(MotionKind.Scale, LocalReducedMotion.current), initialScale = 0.85f),
+            exit = FileApexMotion.fadeOutSpec(LocalReducedMotion.current) + scaleOut(FileApexMotion.exit(MotionKind.Scale, LocalReducedMotion.current), targetScale = 0.85f),
             modifier = Modifier.offset(x = relativeCardXDp, y = relativeCardYDp)
         ) {
             Surface(
@@ -194,8 +195,8 @@ internal fun FreestyleScope.FreestyleVerticalCardMenu(
 
         AnimatedVisibility(
             visible = true,
-            enter = fadeIn() + scaleIn(initialScale = 0.85f),
-            exit = fadeOut() + scaleOut(targetScale = 0.85f),
+            enter = FileApexMotion.fadeInSpec(LocalReducedMotion.current) + scaleIn(FileApexMotion.enter(MotionKind.Scale, LocalReducedMotion.current), initialScale = 0.85f),
+            exit = FileApexMotion.fadeOutSpec(LocalReducedMotion.current) + scaleOut(FileApexMotion.exit(MotionKind.Scale, LocalReducedMotion.current), targetScale = 0.85f),
             modifier = Modifier.offset(x = relativeCardXDp, y = relativeCardYDp)
         ) {
             Surface(

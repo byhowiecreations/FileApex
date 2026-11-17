@@ -38,7 +38,7 @@ class DesktopTrayModelTest {
 
     @Test
     fun everyTooltipTextExistsInAllThreeLanguages() {
-        val dir = java.io.File(System.getProperty("user.dir"), "src/desktopMain/resources/i18n")
+        val dir = java.io.File(System.getProperty("user.dir"), "src/commonMain/composeResources/files/i18n")
         for (language in listOf("en", "es", "zh-rCN")) {
             val text = java.io.File(dir, "$language.xml").readText()
             for (key in TRAY_TEXT_KEYS) {

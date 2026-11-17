@@ -16,10 +16,11 @@ Would you like to use English? / ¿Le gustaría usar inglés?</string>
 Would you like to use English? / 您想使用英语吗？</string>
     <string name="language_use_detected">使用%1$s</string>
     <string name="language_use_english">使用英语</string>
-    <string name="system_app_performance">系统与应用性能</string>
-    <string name="appearance_behavior">外观与行为</string>
-    <string name="security_account">安全与访问控制</string>
-    <string name="settings_general">常规</string>
+    <string name="appearance">外观</string>
+    <string name="sync_notifications">同步与通知</string>
+    <string name="devices_connectivity">设备与连接</string>
+    <string name="security_privacy">安全与隐私</string>
+    <string name="system_app">系统与应用</string>
     <string name="tailscale_overlay">Tailscale（叠加网络）</string>
     <string name="tailscale_header">叠加网络</string>
     <string name="tailscale_header_body">Tailscale 建立加密叠加网络，使文件传输可以跨越不同的 Wi-Fi 和蜂窝网络，无需手动配置路由器。</string>
@@ -75,6 +76,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="allow_remote_file_deletion">允许远程删除文件</string>
     <string name="on">开</string>
     <string name="off">关</string>
+    <string name="notifications_row_critical_only">开：仅重要提醒</string>
+    <string name="notifications_row_count">开（%1$d/%2$d）</string>
     <string name="ok">确定</string>
     <string name="cancel">取消</string>
     <string name="cancelled">已取消</string>
@@ -458,6 +461,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="link_google_desc">仅在你选择时启用。使用 Google 登录，并将本设备的公开 ID 和局域网地址注册到你的私有 Firebase 登记表，以便同一账号下的其他 FileApex 应用发现你。仅在同时启用 Google Drive Relay 时才会上传文件。</string>
     <string name="linked_email">已关联：%1$s</string>
     <string name="themes_intro">选择 FileApex 的视觉风格。更改会立即应用到所有屏幕和窗口。</string>
+    <string name="motion">动效</string>
+    <string name="reduce_motion">减少动效</string>
+    <string name="reduce_motion_desc">用简短的淡入淡出替代滑动、缩放和翻转动画。“系统”跟随操作系统的设置。</string>
+    <string name="reduce_motion_system">系统</string>
+    <string name="reduce_motion_on">开</string>
+    <string name="reduce_motion_off">关</string>
     <string name="default_badge">默认</string>
     <string name="also_remove_remote">是否同时从远程设备存储中移除该文件？</string>
     <string name="onboarding_wifi_intro">FileApex 通过 Wi‑Fi 在你的设备之间直接收发文件，无需上传到云端。需要远程选取文件时，你也可以浏览已配对手机和电脑上的文件夹。</string>
@@ -992,6 +1001,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="feedback_option_form_desc">打开包含设备遥测信息的预填表单</string>
     <string name="feedback_option_github">打开 GitHub 问题跟踪器</string>
     <string name="feedback_option_github_desc">在 GitHub 上查看或报告问题</string>
+    <string name="feedback_option_reddit">访问 Reddit 上的 r/fileapex</string>
+    <string name="feedback_option_reddit_desc">向其他用户提问或分享想法</string>
     <plurals name="paired_cluster_extra">
         <item quantity="other">（+%d 台集群设备）</item>
     </plurals>
@@ -1061,11 +1072,20 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="queue_retry_failed">无法重试此传输</string>
     <string name="queue_retry_now">立即重试</string>
     <string name="queue_paused">已暂停: 点击重试以继续</string>
+    <string name="transfer_history_sent">已发送，%1$s</string>
+    <string name="transfer_filter_all">全部</string>
+    <string name="transfer_filter_active">进行中</string>
+    <string name="transfer_filter_waiting">等待中</string>
+    <string name="transfer_filter_failed">失败</string>
+    <string name="transfer_filter_done">已完成</string>
+    <string name="transfer_recent">最近发送</string>
+    <string name="transfer_history_empty">过去 24 小时内没有发送</string>
     <string name="show_in_folder">在文件夹中显示</string>
     <string name="error_peer_timeout">设备响应超时。请确认它已唤醒并连接到同一 Wi-Fi。</string>
     <string name="error_peer_unreachable">无法连接到设备。请确认其上的 FileApex 正在运行，且两台设备位于同一网络。</string>
     <string name="error_peer_not_trusted">此设备不再信任你，可能已将你从其集群中移除。请重新与它配对后再浏览。</string>
     <string name="error_disk_full">存储空间不足，无法完成。</string>
+    <string name="error_archive_refused">未解压此压缩包，因为它过大、压缩率过高或不安全。</string>
     <string name="error_connection_lost">连接已中断，请重试。</string>
     <string name="filter_this_folder">筛选此文件夹</string>
     <string name="filter">筛选</string>
@@ -1102,6 +1122,9 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="pane_local">本地</string>
     <string name="leave_cluster_dialog2_title">确认永久擦除</string>
     <string name="get_info">显示简介</string>
+    <string name="checksum_sha256">校验和 (SHA-256)</string>
+    <string name="checksum_calculating">正在计算…</string>
+    <string name="checksum_failed">无法读取该文件</string>
     <string name="split_view">分屏</string>
     <string name="leave_cluster_wipe_title">退出集群并擦除所有数据</string>
     <string name="cancel_drive_title">取消 Drive 传输？</string>
@@ -1361,7 +1384,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="iroh_status_no_network">已开启，等待网络</string>
     <string name="iroh_rest">让 Iroh 休眠</string>
     <string name="iroh_rest_body">所有设备在同一 Wi-Fi 时关闭 Iroh 以节省电量。在它唤醒之前，其他设备可能无法连接到本设备。</string>
-    <string name="remote_access">远程访问</string>
     <string name="pairing_check_title">核对配对码</string>
     <string name="pairing_check_body">%1$s 必须显示相同的配对码。仅在两个屏幕一致时继续：</string>
     <string name="pairing_check_match">配对码一致</string>

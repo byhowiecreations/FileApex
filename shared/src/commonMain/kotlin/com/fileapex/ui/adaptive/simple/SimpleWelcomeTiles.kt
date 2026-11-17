@@ -1,5 +1,9 @@
 package com.fileapex.ui.adaptive.simple
 
+import com.fileapex.ui.motion.pressScale
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -162,10 +166,12 @@ internal fun SoloActionTile(
     actionOnRight: Boolean = false,
     compact: Boolean = false
 ) {
+    val pressSource = remember { MutableInteractionSource() }
     Surface(
         modifier = modifier
+            .pressScale(pressSource)
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = pressSource, indication = LocalIndication.current, onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         color = SimpleModernPalette.CardSurface,
         border = BorderStroke(1.dp, SimpleModernPalette.CardBorder)

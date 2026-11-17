@@ -1,7 +1,6 @@
 package com.fileapex.ui.explorer
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,17 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,22 +26,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import com.fileapex.domain.preview.RemoteThumbnailPolicy
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.i18n.stringRes
-import com.fileapex.platform.decodeLocalImageFile
-import com.fileapex.platform.decodeVideoPoster
 import com.fileapex.ui.ExplorerEntryIcon
 import com.fileapex.ui.ExplorerIcon
-import com.fileapex.ui.JadedFileGlyph
 import com.fileapex.ui.JadedFolderGlyph
 import com.fileapex.ui.dnd.deviceFileDragSource
 import com.fileapex.ui.dnd.reportDropSpot
@@ -59,9 +46,6 @@ import com.fileapex.ui.explorerInk
 import com.fileapex.ui.explorerItemRowModifier
 import com.fileapex.ui.formatBytes
 import com.fileapex.ui.pathsEqual
-import com.fileapex.ui.theme.FileApexTeal
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -209,7 +193,8 @@ internal fun DirectoryListRow(
     onActivate: () -> Unit,
     onCopy: () -> Unit,
     onSendToDevice: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    details: ExplorerDetails? = null
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val menuAnchor = remember { ContextMenuAnchor() }
@@ -295,6 +280,7 @@ internal fun DirectoryListRow(
                     color = ink.muted
                 )
             }
+            if (details != null) ExplorerDetailsCells(dir, details)
         }
         FavoriteMark(dir.absolutePath, Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
         ItemContextMenu(
@@ -330,7 +316,8 @@ internal fun FileListRow(
     onActivate: () -> Unit,
     onCopy: () -> Unit,
     onSendToDevice: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    details: ExplorerDetails? = null
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val menuAnchor = remember { ContextMenuAnchor() }
@@ -389,12 +376,15 @@ internal fun FileListRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = formatBytes(file.sizeBytes),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = ink.muted
-                )
+                if (details == null) {
+                    Text(
+                        text = formatBytes(file.sizeBytes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ink.muted
+                    )
+                }
             }
+            if (details != null) ExplorerDetailsCells(file, details)
         }
         FavoriteMark(file.absolutePath, Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
         ItemContextMenu(
@@ -411,78 +401,6 @@ internal fun FileListRow(
         )
     }
     HorizontalDivider(color = ink.divider)
-}
-
-@Composable
-internal fun SelectionIndicator(selected: Boolean) {
-    Box(
-        modifier = Modifier
-            .size(22.dp)
-            .clip(CircleShape)
-            .background(
-                if (selected) FileApexTeal
-                else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (selected) {
-            Icon(
-                imageVector = Icons.Filled.Check,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
-}
-
-@Composable
-internal fun ExplorerFileVisual(
-    item: RemoteFileItem,
-    jaded: Boolean,
-    isRemoteTarget: Boolean,
-    modifier: Modifier
-) {
-    val thumb = rememberMediaThumb(item, isRemoteTarget)
-    if (thumb != null) {
-        Image(
-            bitmap = thumb,
-            contentDescription = item.name,
-            modifier = modifier.clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop
-        )
-    } else if (jaded) {
-        JadedFileGlyph(item = item, modifier = modifier)
-    } else {
-        ExplorerEntryIcon(item = item, modifier = modifier)
-    }
-}
-
-@Composable
-private fun rememberMediaThumb(item: RemoteFileItem, isRemoteTarget: Boolean): ImageBitmap? {
-    if (!RemoteThumbnailPolicy.isMediaCandidate(item)) return null
-    val remoteFetcher = LocalRemoteThumbnailFetcher.current
-    if (isRemoteTarget && remoteFetcher == null) return null
-    var bitmap by remember(item.absolutePath, isRemoteTarget, item.lastModified, item.sizeBytes) {
-        mutableStateOf<ImageBitmap?>(null)
-    }
-    LaunchedEffect(item.absolutePath, isRemoteTarget, item.lastModified, item.sizeBytes, remoteFetcher) {
-        bitmap = if (isRemoteTarget) {
-            runCatching { remoteFetcher?.invoke(item) }.getOrNull()
-        } else {
-            val inferredMime = RemoteThumbnailPolicy.inferMimeType(item.name, item.mimeType)
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    if (inferredMime.startsWith("video/")) {
-                        decodeVideoPoster(item.absolutePath, 256)
-                    } else {
-                        decodeLocalImageFile(item.absolutePath, 256)
-                    }
-                }.getOrNull()
-            }
-        }
-    }
-    return bitmap
 }
 
 @Composable

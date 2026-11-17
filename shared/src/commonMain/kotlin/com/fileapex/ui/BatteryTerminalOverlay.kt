@@ -1,10 +1,6 @@
 package com.fileapex.ui
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import com.fileapex.ui.motion.rememberBlinkAlpha
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,15 +72,7 @@ fun BatteryTerminalOverlay(
     var userHeightDp by remember { mutableStateOf(360.dp) }
     var isMaximized by remember { mutableStateOf(false) }
 
-    val infiniteTransition = rememberInfiniteTransition()
-    val cursorAlpha by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(500),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
+    val cursorAlpha = rememberBlinkAlpha()
 
     Dialog(
         onDismissRequest = onDismiss,

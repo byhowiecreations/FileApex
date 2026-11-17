@@ -1,9 +1,10 @@
 package com.fileapex.ui.kinetic
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import com.fileapex.ui.KineticGlassActionCapsule
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -132,10 +133,7 @@ internal fun KineticScope.KineticNode(index: Int, row: DeviceListRow) {
         val isFocused = activeRadialNodeId == row.deviceId
         val focusProgress by animateFloatAsState(
             targetValue = if (isFocused) 1.0f else 0.0f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            ),
+            animationSpec = FileApexMotion.drag(LocalReducedMotion.current, Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
             label = "nodeFocus_${row.deviceId}"
         )
 

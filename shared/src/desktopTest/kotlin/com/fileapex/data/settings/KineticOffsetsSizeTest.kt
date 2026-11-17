@@ -66,15 +66,11 @@ class KineticOffsetsSizeTest {
     fun theOldSingleStringIsImportedOnceWithoutItsDuplicatesAndRemoved() {
         val store = MapStore()
         store.map[BaseAppSettings.KEY_KINETIC_NODE_OFFSETS] = "exp_a|1.0|2.0;cmp_b|3.0|4.0;pos:c|5.0|6.0"
-        store.map[BaseAppSettings.KEY_FREESTYLE_CARD_NODE_OFFSETS] = "d1|9.0|8.0"
         val settings = BaseAppSettings(store, existingInstall = false)
         assertEquals(Pair(1f, 2f), settings.kineticNodeOffsets.value["exp:a"])
         assertEquals(Pair(5f, 6f), settings.kineticNodeOffsets.value["pos:c"])
         assertFalse(store.map.containsKey(BaseAppSettings.KEY_KINETIC_NODE_OFFSETS))
         assertEquals(3, store.keys("kno:").size)
-        assertEquals(Pair(9f, 8f), settings.freestyleCardNodeOffsets.value["d1"])
-        assertEquals(Pair(9f, 8f), settings.freestyleCardVerticalNodeOffsets.value["d1"])
-        assertFalse(store.map.containsKey(BaseAppSettings.KEY_FREESTYLE_CARD_NODE_OFFSETS))
     }
 
     @Test

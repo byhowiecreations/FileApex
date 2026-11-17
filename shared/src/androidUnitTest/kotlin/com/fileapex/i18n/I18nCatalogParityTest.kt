@@ -1,7 +1,6 @@
 package com.fileapex.i18n
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.charset.StandardCharsets
@@ -33,13 +32,9 @@ class I18nCatalogParityTest {
     }
 
     private fun load(locale: String): ParsedCatalog {
-        val path = "i18n/$locale.xml"
-        val loader = javaClass.classLoader
-        assertNotNull("class loader", loader)
-        val xml = requireNotNull(loader).getResourceAsStream(path)
-            ?.bufferedReader(StandardCharsets.UTF_8)
-            ?.use { it.readText() }
-            ?: error("Missing test catalog $path")
+        val file = java.io.File("src/commonMain/composeResources/files/i18n/$locale.xml")
+        assertTrue("master catalog ${file.path} exists", file.exists())
+        val xml = file.readText(StandardCharsets.UTF_8)
         val names = mutableListOf<String>()
         val values = linkedMapOf<String, String>()
         STRING_RE.findAll(xml).forEach { match ->

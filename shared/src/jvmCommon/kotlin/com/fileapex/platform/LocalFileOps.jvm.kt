@@ -1,10 +1,8 @@
 package com.fileapex.platform
 
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 actual fun renameLocalEntry(absolutePath: String, newName: String): String {
@@ -41,28 +39,8 @@ actual fun zipLocalEntry(absolutePath: String): String {
 
 actual fun unzipLocalEntry(absolutePath: String): String {
     val zipFile = File(absolutePath)
-    val destDir = File(zipFile.parentFile, zipFile.nameWithoutExtension)
-    destDir.mkdirs()
-    ZipInputStream(FileInputStream(zipFile)).use { zip ->
-        var entry = zip.nextEntry
-        while (entry != null) {
-            val out = File(destDir, entry.name)
-            val canonicalDest = destDir.canonicalPath
-            val canonicalOut = out.canonicalPath
-            if (!canonicalOut.startsWith(canonicalDest + File.separator) && canonicalOut != canonicalDest) {
-                error("zip entry escaped destination")
-            }
-            if (entry.isDirectory) {
-                out.mkdirs()
-            } else {
-                out.parentFile?.mkdirs()
-                FileOutputStream(out).use { output -> zip.copyTo(output) }
-            }
-            zip.closeEntry()
-            entry = zip.nextEntry
-        }
-    }
-    return destDir.absolutePath
+    val available = (zipFile.absoluteFile.parentFile ?: zipFile).usableSpace
+    return extractZipSafely(zipFile, ZipExtractLimits(), available)
 }
 
 actual fun moveLocalEntryInto(absolutePath: String, destinationDirectory: String) {

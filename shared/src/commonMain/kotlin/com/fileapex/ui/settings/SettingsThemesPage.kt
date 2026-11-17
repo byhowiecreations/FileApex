@@ -76,7 +76,7 @@ internal fun localizedKineticStyleName(style: KineticStyle): String = when (styl
 }
 
 @Composable
-private fun KineticSegmentRow(
+internal fun KineticSegmentRow(
     label: String,
     options: List<Pair<String, Boolean>>,
     onSelect: (Int) -> Unit
@@ -314,6 +314,7 @@ internal fun ThemesSettingsPage(
                     )
                 }
             }
+            MotionSettingsSection()
         }
     }
 }

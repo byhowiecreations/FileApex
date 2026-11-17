@@ -27,8 +27,14 @@ private const val TAILSCALE_URL = "https://github.com/tailscale/tailscale"
 private const val IROH_URL = "https://github.com/n0-computer/iroh"
 
 @Composable
-internal fun SettingsAdvancedAndAboutRows(showAdvanced: Boolean, onShowAdvancedChange: (Boolean) -> Unit, onOpenAbout: () -> Unit) {
+internal fun SettingsAdvancedAndAboutRows(
+    showAdvanced: Boolean,
+    onShowAdvancedChange: (Boolean) -> Unit,
+    onOpenAbout: () -> Unit,
+    utilityRows: @Composable () -> Unit
+) {
     SettingsAdvancedSwitchRow(showAdvanced, onShowAdvancedChange)
+    utilityRows()
     SettingsNavItem(title = stringRes("about_title"), subtitle = stringRes("about_desc"), onClick = onOpenAbout)
     Spacer(modifier = Modifier.height(56.dp))
 }

@@ -3,6 +3,9 @@ package com.fileapex.security
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import org.bouncycastle.crypto.agreement.X25519Agreement
+import org.bouncycastle.crypto.digests.SHA256Digest
+import org.bouncycastle.crypto.generators.HKDFBytesGenerator
+import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters
 
@@ -16,27 +19,11 @@ internal object E2eePrimitives {
     }
 
     fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
-        val prk = hmacSha256(if (salt.isEmpty()) ByteArray(32) else salt, ikm)
+        require(length in 0..MAX_HKDF_OUTPUT_BYTES) { "hkdf output length out of range" }
         val okm = ByteArray(length)
-        var t = ByteArray(0)
-        try {
-            var offset = 0
-            var counter = 1
-            while (offset < length) {
-                val input = t + info + byteArrayOf(counter.toByte())
-                val next = hmacSha256(prk, input)
-                input.wipe()
-                t.wipe()
-                t = next
-                val copyLen = minOf(t.size, length - offset)
-                System.arraycopy(t, 0, okm, offset, copyLen)
-                offset += copyLen
-                counter++
-            }
-        } finally {
-            t.wipe()
-            prk.wipe()
-        }
+        val generator = HKDFBytesGenerator(SHA256Digest())
+        generator.init(HKDFParameters(ikm, salt.takeIf { it.isNotEmpty() }, info))
+        generator.generateBytes(okm, 0, length)
         return okm
     }
 
@@ -45,4 +32,6 @@ internal object E2eePrimitives {
         mac.init(SecretKeySpec(key, "HmacSHA256"))
         return mac.doFinal(data)
     }
+
+    private const val MAX_HKDF_OUTPUT_BYTES = 255 * 32
 }

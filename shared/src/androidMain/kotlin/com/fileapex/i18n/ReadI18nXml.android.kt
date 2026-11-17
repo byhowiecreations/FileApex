@@ -4,19 +4,15 @@ import com.fileapex.data.settings.androidAppContextOrNull
 import kotlin.text.Charsets
 
 internal actual fun readI18nXml(locale: AppLocale): String {
-    val name = when (locale) {
-        AppLocale.EN -> "i18n/en.xml"
-        AppLocale.ES -> "i18n/es.xml"
-        AppLocale.ZH_HANS -> "i18n/zh-rCN.xml"
-    }
+    val packaged = i18nResourcePath(locale)
     androidAppContextOrNull()?.let { context ->
         runCatching {
-            return context.assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            return context.assets.open(packaged).bufferedReader(Charsets.UTF_8).use { it.readText() }
         }
     }
     val loader = Thread.currentThread().contextClassLoader ?: AppI18n::class.java.classLoader
-    val stream = loader?.getResourceAsStream(name)
-        ?: loader?.getResourceAsStream("files/$name")
-        ?: error("Missing i18n catalog $name")
+    val stream = loader?.getResourceAsStream(packaged)
+        ?: loader?.getResourceAsStream("i18n/${i18nFileName(locale)}")
+        ?: error("Missing i18n catalog $packaged")
     return stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
 }

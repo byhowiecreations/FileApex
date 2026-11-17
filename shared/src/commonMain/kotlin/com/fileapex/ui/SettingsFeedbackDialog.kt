@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -26,6 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.Diagnostics
+import com.fileapex.platform.PlatformClipboard
+
+internal const val FEEDBACK_REDDIT_URL = "https://www.reddit.com/r/fileapex"
 
 @Composable
 internal fun FeedbackDialog(onDismiss: () -> Unit) {
@@ -68,6 +72,15 @@ internal fun FeedbackDialog(onDismiss: () -> Unit) {
                     onClick = {
                         onDismiss()
                         Diagnostics.openGitHubIssuesTracker()
+                    }
+                )
+                FeedbackOptionCard(
+                    icon = Icons.Default.Forum,
+                    title = stringRes("feedback_option_reddit"),
+                    subtitle = stringRes("feedback_option_reddit_desc"),
+                    onClick = {
+                        onDismiss()
+                        PlatformClipboard.openUrlInDefaultBrowser(FEEDBACK_REDDIT_URL)
                     }
                 )
             }

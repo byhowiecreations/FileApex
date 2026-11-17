@@ -1,19 +1,15 @@
 package com.fileapex.ui
 
-enum class SettingsMenuSection {
-    General,
-    SystemPerformance,
-    RemoteAccess,
-    Appearance,
-    Security;
+enum class SettingsMenuSection(val id: String, val collapsible: Boolean = true) {
+    Appearance("appearance"),
+    SyncNotifications("sync_notifications"),
+    DevicesConnectivity("devices_connectivity"),
+    Security("security_privacy"),
+    SystemApp("system_app"),
+    /** Plain rows under the advanced switch; not a folding section and without a title. */
+    Utility("utility", collapsible = false);
 
-    fun titleKey(): String = when (this) {
-        General -> "settings_general"
-        SystemPerformance -> "system_app_performance"
-        RemoteAccess -> "remote_access"
-        Appearance -> "appearance_behavior"
-        Security -> "security_account"
-    }
+    fun titleKey(): String = if (collapsible) id else ""
 }
 
 object SettingsMenuIds {
@@ -75,33 +71,34 @@ fun settingsMenuEntries(
         entries += SettingsMenuEntry(section, id)
     }
 
-    if (deviceNamePage) add(SettingsMenuSection.General, SettingsMenuIds.DEVICE_NAME)
-    add(SettingsMenuSection.General, SettingsMenuIds.LANGUAGE)
-    if (!playStoreBuild) add(SettingsMenuSection.General, SettingsMenuIds.CHECK_FOR_UPDATES)
-    if (backupSync) add(SettingsMenuSection.General, SettingsMenuIds.BACKUP_SYNC)
-    add(SettingsMenuSection.General, SettingsMenuIds.REPORT_ISSUE)
-
-    add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.BACKGROUND_PERSISTENCE)
-    if (!desktopFileSelection || autoLaunchOnDesktop) add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.AUTO_LAUNCH)
-
-    if (tailscale) add(SettingsMenuSection.RemoteAccess, SettingsMenuIds.TAILSCALE)
-    if (iroh) add(SettingsMenuSection.RemoteAccess, SettingsMenuIds.IROH)
-    if (googleCloud) add(SettingsMenuSection.RemoteAccess, SettingsMenuIds.DRIVE_RELAY)
-
     add(SettingsMenuSection.Appearance, SettingsMenuIds.THEMES)
-    add(SettingsMenuSection.Appearance, SettingsMenuIds.BULLETIN_BOARD)
-    add(SettingsMenuSection.Appearance, SettingsMenuIds.NOTIFICATIONS)
-    add(SettingsMenuSection.Appearance, SettingsMenuIds.CLIPBOARD)
-    if (groups) add(SettingsMenuSection.Appearance, SettingsMenuIds.GROUPS)
-    add(SettingsMenuSection.Appearance, SettingsMenuIds.DEVICE_DETAILS)
     if (desktopFileSelection && navPosition) add(SettingsMenuSection.Appearance, SettingsMenuIds.DESKTOP_LAYOUT)
     if (windowsFluent) add(SettingsMenuSection.Appearance, SettingsMenuIds.WINDOWS_DESIGN)
 
+    if (backupSync) add(SettingsMenuSection.SyncNotifications, SettingsMenuIds.BACKUP_SYNC)
+    add(SettingsMenuSection.SyncNotifications, SettingsMenuIds.CLIPBOARD)
+    add(SettingsMenuSection.SyncNotifications, SettingsMenuIds.BULLETIN_BOARD)
+    if (groups) add(SettingsMenuSection.SyncNotifications, SettingsMenuIds.GROUPS)
+    add(SettingsMenuSection.SyncNotifications, SettingsMenuIds.NOTIFICATIONS)
+
+    if (deviceNamePage) add(SettingsMenuSection.DevicesConnectivity, SettingsMenuIds.DEVICE_NAME)
+    add(SettingsMenuSection.DevicesConnectivity, SettingsMenuIds.DEVICE_DETAILS)
+    if (tailscale) add(SettingsMenuSection.DevicesConnectivity, SettingsMenuIds.TAILSCALE)
+    if (iroh) add(SettingsMenuSection.DevicesConnectivity, SettingsMenuIds.IROH)
+    if (googleCloud) add(SettingsMenuSection.DevicesConnectivity, SettingsMenuIds.DRIVE_RELAY)
+
     add(SettingsMenuSection.Security, SettingsMenuIds.PIN_REQUIRED)
-    if (googleCloud) add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
     if (shareLink) add(SettingsMenuSection.Security, SettingsMenuIds.SHARE_LINK)
+    if (googleCloud) add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
     if (fullDiskAccess) add(SettingsMenuSection.Security, SettingsMenuIds.FULL_DISK_ACCESS)
     add(SettingsMenuSection.Security, SettingsMenuIds.LEAVE_CLUSTER)
+
+    add(SettingsMenuSection.SystemApp, SettingsMenuIds.LANGUAGE)
+    add(SettingsMenuSection.SystemApp, SettingsMenuIds.BACKGROUND_PERSISTENCE)
+    if (!desktopFileSelection || autoLaunchOnDesktop) add(SettingsMenuSection.SystemApp, SettingsMenuIds.AUTO_LAUNCH)
+    if (!playStoreBuild) add(SettingsMenuSection.SystemApp, SettingsMenuIds.CHECK_FOR_UPDATES)
+
+    add(SettingsMenuSection.Utility, SettingsMenuIds.REPORT_ISSUE)
     return entries.filter { showAdvanced || it.id !in ADVANCED_IDS || it.id in inUseAdvancedIds }
 }
 

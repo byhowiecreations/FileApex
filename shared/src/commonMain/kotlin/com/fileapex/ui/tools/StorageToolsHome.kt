@@ -1,7 +1,8 @@
 package com.fileapex.ui.tools
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,11 +22,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,7 +41,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.CleanupKind
 import com.fileapex.platform.StorageCategory
@@ -51,8 +49,6 @@ import com.fileapex.platform.StorageScan
 import com.fileapex.platform.TrashedEntry
 import com.fileapex.platform.currentTimeMillis
 import com.fileapex.platform.formatHostFileSize
-import com.fileapex.platform.localPathInfo
-import com.fileapex.platform.openLocalFile
 import com.fileapex.platform.staleFiles
 import com.fileapex.ui.DEFAULT_STALE_DAYS
 import com.fileapex.ui.ExplorerIcon
@@ -148,7 +144,7 @@ private fun TileGrid(tiles: List<Tile>, columns: Int, onNavigate: (ToolsPage) ->
 @Composable
 private fun UsageCard(scan: StorageScan, onClick: () -> Unit) {
     val usage = scan.usage
-    val sweep by animateFloatAsState(usage.fraction, tween(900), label = "storage-ring")
+    val sweep by animateFloatAsState(usage.fraction, FileApexMotion.decorative(900, LocalReducedMotion.current), label = "storage-ring")
     Box(
         modifier = Modifier
             .fillMaxWidth()

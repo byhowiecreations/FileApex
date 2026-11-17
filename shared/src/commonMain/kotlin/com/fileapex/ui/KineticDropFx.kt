@@ -1,8 +1,8 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -112,11 +112,12 @@ fun KineticDropFxOverlay(
     val particles = remember(fx) { spawnDropParticles(fx) }
     val duration = if (fx.queued) 1100 else 980
 
+    val reduced = LocalReducedMotion.current
     LaunchedEffect(fx) {
         progress.snapTo(0f)
         progress.animateTo(
             1f,
-            animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing)
+            animationSpec = FileApexMotion.decorative(duration, reduced)
         )
         onFinished()
     }

@@ -6,22 +6,33 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The strings exist in three places the runtime reads from (compose resources, desktop resources, Android assets).
- * `commonMain/composeResources` is the one to edit; the other two must be byte-for-byte copies of it, and every
- * language must carry the same keys.
+ * The strings live in one place, `commonMain/composeResources/files/i18n`. Compose packages that folder into the
+ * desktop classpath and the Android assets, and `readI18nXml` reads it from there, so no second copy may exist.
  */
 class I18nCopiesTest {
     private val languages = listOf("en", "es", "zh-rCN")
     private val master = File("src/commonMain/composeResources/files/i18n")
-    private val copies = listOf(File("src/desktopMain/resources/i18n"), File("src/androidMain/assets/i18n"))
+    private val forbiddenCopies = listOf(
+        File("src/desktopMain/resources/i18n"),
+        File("src/androidMain/assets/i18n"),
+        File("src/androidUnitTest/resources/i18n")
+    )
 
     @Test
-    fun theCopiesMatchTheMaster() {
-        val drifted = languages.flatMap { language ->
-            copies.filter { File(it, "$language.xml").readText() != File(master, "$language.xml").readText() }
-                .map { "${it.path}/$language.xml differs from ${master.path}/$language.xml; copy the master over it" }
+    fun noSecondCopyOfTheStringFilesExists() {
+        val found = forbiddenCopies.filter { it.exists() }.map { it.path }
+        assertTrue("These folders duplicate the master string files: $found", found.isEmpty())
+    }
+
+    @Test
+    fun theRuntimeReadsTheMasterFromItsPackagedLocation() {
+        languages.forEach { language ->
+            val locale = AppLocale.entries.first { i18nFileName(it) == "$language.xml" }
+            val packaged = AppI18n::class.java.getResourceAsStream("/" + i18nResourcePath(locale))
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            assertEquals("packaged $language.xml", File(master, "$language.xml").readText(), packaged)
+            assertEquals("readI18nXml $language", File(master, "$language.xml").readText(), readI18nXml(locale))
         }
-        assertTrue(drifted.joinToString("\n"), drifted.isEmpty())
     }
 
     @Test

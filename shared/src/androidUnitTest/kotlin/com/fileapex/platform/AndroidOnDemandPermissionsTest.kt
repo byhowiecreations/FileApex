@@ -102,10 +102,7 @@ class AndroidOnDemandPermissionsTest {
 
     @Test
     fun storageReasonDoesNotFalselyClaimTransfersRequireAllFilesAccess() {
-        val xml = requireNotNull(javaClass.classLoader)
-            .getResourceAsStream("i18n/en.xml")!!
-            .bufferedReader(StandardCharsets.UTF_8)
-            .use { it.readText() }
+        val xml = java.io.File("src/commonMain/composeResources/files/i18n/en.xml").readText(StandardCharsets.UTF_8)
         assertFalse(xml.contains("cannot browse storage or transfer your files without this permission"))
         assertFalse(xml.contains("All files access is required to browse directories"))
     }

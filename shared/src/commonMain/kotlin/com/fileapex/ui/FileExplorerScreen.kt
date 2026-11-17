@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +77,11 @@ fun FileExplorerScreen(
     onPickFiles: ((List<String>) -> Unit)? = null,
     viewModel: ExplorerViewModel = viewModel(key = viewModelKey) { ExplorerViewModel(target) }
 ) {
+    DisposableEffect(Unit) {
+        FileManagerPresence.enter()
+        onDispose { FileManagerPresence.leave() }
+    }
+
     // A friend's Send shows this device's files here; the first screen for them claims the request and becomes a picker.
     val sendRequest by FriendSendSession.pending.collectAsState()
     var friendSend by remember(target.deviceId) { mutableStateOf<FriendSendTarget?>(null) }

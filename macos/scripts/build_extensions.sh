@@ -47,9 +47,9 @@ copy_extension_catalogs() {
   local res="$appex/Contents/Resources"
   mkdir -p "$res"
   # Xcode Resources phase is unreliable for these .appex targets; copy after build.
-  cp "$ROOT/shared/src/desktopMain/resources/i18n/en.xml" "$res/"
-  cp "$ROOT/shared/src/desktopMain/resources/i18n/es.xml" "$res/"
-  cp "$ROOT/shared/src/desktopMain/resources/i18n/zh-rCN.xml" "$res/"
+  cp "$ROOT/shared/src/commonMain/composeResources/files/i18n/en.xml" "$res/"
+  cp "$ROOT/shared/src/commonMain/composeResources/files/i18n/es.xml" "$res/"
+  cp "$ROOT/shared/src/commonMain/composeResources/files/i18n/zh-rCN.xml" "$res/"
   for loc in en es zh-Hans; do
     mkdir -p "$res/${loc}.lproj"
     cp "$plist_src/${loc}.lproj/InfoPlist.strings" "$res/${loc}.lproj/"

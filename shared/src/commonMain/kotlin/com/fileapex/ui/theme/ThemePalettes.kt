@@ -17,7 +17,6 @@ object CleanModernPalette {
     val IconBadgeBorder = Color(0xFFE2E8EC)
     val IconBadgeTint = Color(0xFF475569)
     val StatusOnlineDot = Color(0xFF22C55E)
-    val EmptyBadgeBg = Color(0xFFE6F4F3)
 }
 
 object FluxGlassPalette {
@@ -45,8 +44,6 @@ object FluxGlassPalette {
     val clipboardButtonFill = Color(0x26FFFFFF)
     val footerDivider = Color(0x1FFFFFFF)
     val statusOnlineDot = Color(0xFF34D399)
-    val emptyBadgeBg = Color(0x2833DFC4)
-    val emptyBadgeTint = Color(0xFF6AEBD6)
     val actionPill = Color(0xEE0D1C22)
     val clipboardChip = Color(0xDD0D1C22)
     val bulletinTop = Color(0xFF243038)
@@ -90,4 +87,13 @@ object FreestylePalette {
     val backgroundMid = Color(0xFF060B12)
     val backgroundBottom = Color(0xFF04070B)
     val cardBorder = Color(0xFF64B5F6)
+}
+
+private val DarkWindowBackdrop = androidx.compose.ui.graphics.Color(0xFF0B1717)
+
+/** Solid colour for the native window behind the app, so a strip exposed while the window grows is not painted white. */
+fun com.fileapex.data.settings.AppTheme.windowBackdrop(): androidx.compose.ui.graphics.Color = when (this) {
+    com.fileapex.data.settings.AppTheme.CLEAN -> CleanModernPalette.CanvasBackdrop
+    com.fileapex.data.settings.AppTheme.FLUX_GLASS -> FluxGlassPalette.backgroundMid
+    else -> DarkWindowBackdrop
 }

@@ -140,11 +140,7 @@ interface AppSettings {
     val freestyleCardVerticalPinnedActions: StateFlow<Map<String, Pair<Float, Float>>>
     val freestyleTilePinnedActions: StateFlow<Map<String, Pair<Float, Float>>>
 
-    val settingsGroupGeneralExpanded: StateFlow<Boolean>
-    val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean>
-    val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean>
-    val settingsGroupSecurityAccountExpanded: StateFlow<Boolean>
-    val settingsGroupRemoteAccessExpanded: StateFlow<Boolean>
+    val settingsGroups: SettingsGroupStore
     /** Shows the advanced settings rows (remote access, security extras, backup). Off for new installs. */
     val showAdvancedSettings: StateFlow<Boolean>
     val tailscaleSetupExpanded: StateFlow<Boolean>
@@ -203,11 +199,6 @@ interface AppSettings {
     fun setKineticSphereConnectedLinesEnabled(enabled: Boolean)
     fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean)
     fun setKineticSpherePersistentWallpaperEnabled(enabled: Boolean)
-    fun setSettingsGroupGeneralExpanded(expanded: Boolean)
-    fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean)
-    fun setSettingsGroupAppearanceBehaviorExpanded(expanded: Boolean)
-    fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean)
-    fun setSettingsGroupRemoteAccessExpanded(expanded: Boolean)
     fun setShowAdvancedSettings(show: Boolean)
     fun setTailscaleSetupExpanded(expanded: Boolean)
     fun setTailscaleEnabled(enabled: Boolean)
@@ -316,6 +307,7 @@ interface AppSettings {
     fun setSimpleActiveDeviceId(deviceId: String)
     /** Hidden Simple Home link state: the choice time, the computer's grant and the phone's claim. */
     val pairLink: PairLinkSettings
+    val motion: MotionSettings
     fun setOtherThemesHintShown(shown: Boolean)
     fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)

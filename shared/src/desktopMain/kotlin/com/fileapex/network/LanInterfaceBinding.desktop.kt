@@ -187,6 +187,9 @@ private suspend fun finishUnlessCancelled(response: PeerBoundHttpResponse?): Pee
 internal actual suspend fun peerChainGetUnpinned(host: String, tlsPort: Int, timeoutMs: Long): PeerBoundHttpResponse? =
     UnpinnedFetch.get(host, tlsPort, UnpinnedFetch.CHAIN_PATH, timeoutMs)
 
+actual suspend fun peerConnectRefused(host: String, port: Int, timeoutMs: Long): Boolean =
+    DesktopPeerHttpPlatform.connectRefused(host, port, timeoutMs)
+
 actual suspend fun peerHttpGet(
     host: String,
     port: Int,

@@ -20,27 +20,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDown
@@ -52,8 +49,6 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.fileapex.data.settings.AppTheme
-import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.i18n.stringRes
@@ -64,14 +59,11 @@ import com.fileapex.ui.dnd.LocalDropParentPath
 import com.fileapex.ui.dnd.LocalExplorerDropHighlight
 import com.fileapex.ui.dnd.reportDropSpot
 import com.fileapex.ui.explorer.EmptyHint
+import com.fileapex.presentation.ExplorerSortMode
 import com.fileapex.ui.explorer.ExplorerContentPane
 import com.fileapex.ui.explorer.PaneDirectoryRow
 import com.fileapex.ui.explorer.ParentRow
 import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.LocalJadedHazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -110,7 +102,9 @@ fun AdaptiveExplorerView(
     onPreviewFirstSplitPaneFolder: () -> Unit = {},
     modifier: Modifier = Modifier,
     contentBottomPadding: Dp = 24.dp,
-    contentDropPath: String = ""
+    contentDropPath: String = "",
+    sortMode: ExplorerSortMode? = null,
+    onSortModeChange: (ExplorerSortMode) -> Unit = {}
 ) {
     val listPadding = PaddingValues(bottom = contentBottomPadding)
     val contentParent = contentDropPath.ifBlank { selectedFolderPath ?: panePath }
@@ -130,66 +124,16 @@ fun AdaptiveExplorerView(
 
         BoxWithConstraints(modifier = modifier.fillMaxSize()) {
             val totalWidthPx = constraints.maxWidth.toFloat()
-            val splitFraction by FileApexServices.settings.explorerSplitFraction.collectAsState()
+            val split = rememberExplorerSplit(panePath, paneDirectories, totalWidthPx, viewMode, sortMode, onSortModeChange)
+            val splitFraction = split.fraction
+            val tableDetails = split.details
             var isDraggingDivider by remember { mutableStateOf(false) }
             val dividerInteraction = remember { MutableInteractionSource() }
             val isHovered by dividerInteraction.collectIsHoveredAsState()
 
             val ink = explorerInk()
             Row(modifier = Modifier.fillMaxSize()) {
-                val leftPaneModifier = if (ink.jadedGlyphs) {
-                    val haze = LocalJadedHazeState.current
-                    val paneShape = RoundedCornerShape(16.dp)
-                    Modifier
-                        .weight(splitFraction)
-                        .fillMaxHeight()
-                        .padding(start = 12.dp, top = 8.dp, end = 6.dp, bottom = contentBottomPadding)
-                        .clip(paneShape)
-                        .then(
-                            if (haze != null) {
-                                Modifier.hazeEffect(
-                                    state = haze,
-                                    style = HazeStyle(
-                                        backgroundColor = Color.Transparent,
-                                        tints = listOf(HazeTint(Color.White.copy(alpha = 0.10f))),
-                                        blurRadius = 24.dp,
-                                        noiseFactor = 0.04f
-                                    )
-                                )
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.White.copy(alpha = 0.16f),
-                                1f to Color.White.copy(alpha = 0.05f)
-                            )
-                        )
-                        .border(
-                            width = 1.dp,
-                            brush = Brush.verticalGradient(
-                                0f to Color.White.copy(alpha = 0.22f),
-                                1f to Color.White.copy(alpha = 0.10f)
-                            ),
-                            shape = paneShape
-                        )
-                } else if (LocalAppTheme.current.let { it == AppTheme.SIMPLE || it == AppTheme.CAROUSEL }) {
-                    // Same inset, rounded pane as Jaded Steel; the colors stay Simple's own.
-                    val paneShape = RoundedCornerShape(20.dp)
-                    Modifier
-                        .weight(splitFraction)
-                        .fillMaxHeight()
-                        .padding(start = 12.dp, top = 8.dp, end = 6.dp, bottom = contentBottomPadding)
-                        .clip(paneShape)
-                        .background(ink.paneBackground)
-                        .border(1.dp, ink.divider, paneShape)
-                } else {
-                    Modifier
-                        .weight(splitFraction)
-                        .fillMaxHeight()
-                        .background(ink.paneBackground)
-                }
+                val leftPaneModifier = explorerLeftPaneModifier(ink, splitFraction, contentBottomPadding)
                 CompositionLocalProvider(LocalDropParentPath provides panePath) {
                 Column(modifier = leftPaneModifier) {
                 LazyColumn(
@@ -244,7 +188,10 @@ fun AdaptiveExplorerView(
                         .pointerHoverIcon(horizontalResizePointerIcon())
                         .pointerInput(totalWidthPx) {
                             detectHorizontalDragGestures(
-                                onDragStart = { isDraggingDivider = true },
+                                onDragStart = {
+                                    isDraggingDivider = true
+                                    split.takeOverFromAutoFit()
+                                },
                                 onDragEnd = {
                                     isDraggingDivider = false
                                     FileApexServices.settings.setExplorerSplitFraction(FileApexServices.settings.explorerSplitFraction.value)
@@ -308,7 +255,8 @@ fun AdaptiveExplorerView(
                     onFileActivate = onFileActivate,
                     onCopyItem = onCopyItem,
                     onSendItemToDevice = onSendItemToDevice,
-                    onDownloadItem = onDownloadItem
+                    onDownloadItem = onDownloadItem,
+                    details = tableDetails
                 )
                 }
             }
@@ -319,16 +267,11 @@ fun AdaptiveExplorerView(
     CompositionLocalProvider(LocalDropParentPath provides contentParent) {
     val empty = contentDirectories.isEmpty() && contentFiles.isEmpty()
     if (empty && !canNavigateUp) {
-        val ink = explorerInk()
         Box(
             modifier = modifier.fillMaxSize().listingDropChrome(),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = stringRes("folder_empty"),
-                style = MaterialTheme.typography.bodyLarge,
-                color = ink.muted
-            )
+            EmptyState(icon = Icons.Filled.FolderOpen, title = stringRes("folder_empty"))
         }
         return@CompositionLocalProvider
     }
@@ -338,7 +281,7 @@ fun AdaptiveExplorerView(
         canNavigateUp = canNavigateUp,
         directories = contentDirectories,
         files = contentFiles,
-        isEmpty = false,
+        isEmpty = empty,
         emptyHint = stringRes("folder_empty"),
         isSelectionMode = isSelectionMode,
         selectedFileIds = selectedFileIds,

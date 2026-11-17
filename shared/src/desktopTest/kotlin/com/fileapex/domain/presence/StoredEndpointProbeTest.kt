@@ -22,6 +22,7 @@ class StoredEndpointProbeTest {
         }
         override suspend fun recordEndpointMismatch(peerId: String, host: String, answeredAs: String) { log += "mismatch:$answeredAs" }
         override suspend fun markReachable(deviceId: String) { log += "reach:$deviceId" }
+        override suspend fun markRefused(deviceId: String) { log += "refused:$deviceId" }
         override fun onBulletinVersion(peer: PairedDeviceEntity, version: Long) { log += "bulletin:$version" }
         override suspend fun touchLastSeenEpoch(deviceId: String) { log += "epoch" }
         override suspend fun touchLastSeen(deviceId: String, host: String, port: Int) { log += "seen:$host" }

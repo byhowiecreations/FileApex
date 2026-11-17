@@ -21,6 +21,9 @@ private object AndroidPeerHttpPlatform : PeerHttpPlatform {
 internal actual suspend fun peerChainGetUnpinned(host: String, tlsPort: Int, timeoutMs: Long): PeerBoundHttpResponse? =
     UnpinnedFetch.get(host, tlsPort, UnpinnedFetch.CHAIN_PATH, timeoutMs)
 
+actual suspend fun peerConnectRefused(host: String, port: Int, timeoutMs: Long): Boolean =
+    AndroidPeerHttpPlatform.connectRefused(host, port, timeoutMs)
+
 actual suspend fun peerHttpGet(
     host: String,
     port: Int,

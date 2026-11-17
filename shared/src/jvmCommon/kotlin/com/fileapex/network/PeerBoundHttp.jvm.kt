@@ -344,3 +344,27 @@ private suspend fun PeerHttpPlatform.executeBoundUpload(
     }
     return null
 }
+
+internal suspend fun PeerHttpPlatform.connectRefused(host: String, port: Int, timeoutMs: Long): Boolean = withContext(Dispatchers.IO) {
+    if (loopbackDial(host, port) != null) return@withContext false
+    val socket = java.net.Socket()
+    try {
+        socket.connect(java.net.InetSocketAddress(host, port), timeoutMs.coerceIn(50L, 5_000L).toInt())
+        false
+    } catch (error: java.net.ConnectException) {
+        isConnectionRefused(error)
+    } catch (_: java.io.IOException) {
+        false
+    } finally {
+        try {
+            socket.close()
+        } catch (_: java.io.IOException) {
+        }
+    }
+}
+
+/** The JDK and Android phrase it "Connection refused" or "ECONNREFUSED"; a "Network is unreachable" or a timeout is not a refusal. */
+internal fun isConnectionRefused(error: Throwable): Boolean {
+    val text = error.message.orEmpty()
+    return text.contains("refused", ignoreCase = true) || text.contains("ECONNREFUSED", ignoreCase = true)
+}

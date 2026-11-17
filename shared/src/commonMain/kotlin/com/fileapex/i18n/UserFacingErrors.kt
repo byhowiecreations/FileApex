@@ -1,5 +1,6 @@
 package com.fileapex.i18n
 
+import com.fileapex.platform.ArchiveRefusedException
 import java.io.IOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -32,6 +33,7 @@ object UserFacingErrors {
         var depth = 0
         while (current != null && depth < MAX_CAUSE_DEPTH) {
             when (current) {
+                is ArchiveRefusedException -> return "error_archive_refused"
                 is SocketTimeoutException -> return "error_peer_timeout"
                 is ConnectException,
                 is NoRouteToHostException,

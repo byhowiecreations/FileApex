@@ -1,8 +1,8 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -144,14 +144,12 @@ fun NotesAttachmentTransportOverlay(
     val progress = remember(state) { Animatable(0f) }
     val dest = state.destRect
 
+    val reduced = LocalReducedMotion.current
     LaunchedEffect(state) {
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(
-                durationMillis = (STREAM_SECONDS * 1000).roundToInt(),
-                easing = FastOutSlowInEasing
-            )
+            animationSpec = FileApexMotion.decorative((STREAM_SECONDS * 1000).roundToInt(), reduced)
         )
         state.streamDone = true
     }

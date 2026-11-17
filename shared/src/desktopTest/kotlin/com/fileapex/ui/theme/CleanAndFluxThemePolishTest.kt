@@ -26,7 +26,7 @@ import com.fileapex.presentation.DevicesUiState
 import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.adaptive.DockedDevicesActionBar
-import com.fileapex.ui.adaptive.ModernDetailEmptyState
+import com.fileapex.ui.adaptive.DetailEmptyState
 import com.fileapex.ui.adaptive.WideTopBarBrandMark
 import com.fileapex.ui.adaptive.devicesListPaneContainerColor
 import com.fileapex.ui.devices.DeviceCard
@@ -308,7 +308,7 @@ class CleanAndFluxThemePolishTest {
             }
             val emptyDetail = renderScene(width = 520, height = 360, density = 1f) {
                 FileApexTheme(uiStyle = DesktopUiStyle.Standard, appTheme = theme) {
-                    ModernDetailEmptyState(onOpenLocalFiles = {})
+                    DetailEmptyState(onOpenLocalFiles = {})
                 }
             }
             footer.close()

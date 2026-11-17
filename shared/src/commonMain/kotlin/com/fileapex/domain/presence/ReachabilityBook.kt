@@ -16,6 +16,7 @@ internal class ReachabilityBook {
     private val _snapshotEpochMs = MutableStateFlow(0L)
     private val _via = MutableStateFlow<Map<String, RouteKind>>(emptyMap())
     private val routeConfirmedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val downAtEpochById = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     val epochMs: StateFlow<Map<String, Long>> = _epochMs.asStateFlow()
     val onlineIds: StateFlow<Set<String>> = _onlineIds.asStateFlow()
@@ -57,6 +58,26 @@ internal class ReachabilityBook {
         _via.update { if (deviceId in it) it - deviceId else it }
     }
 
+    /**
+     * The peer said goodbye, or refused every connection: it is offline from [atMs] until something newer reaches it,
+     * however recent its last success was. Held in memory only; after a restart the grace period applies again.
+     */
+    suspend fun markDown(deviceId: String, atMs: Long = TimeUtils.now()) {
+        val id = deviceId.trim()
+        if (id.isEmpty()) return
+        lock.withLock {
+            if (atMs > (downAtEpochById[id] ?: 0L)) downAtEpochById[id] = atMs
+            if (id in _onlineIds.value) _onlineIds.value = _onlineIds.value - id
+        }
+    }
+
+    /** True while the down mark is at least as new as both the last probe success and the stored [lastSeenEpochMs]. */
+    fun isDown(deviceId: String, lastSeenEpochMs: Long): Boolean {
+        val id = deviceId.trim()
+        val downAt = downAtEpochById[id] ?: return false
+        return downAt >= maxOf(lastReachableEpochById[id] ?: 0L, lastSeenEpochMs)
+    }
+
     suspend fun record(deviceIds: Array<out String>, epochMs: Long, via: RouteKind? = null) {
         lock.withLock {
             var changed = false
@@ -75,7 +96,7 @@ internal class ReachabilityBook {
                 _epochMs.value = lastReachableEpochById.toMap()
                 val currentIds = _onlineIds.value
                 // An old timestamp must not put a device in the online set.
-                val toAdd = deviceIds.map { it.trim() }.filter { it.isNotEmpty() && !currentIds.contains(it) }
+                val toAdd = deviceIds.map { it.trim() }.filter { it.isNotEmpty() && !currentIds.contains(it) && !isDown(it, 0L) }
                     .takeIf { TimeUtils.isWithinWindow(epochMs, LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS) }
                     .orEmpty()
                 if (toAdd.isNotEmpty()) {

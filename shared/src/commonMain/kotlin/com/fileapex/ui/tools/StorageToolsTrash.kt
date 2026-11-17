@@ -1,14 +1,10 @@
 package com.fileapex.ui.tools
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
-import androidx.compose.ui.draw.clip
+import com.fileapex.ui.EmptyState
+import androidx.compose.material.icons.filled.Delete
 import com.fileapex.ui.HeaderIconButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,13 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.i18n.stringRes
@@ -54,12 +45,8 @@ import com.fileapex.platform.purgeTrashed
 import com.fileapex.platform.restoreTrashed
 import com.fileapex.ui.ExplorerEntryIcons
 import com.fileapex.ui.ExplorerIcon
-import com.fileapex.ui.ExplorerIconFamily
 import com.fileapex.ui.RingUsed
-import com.fileapex.ui.adaptive.JadedRaisedTile
 import com.fileapex.ui.explorerIcon
-import com.fileapex.ui.theme.fileApexTileTint
-import com.fileapex.ui.theme.isFileApexTiledChrome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,7 +63,7 @@ internal fun TrashPage(
     var working by remember { mutableStateOf(false) }
     var confirmPurge by remember { mutableStateOf<List<TrashedEntry>?>(null) }
     if (trash.isEmpty()) {
-        CenteredNote(stringRes("trash_empty_state"))
+        EmptyState(icon = Icons.Filled.Delete, title = stringRes("trash_empty_state"), modifier = Modifier.fillMaxSize())
         return
     }
     fun run(ids: List<String>, action: (List<String>) -> Boolean) {

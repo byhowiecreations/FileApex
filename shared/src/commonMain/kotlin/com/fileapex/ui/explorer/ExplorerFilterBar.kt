@@ -309,7 +309,7 @@ internal fun ExplorerFilterBar(
 
 object ExplorerFilterBarPolicy {
     fun usesExpandableSearch(theme: AppTheme, hasLeading: Boolean): Boolean =
-        hasLeading || theme.traits.orbitalHome
+        hasLeading || theme.traits.orbitalHome || theme == AppTheme.CLEAN || theme == AppTheme.FLUX_GLASS
 }
 
 object ExplorerFilterLabelPolicy {

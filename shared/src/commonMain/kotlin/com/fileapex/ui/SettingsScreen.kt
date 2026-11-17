@@ -1,14 +1,12 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
+import com.fileapex.ui.motion.MotionKind
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +16,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -141,6 +138,7 @@ fun SettingsScreen(
         viewModel = viewModel,
         pageState = navigation.page,
         searchQueryState = navigation.searchQuery,
+        rootScroll = navigation.rootScroll,
         layoutMode = layoutMode,
         onBack = onBack,
         goUp = goUp,
@@ -192,14 +190,11 @@ internal fun SettingsRootPage(
     showBackNavigation: Boolean,
     layoutMode: SettingsScreenLayoutMode,
     onOpenPage: (SettingsPage) -> Unit,
+    scrollState: androidx.compose.foundation.ScrollState,
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
-    onToggleGeneralGroup: () -> Unit,
+    onToggleSection: (SettingsMenuSection) -> Unit,
     onShowAdvancedChange: (Boolean) -> Unit,
-    onToggleSystemPerformanceGroup: () -> Unit,
-    onToggleAppearanceBehaviorGroup: () -> Unit,
-    onToggleSecurityAccountGroup: () -> Unit,
-    onToggleRemoteAccessGroup: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean,
@@ -231,7 +226,7 @@ internal fun SettingsRootPage(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(bottom = 48.dp)
             ) {
                 val tailscale by TailscaleNodeRuntime.state.collectAsState()
@@ -289,34 +284,28 @@ internal fun SettingsRootPage(
                         inUseAdvancedIds = searchOptions.inUseAdvancedIds,
                         navPosition = searchOptions.navPosition
                     )
-                    SettingsMenuSection.entries.forEach { section ->
+                    SettingsMenuSection.entries.filter { it.collapsible }.forEach { section ->
                         val rows = menuEntries.filter { it.section == section }
                         if (rows.isEmpty()) return@forEach
-                        val expanded = when (section) {
-                            SettingsMenuSection.General -> state.generalExpanded
-                            SettingsMenuSection.SystemPerformance -> state.systemPerformanceExpanded
-                            SettingsMenuSection.Appearance -> state.appearanceBehaviorExpanded
-                            SettingsMenuSection.Security -> state.securityAccountExpanded
-                            SettingsMenuSection.RemoteAccess -> state.remoteAccessExpanded
-                        }
-                        val onToggle = when (section) {
-                            SettingsMenuSection.General -> onToggleGeneralGroup
-                            SettingsMenuSection.SystemPerformance -> onToggleSystemPerformanceGroup
-                            SettingsMenuSection.Appearance -> onToggleAppearanceBehaviorGroup
-                            SettingsMenuSection.Security -> onToggleSecurityAccountGroup
-                            SettingsMenuSection.RemoteAccess -> onToggleRemoteAccessGroup
-                        }
                         SettingsCategoryGroup(
                             title = stringRes(section.titleKey()),
-                            expanded = expanded,
-                            onToggle = onToggle
+                            expanded = section.id !in state.collapsedSections,
+                            onToggle = { onToggleSection(section) }
                         ) {
                             rows.forEach { entry ->
                                 inputs.MenuRow(entry, tailscale) { showFeedbackDialog = true }
                             }
                         }
                     }
-                    SettingsAdvancedAndAboutRows(state.showAdvancedSettings, onShowAdvancedChange) { onOpenPage(SettingsPage.About) }
+                    SettingsAdvancedAndAboutRows(
+                        showAdvanced = state.showAdvancedSettings,
+                        onShowAdvancedChange = onShowAdvancedChange,
+                        onOpenAbout = { onOpenPage(SettingsPage.About) }
+                    ) {
+                        menuEntries.filter { it.section == SettingsMenuSection.Utility }.forEach { entry ->
+                            inputs.MenuRow(entry, tailscale) { showFeedbackDialog = true }
+                        }
+                    }
                 }
             }
             val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
@@ -379,7 +368,7 @@ private fun CollapsibleCategoryHeader(
     val isFluxGlass = LocalAppTheme.current.traits.fluxSurfaces
     val rotationAngle by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(durationMillis = 300),
+        animationSpec = FileApexMotion.enter(MotionKind.Move, LocalReducedMotion.current),
         label = "ChevronRotation"
     )
 
@@ -428,8 +417,8 @@ private fun SettingsCategoryGroup(
         )
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
+            enter = FileApexMotion.expandIn(LocalReducedMotion.current),
+            exit = FileApexMotion.shrinkOut(LocalReducedMotion.current)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 content()

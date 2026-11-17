@@ -1,5 +1,7 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.motion.FileApexMotion
+import com.fileapex.ui.motion.LocalReducedMotion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -138,7 +140,11 @@ fun PairingQrPanel(
                     )
                 }
             }
-            AnimatedVisibility(visible = detailsExpanded) {
+            AnimatedVisibility(
+                visible = detailsExpanded,
+                enter = FileApexMotion.expandIn(LocalReducedMotion.current),
+                exit = FileApexMotion.shrinkOut(LocalReducedMotion.current)
+            ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,

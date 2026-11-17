@@ -16,10 +16,11 @@ Would you like to use English? / ¿Le gustaría usar inglés?</string>
 Would you like to use English? / 您想使用英语吗？</string>
     <string name="language_use_detected">Use %1$s</string>
     <string name="language_use_english">Use English</string>
-    <string name="system_app_performance">System &amp; App Performance</string>
-    <string name="appearance_behavior">Appearance &amp; Behavior</string>
-    <string name="security_account">Security &amp; Access Control</string>
-    <string name="settings_general">General</string>
+    <string name="appearance">Appearance</string>
+    <string name="sync_notifications">Sync &amp; Notifications</string>
+    <string name="devices_connectivity">Devices &amp; Connectivity</string>
+    <string name="security_privacy">Security &amp; Privacy</string>
+    <string name="system_app">System &amp; App</string>
     <string name="tailscale_overlay">Tailscale (Overlay Networking)</string>
     <string name="tailscale_header">Overlay network</string>
     <string name="tailscale_header_body">Tailscale builds a secure, encrypted overlay so file transfers can cross separate Wi-Fi networks and cellular connections without router setup.</string>
@@ -75,6 +76,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="allow_remote_file_deletion">Allow remote file deletion</string>
     <string name="on">On</string>
     <string name="off">Off</string>
+    <string name="notifications_row_critical_only">On - critical alerts only</string>
+    <string name="notifications_row_count">On (%1$d of %2$d)</string>
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
     <string name="cancelled">Cancelled</string>
@@ -109,6 +112,9 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="rename">Rename</string>
     <string name="split_view">Split</string>
     <string name="get_info">Get Info</string>
+    <string name="checksum_sha256">Checksum (SHA-256)</string>
+    <string name="checksum_calculating">Calculating…</string>
+    <string name="checksum_failed">Could not read the file</string>
     <string name="compress">Compress</string>
     <string name="uncompress">Uncompress</string>
     <string name="pane_local">Local</string>
@@ -465,6 +471,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="link_google_desc">Opt-in only. Signs in with Google and registers this device’s public ID and LAN address in your private Firebase registry so other FileApex apps on the same account can discover you. Files are uploaded only when Google Drive Relay is also enabled.</string>
     <string name="linked_email">Linked: %1$s</string>
     <string name="themes_intro">Select your preferred visual style for FileApex. Changes apply immediately across all screens and windows.</string>
+    <string name="motion">Motion</string>
+    <string name="reduce_motion">Reduce motion</string>
+    <string name="reduce_motion_desc">Replace sliding, scaling and flipping animations with short fades. System follows the setting in your operating system.</string>
+    <string name="reduce_motion_system">System</string>
+    <string name="reduce_motion_on">On</string>
+    <string name="reduce_motion_off">Off</string>
     <string name="default_badge">DEFAULT</string>
     <string name="also_remove_remote">Also remove the file from remote device storage?</string>
     <string name="onboarding_wifi_intro">FileApex sends and receives files between your devices on Wi‑Fi: directly, with no cloud upload. You can also browse folders on paired phones and computers when you need to pick files remotely.</string>
@@ -1005,6 +1017,8 @@ Tap Central Hub (+) to Pair</string>
     <string name="feedback_option_form_desc">Open pre-filled form with device telemetry</string>
     <string name="feedback_option_github">Open GitHub Issues Tracker</string>
     <string name="feedback_option_github_desc">View or report issues on GitHub</string>
+    <string name="feedback_option_reddit">Visit r/fileapex on Reddit</string>
+    <string name="feedback_option_reddit_desc">Ask questions or share ideas with other users</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d cluster device)</item>
         <item quantity="other">(+%d cluster devices)</item>
@@ -1099,11 +1113,20 @@ Tap Central Hub (+) to Pair</string>
     <string name="queue_retry_failed">Could not retry this transfer</string>
     <string name="queue_retry_now">Retry now</string>
     <string name="queue_paused">Paused: tap retry to resume</string>
+    <string name="transfer_history_sent">Sent, %1$s</string>
+    <string name="transfer_filter_all">All</string>
+    <string name="transfer_filter_active">Active</string>
+    <string name="transfer_filter_waiting">Waiting</string>
+    <string name="transfer_filter_failed">Failed</string>
+    <string name="transfer_filter_done">Done</string>
+    <string name="transfer_recent">Recently sent</string>
+    <string name="transfer_history_empty">Nothing sent in the last 24 hours</string>
     <string name="show_in_folder">Show in folder</string>
     <string name="error_peer_timeout">The device took too long to respond. Check that it is awake and on the same Wi-Fi.</string>
     <string name="error_peer_unreachable">Could not reach the device. Check that FileApex is running on it and both devices are on the same network.</string>
     <string name="error_peer_not_trusted">This device no longer trusts you. It may have removed you from its cluster. Pair with it again to browse.</string>
     <string name="error_disk_full">Not enough storage space to finish.</string>
+    <string name="error_archive_refused">This archive was not extracted because it is too large, too dense or unsafe.</string>
     <string name="error_connection_lost">The connection was interrupted. Try again.</string>
     <string name="filter_this_folder">Filter this folder</string>
     <string name="filter">Filter</string>
@@ -1376,7 +1399,6 @@ Tap Central Hub (+) to Pair</string>
     <string name="iroh_status_no_network">On, waiting for a network</string>
     <string name="iroh_rest">Let Iroh rest</string>
     <string name="iroh_rest_body">Saves battery by closing Iroh while every device is on the same Wi-Fi. Other devices may not reach this one until it wakes.</string>
-    <string name="remote_access">Remote Access</string>
     <string name="pairing_check_title">Check the pairing code</string>
     <string name="pairing_check_body">%1$s must show the same code. Only continue if both screens match:</string>
     <string name="pairing_check_match">Codes match</string>

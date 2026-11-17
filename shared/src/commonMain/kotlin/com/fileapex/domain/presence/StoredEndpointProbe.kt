@@ -48,6 +48,9 @@ internal interface StoredEndpointHost {
     suspend fun probeHealth(host: String, port: Int, timeoutMs: Long, signal: HealthSignal?): FileApexClient.HealthProbe
     suspend fun recordEndpointMismatch(peerId: String, host: String, answeredAs: String)
     suspend fun markReachable(deviceId: String)
+
+    /** Every attempt at the peer's LAN address was refused: the host is up and its app is not running. */
+    suspend fun markRefused(deviceId: String)
     fun onBulletinVersion(peer: PairedDeviceEntity, version: Long)
     suspend fun touchLastSeenEpoch(deviceId: String)
     suspend fun touchLastSeen(deviceId: String, host: String, port: Int)
@@ -70,12 +73,14 @@ internal class StoredEndpointProbe(
         val tailnetUsable = tailnetNodeUp() &&
             tailnetPeerIsOnline(TailscaleNodeRuntime.observedTailnetPeers(), peer.deviceId, peer.deviceName)
         val endpoint = resolvePeerEndpoint(peer, tailnetUsable) ?: return false
+        var refusedAttempts = 0
         repeat(attempts) { attempt ->
             val signal = NotificationCompanion.pollSignalFor(
                 peer.deviceId, peer.isDockerNode(), peer.os, peer.platform, peer.tlsPin
             ) ?: PhoneLink.pollSignalFor(peer)
             val probe = host.probeHealth(endpoint.host, endpoint.port, timeoutMs, signal)
             val reached = probe.reached
+            if (probe.refused) refusedAttempts++
             if (signal != null) NotificationDebugLog.log("sweep link poll to ${NotificationDebugLog.short(peer.deviceId)} ${signal.query()} reached=$reached")
             if (reached) LinkedElsewhere.shared.note(peer.deviceId, probe.linkedTo)
             val answeredAs = probe.respondedAs
@@ -117,6 +122,7 @@ internal class StoredEndpointProbe(
             }
         }
         com.fileapex.membership.ChainStateInbox.unreached(peer.deviceId)
+        if (!endpoint.tailnet && attempts > 0 && refusedAttempts == attempts) host.markRefused(peer.deviceId)
         return false
     }
 }

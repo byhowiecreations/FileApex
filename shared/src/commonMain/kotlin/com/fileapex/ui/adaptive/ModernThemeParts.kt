@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -32,18 +31,15 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,7 +52,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,7 +59,6 @@ import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
-import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.DevicesUiState
 import com.fileapex.ui.ExplorerIcon
 import com.fileapex.ui.HomeTab
@@ -127,77 +121,6 @@ internal fun devicesListPaneContainerColor(theme: AppTheme, isFluent: Boolean): 
     theme == AppTheme.CLEAN && !isFluent -> CleanModernPalette.CanvasBackdrop
     theme.traits.glassChrome -> Color.Transparent
     else -> Color.Unspecified
-}
-
-@Composable
-internal fun ModernDetailEmptyState(
-    onOpenLocalFiles: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isFlux = LocalAppTheme.current.traits.fluxSurfaces
-    val badgeBg = if (isFlux) FluxGlassPalette.emptyBadgeBg else CleanModernPalette.EmptyBadgeBg
-    val badgeBorder = if (isFlux) FluxGlassPalette.cardBorder else FileApexTeal.copy(alpha = 0.14f)
-    val iconTint = if (isFlux) FluxGlassPalette.emptyBadgeTint else FileApexTealDark
-    val titleColor = if (isFlux) Color.White else CleanModernPalette.ChromeContent
-    val bodyColor = if (isFlux) FluxGlassPalette.explorerMuted else CleanModernPalette.ChromeMuted
-    val hintKey = if (usesDesktopFileSelection()) "select_device_files_dnd_hint" else "select_device_files_hint"
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(badgeBg)
-                .border(1.dp, badgeBorder, RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.CreateNewFolder,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(30.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(18.dp))
-        Text(
-            text = stringRes("select_device_files"),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = titleColor,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = stringRes(hintKey),
-            style = MaterialTheme.typography.bodyMedium,
-            color = bodyColor,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-        Spacer(modifier = Modifier.height(18.dp))
-        OutlinedButton(
-            onClick = onOpenLocalFiles,
-            shape = RoundedCornerShape(10.dp),
-            border = BorderStroke(
-                1.dp,
-                if (isFlux) FluxGlassPalette.cardBorder else CleanModernPalette.CardBorder
-            ),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = if (isFlux) FluxGlassPalette.clipboardButtonFill else CleanModernPalette.CardSurface,
-                contentColor = if (isFlux) Color.White else CleanModernPalette.ChromeContent
-            ),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-            Text(
-                text = stringRes("open_local_files"),
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
-            )
-        }
-    }
 }
 
 @Composable

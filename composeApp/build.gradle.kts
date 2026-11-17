@@ -244,6 +244,8 @@ android {
             // The Iroh Kotlin jar carries desktop natives; Android gets its own from iroh-android.
             excludes += listOf("win32-x86-64/**", "linux-aarch64/**", "linux-x86-64/**", "darwin-aarch64/**")
             pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            // BouncyCastle 1.87 ships the same license file in bcprov, bcpkix and bcutil.
+            pickFirsts += "META-INF/LICENSE.md"
         }
         jniLibs {
             excludes += listOf("lib/x86/**", "lib/x86_64/**", "lib/mips/**", "lib/mips64/**", "lib/riscv64/**")

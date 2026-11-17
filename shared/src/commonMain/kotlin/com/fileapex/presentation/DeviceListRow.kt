@@ -36,7 +36,9 @@ data class DeviceListRow(
     val friendGroup: String? = null,
     val friendAutoAccept: Boolean = false,
     /** The route the last contact used; only meaningful while [online]. */
-    val reachedBy: RouteKind? = null
+    val reachedBy: RouteKind? = null,
+    /** A wake message can start this device (an Android phone a cloud message reaches), so offline may say "Tap to wake". */
+    val canWake: Boolean = false
 ) {
     val title: String get() = deviceName
 
@@ -46,7 +48,8 @@ data class DeviceListRow(
         online = online,
         appVersion = displayVersion ?: appVersion,
         lastSeenEpochMs = lastSeenEpochMs,
-        reachedBy = reachedBy
+        reachedBy = reachedBy,
+        canWake = canWake
     )
 
     companion object {
@@ -65,9 +68,10 @@ data class DeviceListRow(
             online: Boolean,
             appVersion: String?,
             lastSeenEpochMs: Long = 0L,
-            reachedBy: RouteKind? = null
+            reachedBy: RouteKind? = null,
+            canWake: Boolean = false
         ): String {
-            val status = if (online) onlineLabel(reachedBy) else AppI18n.t("tap_to_wake")
+            val status = if (online) onlineLabel(reachedBy) else offlineLabel(canWake)
             val version = appVersion?.trim()?.takeIf { it.isNotEmpty() }
             val versionLabel = version?.let { versionText -> "v$versionText" }
             if (online) {
@@ -84,6 +88,9 @@ data class DeviceListRow(
                 prefix
             }
         }
+
+        /** What an offline device says: "Tap to wake" only where a wake can really be sent, otherwise "Offline". */
+        fun offlineLabel(canWake: Boolean): String = AppI18n.t(if (canWake) "tap_to_wake" else "offline")
 
         /** The short online status: the route name, or "Ready" before any route is known. */
         fun onlineLabel(reachedBy: RouteKind?): String = when (reachedBy) {

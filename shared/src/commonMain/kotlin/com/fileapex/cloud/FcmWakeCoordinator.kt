@@ -184,6 +184,14 @@ object FcmWakeCoordinator {
         }
     }
 
+    /** The cached form of [canReceiveCloudMessages], for a screen that must answer without waiting on the cloud. */
+    fun cachedCloudReachable(targetDeviceId: String): Boolean {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
+        val selfId = loadLocalIdentity().deviceId
+        val target = GoogleLinkCoordinator.linkedPeerFcmTargets(selfId).firstOrNull { it.deviceId == targetDeviceId } ?: return false
+        return !CloudTargetFreshness.isStale(target.recordUpdatedAtEpochMs, com.fileapex.util.TimeUtils.now())
+    }
+
     /** True when the device has a recent cloud record with a push address, so a cloud message can reach it. */
     suspend fun canReceiveCloudMessages(targetDeviceId: String): Boolean {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false

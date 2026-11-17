@@ -63,6 +63,9 @@ class FileApexServer(
     /** A proven peer showed its own chain state with its request. */
     internal val onChainState: suspend (peerId: String, state: com.fileapex.membership.ChainStateField) -> Unit =
         { id, state -> com.fileapex.membership.ChainStateInbox.note(id, state) },
+    /** A proven peer said it is leaving. */
+    internal val onPresenceGoodbye: suspend (peerId: String) -> Unit =
+        { id -> FileApexServices.presenceMonitor.onPeerGoodbye(id) },
     /** What the macOS Finder extensions ask of this app over 127.0.0.1; null where there are none. */
     internal val localExtension: LocalExtensionApi? = null,
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
