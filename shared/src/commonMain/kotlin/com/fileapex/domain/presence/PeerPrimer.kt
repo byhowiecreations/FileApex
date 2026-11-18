@@ -45,7 +45,7 @@ internal class PeerPrimer(private val host: PrimerHost) {
 
         var current = host.liveDevice(peer.deviceId) ?: peer
         if (!host.hasUsableEndpoint(current)) {
-            cancellableCatching { FileApexMdnsBrowser.requestProbe() }
+            cancellableCatching("PeerPrimer: FileApexMdnsBrowser.requestProbe") { FileApexMdnsBrowser.requestProbe() }
             delay(LanPresenceTiming.TRANSFER_MDNS_SETTLE_MS)
             current = host.liveDevice(peer.deviceId) ?: current
         }
@@ -94,7 +94,7 @@ internal class PeerPrimer(private val host: PrimerHost) {
 
     suspend fun primeForTransfer(targets: List<MultiCopyDeviceOption>, scope: CoroutineScope) {
         scope.launch(Dispatchers.IO) {
-            cancellableCatching { sendWakeBroadcast() }
+            cancellableCatching("PeerPrimer: sendWakeBroadcast") { sendWakeBroadcast() }
         }
         val attempts = LanPresenceTiming.ON_DEMAND_PRIME_ATTEMPTS
         val retryMs = LanPresenceTiming.ON_DEMAND_PRIME_RETRY_MS
@@ -106,7 +106,7 @@ internal class PeerPrimer(private val host: PrimerHost) {
                     if (host.tryStoredEndpoint(peer, attempts, retryMs, timeoutMs, false)) {
                         return@async
                     }
-                    cancellableCatching { FileApexMdnsBrowser.requestProbe() }
+                    cancellableCatching("PeerPrimer: FileApexMdnsBrowser.requestProbe") { FileApexMdnsBrowser.requestProbe() }
                     delay(LanPresenceTiming.TRANSFER_MDNS_SETTLE_MS)
                     val refreshed = host.liveDevice(target.deviceId) ?: peer
                     if (host.tryStoredEndpoint(refreshed, attempts, retryMs, timeoutMs, false)) {

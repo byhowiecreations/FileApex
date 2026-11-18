@@ -2,6 +2,7 @@ package com.fileapex.data.bulletin
 
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.util.PathUtils
+import com.fileapex.util.cancellableCatching
 import com.fileapex.util.sha256HexFile
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -57,7 +58,7 @@ object BulletinRemoteFilePurgeResolver {
         if (metadata.isDirectory) return false
         if (meta.sizeBytes > 0L && metadata.size != meta.sizeBytes) return false
         if (meta.sha256.isNotBlank()) {
-            val hash = runCatching { sha256HexFile(absolutePath) }.getOrNull() ?: return false
+            val hash = cancellableCatching("BulletinRemoteFilePurgeResolver matchesSandboxFile") { sha256HexFile(absolutePath) }.getOrNull() ?: return false
             if (!hash.equals(meta.sha256, ignoreCase = true)) return false
         } else if (meta.sizeBytes <= 0L) {
             return false
@@ -70,7 +71,7 @@ object BulletinRemoteFilePurgeResolver {
         if (!SystemFileSystem.exists(root)) return emptyList()
         val metadata = SystemFileSystem.metadataOrNull(root) ?: return emptyList()
         if (metadata.isDirectory != true) return emptyList()
-        return runCatching {
+        return cancellableCatching("BulletinRemoteFilePurgeResolver listFiles") {
             SystemFileSystem.list(root).mapNotNull { child ->
                 val childMeta = SystemFileSystem.metadataOrNull(child) ?: return@mapNotNull null
                 if (childMeta.isDirectory) return@mapNotNull null

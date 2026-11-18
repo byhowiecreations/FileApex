@@ -13,6 +13,7 @@ import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /**
  * Maps between Room storage and the atomic [PeerNodeState] wire model.
@@ -168,7 +169,7 @@ object PeerNodeStateMapper {
     fun decodeProtocols(raw: String): List<String> {
         val trimmed = raw.trim()
         if (trimmed.isEmpty() || trimmed == "[]") return PeerNodeProtocols.DEFAULT
-        return runCatching { protocolsJson.decodeFromString<List<String>>(trimmed) }
+        return cancellableCatching("PeerNodeStateMapper: step") { protocolsJson.decodeFromString<List<String>>(trimmed) }
             .getOrDefault(PeerNodeProtocols.DEFAULT)
     }
 }

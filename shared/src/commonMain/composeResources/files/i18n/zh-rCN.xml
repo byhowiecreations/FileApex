@@ -902,6 +902,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="sent_named_to">已将 %1$s 发送到 %2$s</string>
     <string name="sent_n_files_to">已将 %1$s 个文件发送到 %2$s</string>
     <string name="send_failed_all_destinations">所有目标的发送均失败</string>
+    <string name="send_cancelled_by_receiver">接收方已取消</string>
+    <string name="transfer_pause">暂停</string>
     <string name="waiting_drive_grant">正在等待 Google 云盘授权</string>
     <string name="drive_relay_did_not_finish">云盘中继未完成</string>
     <string name="confirm_cellular_send">请确认通过移动数据使用 Google 云盘中继发送</string>
@@ -1134,6 +1136,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="cancel_keep_going">继续传输</string>
     <string name="queued_sending_background">正在发送到 %1$s</string>
     <string name="queued_source_changed">%1$s 在加入队列后已更改，因此未发送。重试即可发送当前版本。</string>
+    <string name="queued_source_missing">未找到 %1$s，因此未发送。文件恢复后可重试，或将其从队列中移除。</string>
     <string name="drive_encrypt">加密文件</string>
     <string name="drive_encrypt_off">已关闭。文件将原样上传到 Drive，你也可以直接在 Drive 下载。</string>
     <string name="drive_encrypt_on">已开启。文件上传前加密，仅你已配对的设备可以打开。文件名仍可见。</string>

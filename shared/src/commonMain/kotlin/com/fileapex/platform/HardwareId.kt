@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import com.fileapex.util.sha256Hex
 
 /** The operating system's own id for this install or machine, or blank when it has none. Never logged, never sent raw. */
@@ -20,7 +21,7 @@ object HardwareId {
     }
 
     /** This device's hash; blank when the platform gives no id. Computed once. */
-    val local: String by lazy { runCatching { hash(localHardwareIdRaw()) }.getOrDefault("") }
+    val local: String by lazy { cancellableCatching("HardwareId hash") { hash(localHardwareIdRaw()) }.getOrDefault("") }
 
     fun parseIoregUuid(output: String): String =
         Regex("\"IOPlatformUUID\"\\s*=\\s*\"([^\"]+)\"").find(output)?.groupValues?.get(1).orEmpty()

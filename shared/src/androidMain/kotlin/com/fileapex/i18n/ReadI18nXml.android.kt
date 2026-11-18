@@ -1,12 +1,13 @@
 package com.fileapex.i18n
 
 import com.fileapex.data.settings.androidAppContextOrNull
+import com.fileapex.util.cancellableCatching
 import kotlin.text.Charsets
 
 internal actual fun readI18nXml(locale: AppLocale): String {
     val packaged = i18nResourcePath(locale)
     androidAppContextOrNull()?.let { context ->
-        runCatching {
+        cancellableCatching("ReadI18nXml readI18nXml") {
             return context.assets.open(packaged).bufferedReader(Charsets.UTF_8).use { it.readText() }
         }
     }

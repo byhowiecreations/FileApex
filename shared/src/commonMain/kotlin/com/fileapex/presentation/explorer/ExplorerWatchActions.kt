@@ -6,7 +6,6 @@ import com.fileapex.platform.DirectoryWatch
 import com.fileapex.platform.watchLocalDirectory
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
-import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -54,7 +53,7 @@ internal class ExplorerWatchActions(
 
     private fun openLocalWatch(path: String): DirectoryWatch? {
         if (path.isBlank()) return null
-        return runCatching { watchLocalDirectory(path, ::onLocalFolderChanged) }.getOrNull()
+        return cancellableCatching("ExplorerWatchActions openLocalWatch") { watchLocalDirectory(path, ::onLocalFolderChanged) }.getOrNull()
     }
 
     private fun onLocalFolderChanged() {
@@ -77,7 +76,7 @@ internal class ExplorerWatchActions(
         if (!isContent && !isPane) return
         val generation = browseGeneration
         viewModelScope.launch {
-            val listing = cancellableCatching { browser.listAt(normalizedPath) }.getOrNull() ?: return@launch
+            val listing = cancellableCatching("ExplorerWatchActions onFolderRevalidated") { browser.listAt(normalizedPath) }.getOrNull() ?: return@launch
             if (generation != browseGeneration) return@launch
             _uiState.update {
                 it.copy(

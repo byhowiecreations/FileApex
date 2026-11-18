@@ -9,6 +9,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.fileapex.domain.clipboard.ClipboardImageInbox
 import com.fileapex.domain.clipboard.ClipboardImageStorage
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 import java.io.File
 
 class ClipboardActionReceiver : BroadcastReceiver() {
@@ -22,7 +23,7 @@ class ClipboardActionReceiver : BroadcastReceiver() {
             val cachedPath = intent.getStringExtra(EXTRA_IMAGE_PATH) ?: return
             val mimeType = intent.getStringExtra(EXTRA_IMAGE_MIME) ?: "image/jpeg"
             val sender = intent.getStringExtra(EXTRA_SOURCE_DEVICE).orEmpty()
-            val bytes = runCatching { File(cachedPath).takeIf { it.isFile }?.readBytes() }.getOrNull() ?: return
+            val bytes = cancellableCatching("ClipboardActionReceiver onReceive") { File(cachedPath).takeIf { it.isFile }?.readBytes() }.getOrNull() ?: return
             val saved = ClipboardImageStorage.saveToDirectory(bytes, mimeType, sender, defaultDownloadsDir())
             if (saved != null) {
                 ClipboardImageInbox.dismiss()

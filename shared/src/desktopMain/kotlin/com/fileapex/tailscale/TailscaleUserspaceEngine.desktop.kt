@@ -11,6 +11,7 @@ import com.sun.jna.Pointer
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.fileapex.util.cancellableCatching
 
 internal fun tailscaleUserspaceStateDir(): File =
     File(DesktopPlatformPaths.applicationSupportDirectory(), "tsnet").apply { mkdirs() }
@@ -23,7 +24,7 @@ private class DesktopEmbeddedTsnetEngine : TailscaleUserspaceEngine {
                 nativeLinked = false,
                 tailnetIp = ""
             )
-        val identity = runCatching { loadLocalIdentity() }.getOrNull()
+        val identity = cancellableCatching("TailscaleUserspaceEngine.desktop: loadLocalIdentity") { loadLocalIdentity() }.getOrNull()
         val started = DesktopTsnetLibrary.start(
             lib,
             authKey = authKey.trim(),
@@ -78,7 +79,7 @@ private class DesktopEmbeddedTsnetEngine : TailscaleUserspaceEngine {
     /** Only passed on when the node is already loaded; [TailscaleNodeRuntime] sends the port again after every start. */
     override fun setForwardPort(port: Int) {
         val lib = DesktopTsnetLibrary.loadedOrNull() ?: return
-        runCatching { lib.fileapex_tsnet_set_forward_port(port) }
+        cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_set_forward_port") { lib.fileapex_tsnet_set_forward_port(port) }
     }
 }
 
@@ -134,7 +135,7 @@ private object DesktopTsnetLibrary {
         synchronized(lock) {
             native?.let { return it }
             val library = resolveLibrary() ?: return null
-            val loaded = runCatching {
+            val loaded = cancellableCatching {
                 Native.load(
                     library.absolutePath,
                     FileApexTsnetNative::class.java,
@@ -152,7 +153,7 @@ private object DesktopTsnetLibrary {
 
     fun stopIfLoaded() {
         native?.let { lib ->
-            runCatching { lib.fileapex_tsnet_stop() }
+            cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_stop") { lib.fileapex_tsnet_stop() }
         }
     }
 
@@ -160,7 +161,7 @@ private object DesktopTsnetLibrary {
         val ipBuf = Memory(64)
         val errBuf = Memory(512)
         val stateBuf = Memory(64)
-        val ok = runCatching {
+        val ok = cancellableCatching("starting the tailnet library") {
             lib.fileapex_tsnet_start(authKey, dir, hostname, sharePort, ipBuf, 64, errBuf, 512)
         }.getOrElse { error ->
             return TsnetStart(ok = false, ip = "", error = error.message ?: "start_failed")
@@ -170,9 +171,9 @@ private object DesktopTsnetLibrary {
         if (ok == 0) {
             return TsnetStart(ok = false, ip = "", error = error.ifBlank { "start_failed" })
         }
-        runCatching { lib.fileapex_tsnet_backend_state(stateBuf, 64) }
+        cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_backend_state") { lib.fileapex_tsnet_backend_state(stateBuf, 64) }
         val backend = stateBuf.getString(0, "UTF-8").orEmpty().trim()
-        val expired = runCatching { lib.fileapex_tsnet_key_expired() }.getOrDefault(0) != 0
+        val expired = cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_key_expired") { lib.fileapex_tsnet_key_expired() }.getOrDefault(0) != 0
         return TsnetStart(ok = true, ip = ip, error = "", backend = backend, keyExpired = expired)
     }
 
@@ -181,11 +182,11 @@ private object DesktopTsnetLibrary {
     fun poll(lib: FileApexTsnetNative): TailscaleLinkSnapshot {
         val stateBuf = Memory(64)
         val ipBuf = Memory(64)
-        runCatching { lib.fileapex_tsnet_backend_state(stateBuf, 64) }
-        runCatching { lib.fileapex_tsnet_self_ipv4(ipBuf, 64) }
+        cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_backend_state") { lib.fileapex_tsnet_backend_state(stateBuf, 64) }
+        cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_self_ipv4") { lib.fileapex_tsnet_self_ipv4(ipBuf, 64) }
         val backend = stateBuf.getString(0, "UTF-8").orEmpty().trim()
         val ip = ipBuf.getString(0, "UTF-8").orEmpty().trim()
-        val expired = runCatching { lib.fileapex_tsnet_key_expired() }.getOrDefault(0) != 0
+        val expired = cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_key_expired") { lib.fileapex_tsnet_key_expired() }.getOrDefault(0) != 0
         return snapshotFromBackend(backend, expired, ip).copy(authUrl = authUrl(lib))
     }
 
@@ -198,7 +199,7 @@ private object DesktopTsnetLibrary {
         read: (FileApexTsnetNative, Memory) -> Unit
     ): String {
         val buf = Memory(1024)
-        val ok = runCatching {
+        val ok = cancellableCatching("reading a value from the tailnet library") {
             read(lib, buf)
             true
         }.getOrDefault(false)
@@ -207,32 +208,32 @@ private object DesktopTsnetLibrary {
     }
 
     fun loopback(lib: FileApexTsnetNative, host: String, port: Int): Int =
-        runCatching { lib.fileapex_tsnet_loopback(host, port) }.getOrDefault(0)
+        cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_loopback") { lib.fileapex_tsnet_loopback(host, port) }.getOrDefault(0)
 
     fun sessionToken(lib: FileApexTsnetNative): String {
         val buf = Memory(128)
-        val ok = runCatching { lib.fileapex_tsnet_session_token(buf, 128) }.getOrDefault(0)
+        val ok = cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_session_token") { lib.fileapex_tsnet_session_token(buf, 128) }.getOrDefault(0)
         if (ok == 0) return ""
         return buf.getString(0, "UTF-8").orEmpty().trim()
     }
 
     fun clearState(lib: FileApexTsnetNative, dir: String): Boolean =
-        runCatching { lib.fileapex_tsnet_clear_state(dir) == 1 }.getOrDefault(false)
+        cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_clear_state") { lib.fileapex_tsnet_clear_state(dir) == 1 }.getOrDefault(false)
 
     fun logout(lib: FileApexTsnetNative): String? {
         val errBuf = Memory(256)
-        val ok = runCatching { lib.fileapex_tsnet_logout(errBuf, 256) }.getOrElse {
+        val ok = cancellableCatching("signing out of the tailnet") { lib.fileapex_tsnet_logout(errBuf, 256) }.getOrElse {
             return "sign_out_failed"
         }
         return if (ok == 1) null else "sign_out_failed"
     }
 
     fun activeConnections(lib: FileApexTsnetNative): Int =
-        runCatching { lib.fileapex_tsnet_active_conns() }.getOrDefault(0)
+        cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_active_conns") { lib.fileapex_tsnet_active_conns() }.getOrDefault(0)
 
     fun peers(lib: FileApexTsnetNative): String? {
         val buf = Memory(65_536)
-        val ok = runCatching { lib.fileapex_tsnet_peers(buf, 65_536) }.getOrDefault(0)
+        val ok = cancellableCatching("TailscaleUserspaceEngine.desktop: lib.fileapex_tsnet_peers") { lib.fileapex_tsnet_peers(buf, 65_536) }.getOrDefault(0)
         if (ok == 0) return null
         return buf.getString(0, "UTF-8").orEmpty().ifBlank { "[]" }
     }

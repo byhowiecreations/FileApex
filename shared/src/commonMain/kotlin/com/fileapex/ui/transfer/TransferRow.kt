@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.fileapex.i18n.stringRes
+import com.fileapex.ui.FileApexIcons
 
 /**
  * The one row for a file that is moving or waiting. [TransferRowDensity.Compact] is the floating banner,
@@ -60,6 +61,10 @@ fun TransferRow(
         TransferRowDensity.Inline -> InlineRow(model, onCancel, modifier, accent, textColor)
     }
 }
+
+private fun cancelIconFor(model: TransferRowModel): ImageVector = if (model.cancelPauses) FileApexIcons.Pause else Icons.Filled.Close
+
+private fun cancelLabelKeyFor(model: TransferRowModel): String = if (model.cancelPauses) "transfer_pause" else "cancel"
 
 private fun iconFor(model: TransferRowModel): ImageVector = when (model.state) {
     TransferRowState.Done -> Icons.Filled.Check
@@ -103,7 +108,7 @@ private fun CompactRow(model: TransferRowModel, onCancel: () -> Unit, modifier: 
         }
         if (model.canCancel) {
             IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = stringRes("cancel"), tint = mutedColor, modifier = Modifier.size(18.dp))
+                Icon(cancelIconFor(model), contentDescription = stringRes(cancelLabelKeyFor(model)), tint = mutedColor, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -128,7 +133,7 @@ private fun StandardRow(
             model.warning?.let { Text(it, color = errorColor, style = MaterialTheme.typography.bodySmall) }
             Bar(model, accent, Modifier.fillMaxWidth().padding(top = 4.dp))
         }
-        if (model.canCancel) IconButton(onClick = onCancel) { Icon(Icons.Filled.Close, contentDescription = stringRes("cancel")) }
+        if (model.canCancel) IconButton(onClick = onCancel) { Icon(cancelIconFor(model), contentDescription = stringRes(cancelLabelKeyFor(model))) }
         if (model.canRetry) IconButton(onClick = onRetry) { Icon(Icons.Filled.Refresh, contentDescription = stringRes("queue_retry_now")) }
         if (model.canRemove) IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = stringRes("remove_from_queue")) }
     }
@@ -148,7 +153,7 @@ private fun InlineRow(model: TransferRowModel, onCancel: () -> Unit, modifier: M
         Bar(model, accent, Modifier.fillMaxWidth())
         model.warning?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp)) }
         if (model.canCancel) {
-            TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.End)) { Text(stringRes("cancel")) }
+            TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.End)) { Text(stringRes(cancelLabelKeyFor(model))) }
         }
     }
 }

@@ -2,6 +2,7 @@ package com.fileapex.domain.diagnostics
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /**
  * Identifies a row in the Device Details popup. Order and visibility are user-configurable
@@ -134,7 +135,7 @@ data class DeviceDetailsDisplayPreferences(
 
         fun decode(raw: String): DeviceDetailsDisplayPreferences {
             if (raw.isBlank()) return defaults()
-            return runCatching {
+            return cancellableCatching("DeviceDetailsFieldRegistry: normalized") {
                 json.decodeFromString<DeviceDetailsDisplayPreferences>(raw).normalized()
             }.getOrDefault(defaults())
         }

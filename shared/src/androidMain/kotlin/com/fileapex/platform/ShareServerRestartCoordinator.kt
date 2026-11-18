@@ -106,7 +106,7 @@ object ShareServerRestartCoordinator {
             return
         }
 
-        runCatching {
+        cancellableCatching("ShareServerRestartCoordinator attemptWatchdogRestart") {
             val start = Intent().setClassName(appContext.packageName, FILE_SHARE_SERVER_SERVICE)
             ContextCompat.startForegroundService(appContext, start)
             Log.i(TAG, "Started share-server FGS from $trigger")

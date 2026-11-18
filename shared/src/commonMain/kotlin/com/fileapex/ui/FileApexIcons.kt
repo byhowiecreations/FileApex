@@ -7,6 +7,30 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object FileApexIcons {
+    /** Two vertical bars: the cancel button of a send that is only parked in the queue. */
+    val Pause: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Pause",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(6f, 19f)
+                horizontalLineToRelative(4f)
+                verticalLineTo(5f)
+                horizontalLineTo(6f)
+                close()
+                moveTo(14f, 5f)
+                verticalLineToRelative(14f)
+                horizontalLineToRelative(4f)
+                verticalLineTo(5f)
+                close()
+            }
+        }.build()
+    }
+
     /**
      * Material 3 Expressive ATR (Automatic Target Recognition) icon.
      * Three solid circular nodes arranged in an equilateral triangle without connecting bars,

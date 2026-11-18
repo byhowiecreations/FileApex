@@ -4,6 +4,7 @@ import java.awt.Desktop
 import java.net.URI
 import com.fileapex.domain.launch.DesktopLaunchInbox
 import com.fileapex.domain.launch.DesktopLaunchRequest
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +26,7 @@ object DesktopUriHandler {
     }
 
     fun installOpenUriHandler() {
-        runCatching {
+        cancellableCatching("DesktopUriHandler installOpenUriHandler") {
             if (!Desktop.isDesktopSupported()) return
             val desktop = Desktop.getDesktop()
             if (desktop.isSupported(Desktop.Action.APP_OPEN_URI)) desktop.setOpenURIHandler { event -> queueUri(event.uri) }

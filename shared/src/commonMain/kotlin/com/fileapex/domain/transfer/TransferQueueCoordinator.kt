@@ -44,37 +44,12 @@ import com.fileapex.domain.transfer.QueuedTransferSources.buildDisplayLabel
 import com.fileapex.domain.transfer.QueuedTransferSources.changedSourceName
 import com.fileapex.domain.transfer.QueuedTransferSources.decodeDeviceIds
 import com.fileapex.domain.transfer.QueuedTransferSources.decodeSources
+import com.fileapex.domain.transfer.QueuedTransferSources.missingSourceName
 import com.fileapex.domain.transfer.QueuedTransferSources.fileSummary
 import com.fileapex.domain.transfer.QueuedTransferSources.pathSummary
 import com.fileapex.domain.transfer.QueuedTransferSources.sourceSummaryFromEntity
 import com.fileapex.domain.transfer.QueuedTransferSources.toSnapshot
-
-data class PendingTransferItem(
-    val id: String,
-    val createdAtEpochMs: Long,
-    val displayLabel: String,
-    val pendingDeviceIds: List<String>,
-    val pendingDeviceNames: List<String>,
-    val sourceSummary: String,
-    val lastError: String?,
-    val isSending: Boolean = false,
-    val isPaused: Boolean = false
-)
-
-/**
- * Outcome of [TransferQueueCoordinator.sendOrQueue], immediate send plus optional queue.
- */
-data class QueueAwareSendResult(
-    val batch: TransferBatchResult?,
-    val queuedDeviceNames: List<String>,
-    val message: String,
-    val relayedDeviceNames: List<String> = emptyList(),
-    val needsCellularConfirm: Boolean = false
-) {
-    val hadImmediateSend: Boolean get() = batch != null && !batch.allFailed
-    val hadQueue: Boolean get() = queuedDeviceNames.isNotEmpty()
-    val hadRelay: Boolean get() = relayedDeviceNames.isNotEmpty()
-}
+import com.fileapex.util.logFailureOnce
 
 /**
  * Persists deferred outbound transfers (source paths only) and drains them when peers
@@ -291,7 +266,7 @@ class TransferQueueCoordinator(
             val peer = deviceRepository.getDevice(deviceId) ?: continue
             val endpoint = resolveTransferEndpoint(peer, userStarted) ?: continue
             deviceRepository.touchPeerLastSeen(deviceId, endpoint.first, endpoint.second)
-            val option = cancellableCatching {
+            val option = cancellableCatching("resolving the remote device options for a queued item") {
                 transferManager.resolveRemoteDeviceOptionsAtEndpoint(
                     deviceIds = listOf(deviceId),
                     host = endpoint.first,
@@ -311,6 +286,16 @@ class TransferQueueCoordinator(
         }
         val sources = decodeSources(entity) { healed -> scope.launch { dao.upsert(healed) } } ?: run {
             deleteQueueItem(entity)
+            return
+        }
+        missingSourceName(entity)?.let { name ->
+            dao.upsert(
+                entity.copy(
+                    status = PendingTransferStatus.Paused.name,
+                    lastError = AppI18n.t("queued_source_missing", name),
+                    lastAttemptEpochMs = now
+                )
+            )
             return
         }
         if (sources.isEmpty()) {
@@ -369,6 +354,7 @@ class TransferQueueCoordinator(
         var lastError: String? = null
 
         var userCancelled = false
+        var receiverCancelled = false
         if (offLanIds.isNotEmpty()) {
             driveLog("queue drain via Drive for ${offLanIds.size} off-LAN destination(s)")
             val outcome = try {
@@ -403,6 +389,7 @@ class TransferQueueCoordinator(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                logFailureOnce("TransferQueueCoordinator: sending a queued item", error)
                 lastError = error.message
                 null
             }
@@ -414,6 +401,10 @@ class TransferQueueCoordinator(
                 }
                 if (failedIds.isNotEmpty()) {
                     lastError = batch.summaryMessage
+                }
+                if (routableIds.any { it in batch.cancelledByReceiverDeviceIds && it !in succeeded }) {
+                    userCancelled = true
+                    receiverCancelled = true
                 }
                 for ((id, option) in routableTargets) {
                     if (id in succeeded || batch.results.none { id in it.unreachableDeviceIds }) continue
@@ -427,7 +418,7 @@ class TransferQueueCoordinator(
             deleteQueueItem(entity)
             return
         }
-        if (userCancelled && TransferActivityGuard.consumeRemoveFromDrive()) {
+        if (userCancelled && !receiverCancelled && TransferActivityGuard.consumeRemoveFromDrive()) {
             deleteQueueItem(entity)
             return
         }
@@ -438,7 +429,7 @@ class TransferQueueCoordinator(
                     status = PendingTransferStatus.Paused.name,
                     pendingDeviceIdsJson = json.encodeToString(stillPending),
                     displayLabel = buildDisplayLabel(sourceSummaryFromEntity(entity), names),
-                    lastError = USER_CANCELLED,
+                    lastError = if (receiverCancelled) RECEIVER_CANCELLED else USER_CANCELLED,
                     lastAttemptEpochMs = now,
                     attemptCount = entity.attemptCount + 1
                 )
@@ -607,7 +598,7 @@ class TransferQueueCoordinator(
         }
 
     private fun PendingTransferEntity.toUiItem(): PendingTransferItem? {
-        val statusEnum = runCatching { PendingTransferStatus.valueOf(status) }.getOrNull()
+        val statusEnum = cancellableCatching("reading a queued transfer status") { PendingTransferStatus.valueOf(status) }.getOrNull()
             ?: return null
 
         val pendingIds = decodeDeviceIds(pendingDeviceIdsJson)
@@ -636,6 +627,7 @@ class TransferQueueCoordinator(
         private const val DRAIN_RETRY_BACKOFF_MS = 30_000L
         private const val WAITING_DRIVE_GRANT = "waiting_drive_grant"
         private const val USER_CANCELLED = "user_cancelled"
+        private const val RECEIVER_CANCELLED = "receiver_cancelled"
         private const val WAITING_DRIVE_GRANT_LEGACY = "Waiting for Google Drive grant"
 
         private fun isWaitingDriveGrant(error: String?): Boolean =
@@ -645,6 +637,7 @@ class TransferQueueCoordinator(
             raw.isNullOrEmpty() -> raw
             isWaitingDriveGrant(raw) -> AppI18n.t("waiting_drive_grant")
             raw == USER_CANCELLED -> AppI18n.t("transfer_cancelled")
+            raw == RECEIVER_CANCELLED -> AppI18n.t("send_cancelled_by_receiver")
             raw == "Drive relay did not finish" -> AppI18n.t("drive_relay_did_not_finish")
             raw == "Nothing to send, empty folder or missing files" ||
                 raw == "Nothing to send" -> AppI18n.t("nothing_to_send_empty_folder")

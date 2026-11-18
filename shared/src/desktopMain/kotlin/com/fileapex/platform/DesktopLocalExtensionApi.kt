@@ -32,7 +32,7 @@ internal class DesktopLocalExtensionApi(
             friends().map { LocalShareDevice("friend:${it.key}", "${it.label} (${it.group})", true) }
 
     private suspend fun sendDevices(paths: List<String>, deviceIds: List<String>): LocalShareResult =
-        cancellableCatching { sendOrQueue(paths, deviceIds) }.fold(
+        cancellableCatching("DesktopLocalExtensionApi sendDevices") { sendOrQueue(paths, deviceIds) }.fold(
             onSuccess = { LocalShareResult(it.sent || it.queued, it.message, if (it.sent || it.queued) deviceIds else emptyList()) },
             onFailure = { LocalShareResult(false, it.message ?: text("send_failed")) }
         )
@@ -45,7 +45,7 @@ internal class DesktopLocalExtensionApi(
         val results = mutableListOf<LocalShareResult>()
         if (pairedIds.isNotEmpty()) results += sendDevices(paths, pairedIds)
         friendIds.forEach { id ->
-            results += cancellableCatching { sendFriendPaths(paths, id.removePrefix("friend:")) }.fold(
+            results += cancellableCatching("DesktopLocalExtensionApi send") { sendFriendPaths(paths, id.removePrefix("friend:")) }.fold(
                 onSuccess = { accepted -> LocalShareResult(accepted, text(if (accepted) "friends_share_queued" else "friends_share_failed"), if (accepted) listOf(id) else emptyList()) },
                 onFailure = { LocalShareResult(false, text("friends_share_failed")) }
             )
@@ -54,7 +54,7 @@ internal class DesktopLocalExtensionApi(
     }
 
     override suspend fun postBulletin(text: String, paths: List<String>): LocalShareResult =
-        cancellableCatching {
+        cancellableCatching("DesktopLocalExtensionApi postBulletin") {
             val path = paths.firstOrNull { it.isNotBlank() }
             if (path != null) postFile(path, text) else postText(text)
         }.fold(

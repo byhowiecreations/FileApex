@@ -8,6 +8,7 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessaging
+import com.fileapex.util.cancellableCatching
 
 /**
  * Firebase starts only for an install that uses the Google link (its auto-start provider is removed from the manifest).
@@ -56,7 +57,7 @@ object FirebaseGate {
         prefs(context).edit().putString(KEY, linked.toString()).apply()
         if (linked) ensure(context)
         if (FirebaseGatePolicy.shouldDeleteTokenOnChange(previous, linked)) {
-            runCatching {
+            cancellableCatching {
                 ensure(context)
                 messaging().deleteToken()
             }.onFailure { Log.w(TAG, "push token not removed: ${it.javaClass.simpleName}") }

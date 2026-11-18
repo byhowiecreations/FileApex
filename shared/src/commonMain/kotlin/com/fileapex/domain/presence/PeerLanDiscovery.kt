@@ -121,7 +121,7 @@ internal object PeerLanDiscovery {
         if (!client.pingHealth(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)) {
             return null
         }
-        val state = cancellableCatching {
+        val state = cancellableCatching("PeerLanDiscovery: client.fetchPeerNodeState") {
             client.fetchPeerNodeState(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
         }.getOrNull() ?: return null
         return state.takeIf { matchesPeer(peer, it) }?.let { matched ->

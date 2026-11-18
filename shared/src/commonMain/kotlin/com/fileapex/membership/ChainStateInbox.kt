@@ -18,7 +18,7 @@ object ChainStateInbox {
 
     @Volatile
     internal var forward: (peerId: String, state: ChainStateField) -> Unit = { peerId, state ->
-        watch?.let { w -> scope.launch { cancellableCatching { w.note(peerId, state) } } }
+        watch?.let { w -> scope.launch { cancellableCatching("noting a peer chain state") { w.note(peerId, state) } } }
     }
 
     fun note(peerId: String, state: ChainStateField) = forward(peerId, state)

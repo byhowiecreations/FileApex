@@ -2,6 +2,7 @@ package com.fileapex.network
 
 import com.fileapex.data.db.PairedDeviceEntity
 import java.security.MessageDigest
+import com.fileapex.util.cancellableCatching
 
 /** Keyed proof over [data] that only the two devices of a pair can produce. */
 fun interface PairAuthenticator {
@@ -114,7 +115,7 @@ object WakeHello {
         if (hello.port !in 1..65535 || kotlin.math.abs(nowMs - hello.sentAtMs) > MAX_SKEW_MS) return false
         val mine = tag(localDeviceId)
         val entry = hello.entries.firstOrNull { MessageDigest.isEqual(it.first, mine) } ?: return false
-        val expected = runCatching {
+        val expected = cancellableCatching("WakeHello: auth.authenticate") {
             auth.authenticate(hello.signedBytes, localDeviceId, sender.deviceId, sender.publicKey)
         }.getOrNull() ?: return false
         return MessageDigest.isEqual(entry.second, expected.copyOf(MAC_BYTES))

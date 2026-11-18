@@ -9,6 +9,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** Reads and rewrites the source lists a queued transfer stores as JSON. */
 internal object QueuedTransferSources {
@@ -18,15 +19,15 @@ internal object QueuedTransferSources {
     }
 
     fun sourceSummaryFromEntity(entity: PendingTransferEntity): String =
-        when (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
+        when (cancellableCatching("QueuedTransferSources: QueuedTransferSourceKind.valueOf") { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
             QueuedTransferSourceKind.LocalRoots -> {
-                val paths = runCatching {
+                val paths = cancellableCatching("QueuedTransferSources: json.decodeFromString") {
                     json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
                 }.getOrDefault(emptyList())
                 pathSummary(paths)
             }
             QueuedTransferSourceKind.Sources -> {
-                val snapshots = runCatching {
+                val snapshots = cancellableCatching("QueuedTransferSources: json.decodeFromString") {
                     json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
                 }.getOrDefault(emptyList())
                 fileSummary(snapshots.map { it.toSource() })
@@ -35,7 +36,7 @@ internal object QueuedTransferSources {
         }
 
     fun decodeDeviceIds(jsonPayload: String): List<String> =
-        runCatching {
+        cancellableCatching("QueuedTransferSources: json.decodeFromString") {
             json.decodeFromString(ListSerializer(String.serializer()), jsonPayload)
         }.getOrDefault(emptyList())
 
@@ -43,9 +44,9 @@ internal object QueuedTransferSources {
         entity: PendingTransferEntity,
         persistHealed: (PendingTransferEntity) -> Unit
     ): List<MultiCopySource>? =
-        when (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
+        when (cancellableCatching("QueuedTransferSources: QueuedTransferSourceKind.valueOf") { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
             QueuedTransferSourceKind.LocalRoots -> {
-                val paths = runCatching {
+                val paths = cancellableCatching("QueuedTransferSources: json.decodeFromString") {
                     json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
                 }.getOrNull() ?: return null
                 val healed = paths.map { healPathIfMissing(it) }
@@ -60,7 +61,7 @@ internal object QueuedTransferSources {
                 LocalTransferTree.expandAbsolutePaths(healed).map { it as MultiCopySource }
             }
             QueuedTransferSourceKind.Sources -> {
-                val snapshots = runCatching {
+                val snapshots = cancellableCatching("QueuedTransferSources: json.decodeFromString") {
                     json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
                 }.getOrNull() ?: return null
                 val healed = snapshots.map { healSnapshotIfMissing(it) }
@@ -79,12 +80,12 @@ internal object QueuedTransferSources {
 
     /** Name of a queued local file that no longer matches what was queued (size or modified time), or null. */
     fun changedSourceName(entity: PendingTransferEntity): String? {
-        if (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull() !=
+        if (cancellableCatching("QueuedTransferSources: QueuedTransferSourceKind.valueOf") { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull() !=
             QueuedTransferSourceKind.Sources
         ) {
             return null
         }
-        val snapshots = runCatching {
+        val snapshots = cancellableCatching("QueuedTransferSources: json.decodeFromString") {
             json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
         }.getOrNull() ?: return null
         return snapshots.firstOrNull { snapshot ->
@@ -92,6 +93,19 @@ internal object QueuedTransferSources {
             val file = java.io.File(snapshot.absolutePath)
             file.isFile && (file.lastModified() != snapshot.modifiedEpochMs || file.length() != snapshot.sizeBytes)
         }?.fileName
+    }
+
+    /** Name of the first queued local file that is gone from disk (after looking in the usual folders), or null. Remote sources are not checked here. */
+    fun missingSourceName(entity: PendingTransferEntity): String? {
+        val paths = when (cancellableCatching("QueuedTransferSources: QueuedTransferSourceKind.valueOf") { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
+            QueuedTransferSourceKind.LocalRoots -> absolutePathsFromEntity(entity)
+            QueuedTransferSourceKind.Sources -> cancellableCatching("QueuedTransferSources: json.decodeFromString") {
+                json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
+            }.getOrDefault(emptyList()).filter { it.remoteHost.isNullOrBlank() }.map { it.absolutePath }
+            null -> emptyList()
+        }
+        val gone = paths.firstOrNull { !SystemFileSystem.exists(Path(healPathIfMissing(it))) } ?: return null
+        return pathSummary(listOf(gone))
     }
 
     fun healPathIfMissing(rawPath: String): String {
@@ -121,7 +135,7 @@ internal object QueuedTransferSources {
     fun healSnapshotIfMissing(snapshot: QueuedSourceSnapshot): QueuedSourceSnapshot {
         val healedPath = healPathIfMissing(snapshot.absolutePath)
         if (healedPath != snapshot.absolutePath) {
-            val size = runCatching { SystemFileSystem.metadataOrNull(Path(healedPath))?.size }.getOrNull()
+            val size = cancellableCatching("QueuedTransferSources: SystemFileSystem.metadataOrNull") { SystemFileSystem.metadataOrNull(Path(healedPath))?.size }.getOrNull()
             return snapshot.copy(
                 absolutePath = healedPath,
                 sizeBytes = size ?: snapshot.sizeBytes
@@ -154,14 +168,14 @@ internal object QueuedTransferSources {
     }
 
     fun absolutePathsFromEntity(entity: PendingTransferEntity): List<String> =
-        when (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
+        when (cancellableCatching("QueuedTransferSources: QueuedTransferSourceKind.valueOf") { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
             QueuedTransferSourceKind.LocalRoots -> {
-                runCatching {
+                cancellableCatching("QueuedTransferSources: json.decodeFromString") {
                     json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
                 }.getOrDefault(emptyList())
             }
             QueuedTransferSourceKind.Sources -> {
-                runCatching {
+                cancellableCatching("QueuedTransferSources: json.decodeFromString") {
                     json.decodeFromString(
                         ListSerializer(QueuedSourceSnapshot.serializer()),
                         entity.sourceJson

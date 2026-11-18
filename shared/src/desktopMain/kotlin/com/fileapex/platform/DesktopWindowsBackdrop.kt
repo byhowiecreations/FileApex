@@ -6,6 +6,7 @@ import com.sun.jna.Native
 import com.sun.jna.Pointer
 import java.awt.Window
 import javax.swing.SwingUtilities
+import com.fileapex.util.cancellableCatching
 
 /**
  * Applies Windows 11 Mica to the main window title bar via DWM.
@@ -20,7 +21,7 @@ object DesktopWindowsBackdrop {
     private const val DWMSBT_MAINWINDOW = 2 // Mica
 
     private val dwm: Dwmapi? by lazy {
-        runCatching {
+        cancellableCatching("DesktopWindowsBackdrop init") {
             Native.load("dwmapi", Dwmapi::class.java)
         }.getOrNull()
     }
@@ -36,7 +37,7 @@ object DesktopWindowsBackdrop {
         }
     }
 
-    private fun hwndFor(window: Window): Pointer? = runCatching { Native.getComponentPointer(window) }.getOrNull()
+    private fun hwndFor(window: Window): Pointer? = cancellableCatching("DesktopWindowsBackdrop hwndFor") { Native.getComponentPointer(window) }.getOrNull()
 
     /** The HRESULT of one DwmSetWindowAttribute call, or null when the call could not be made. */
     internal fun callDwm(hwnd: Pointer?, attribute: Int, value: Int): Int? {
@@ -86,25 +87,25 @@ object DesktopWindowsConsole {
     }
 
     private val kernel32: WinKernel32? by lazy {
-        runCatching { Native.load("kernel32", WinKernel32::class.java) }.getOrNull()
+        cancellableCatching("DesktopWindowsBackdrop SetConsoleOutputCP") { Native.load("kernel32", WinKernel32::class.java) }.getOrNull()
     }
 
     fun attachConsole() {
         if (!DesktopPlatformPaths.isWindows()) return
-        runCatching {
+        cancellableCatching("DesktopWindowsBackdrop attachConsole") {
             val k32 = kernel32 ?: return
 
             if (hasLiveConsole(k32)) {
-                runCatching { k32.SetConsoleCP(CP_UTF8) }
-                runCatching { k32.SetConsoleOutputCP(CP_UTF8) }
+                cancellableCatching("DesktopWindowsBackdrop attachConsole 2") { k32.SetConsoleCP(CP_UTF8) }
+                cancellableCatching("DesktopWindowsBackdrop attachConsole 3") { k32.SetConsoleOutputCP(CP_UTF8) }
                 enableVirtualTerminal(k32)
                 return
             }
 
             if (!k32.AttachConsole(ATTACH_PARENT_PROCESS)) return
 
-            runCatching { k32.SetConsoleCP(CP_UTF8) }
-            runCatching { k32.SetConsoleOutputCP(CP_UTF8) }
+            cancellableCatching("DesktopWindowsBackdrop attachConsole 4") { k32.SetConsoleCP(CP_UTF8) }
+            cancellableCatching("DesktopWindowsBackdrop attachConsole 5") { k32.SetConsoleOutputCP(CP_UTF8) }
 
             System.setIn(java.io.FileInputStream(java.io.FileDescriptor.`in`))
             System.setOut(

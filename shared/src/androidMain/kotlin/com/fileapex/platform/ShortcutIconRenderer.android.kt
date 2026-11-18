@@ -21,6 +21,7 @@ import com.fileapex.presentation.DeviceIconProfile
 import com.fileapex.presentation.resolveDeviceIconKind
 import com.fileapex.shared.R
 import com.fileapex.ui.deviceIconVector
+import com.fileapex.util.cancellableCatching
 import kotlin.math.min
 
 /**
@@ -37,7 +38,7 @@ internal object ShortcutIconRenderer {
 
     fun bulletinBoard(context: Context): IconCompat =
         cached(context, "bulletin") { canvas, size ->
-            val src = runCatching {
+            val src = cancellableCatching("ShortcutIconRenderer bulletinBoard") {
                 BitmapFactory.decodeResource(context.resources, R.drawable.note_white)
             }.getOrNull()
             if (src != null) {

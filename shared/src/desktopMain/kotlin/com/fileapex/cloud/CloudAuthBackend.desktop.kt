@@ -78,7 +78,7 @@ actual object CloudAuthBackend {
         prefs.putString(KEY_UID, uid)
         prefs.putString(KEY_EMAIL, body.email.orEmpty())
         prefs.putString(KEY_DISPLAY_NAME, body.displayName.orEmpty())
-        runCatching { firebaseNode.flush() }
+        cancellableCatching("CloudAuthBackend.desktop: firebaseNode.flush") { firebaseNode.flush() }
         return GoogleAuthSession(
             firebaseUid = uid,
             email = body.email.orEmpty(),
@@ -88,14 +88,14 @@ actual object CloudAuthBackend {
 
     actual suspend fun adoptDeviceToken(customToken: String) {
         val (idToken, refresh) = DesktopDeviceSignIn.exchange(client, firebaseApiKey(), customToken)
-        refreshMutex.withLock { prefs.putString(KEY_ID_TOKEN, idToken); prefs.putString(KEY_REFRESH_TOKEN, refresh); runCatching { firebaseNode.flush() } }
+        refreshMutex.withLock { prefs.putString(KEY_ID_TOKEN, idToken); prefs.putString(KEY_REFRESH_TOKEN, refresh); cancellableCatching("CloudAuthBackend.desktop: firebaseNode.flush") { firebaseNode.flush() } }
     }
 
     actual suspend fun currentSession(): GoogleAuthSession? {
         val uid = prefs.getString(KEY_UID, "")
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, "")
         if (uid.isBlank() || refresh.isBlank()) return null
-        cancellableCatching { refreshIdTokenIfNeeded() }
+        cancellableCatching("CloudAuthBackend.desktop: refreshIdTokenIfNeeded") { refreshIdTokenIfNeeded() }
         return GoogleAuthSession(
             firebaseUid = uid,
             email = prefs.getString(KEY_EMAIL, ""),
@@ -104,7 +104,7 @@ actual object CloudAuthBackend {
     }
 
     actual suspend fun firebaseIdToken(forceRefresh: Boolean): String? =
-        if (prefs.getString(KEY_REFRESH_TOKEN, "").isBlank()) null else cancellableCatching { requireIdToken(forceRefresh) }.getOrNull()
+        if (prefs.getString(KEY_REFRESH_TOKEN, "").isBlank()) null else cancellableCatching("CloudAuthBackend.desktop: requireIdToken") { requireIdToken(forceRefresh) }.getOrNull()
 
     actual suspend fun signOut() {
         prefs.remove(KEY_ID_TOKEN)
@@ -691,7 +691,7 @@ actual object CloudAuthBackend {
         val expiresAt = jwtExpiryMs(cached)
         if (!force && cached.isNotBlank() && expiresAt - System.currentTimeMillis() > REFRESH_SKEW_MS) return@withLock
         val apiKey = firebaseApiKey()
-        val response = runCatching {
+        val response = cancellableCatching {
             client.post("https://securetoken.googleapis.com/v1/token?key=$apiKey") {
                 contentType(ContentType.Application.FormUrlEncoded)
                 setBody("grant_type=refresh_token&refresh_token=${URLEncoder.encode(refresh, Charsets.UTF_8)}")
@@ -718,13 +718,13 @@ actual object CloudAuthBackend {
         obj["refresh_token"]?.jsonPrimitive?.contentOrNull?.let {
             prefs.putString(KEY_REFRESH_TOKEN, it)
         }
-        runCatching { firebaseNode.flush() }
+        cancellableCatching("CloudAuthBackend.desktop: firebaseNode.flush") { firebaseNode.flush() }
     }
 
     /** `exp` claim of a JWT in epoch ms; 0 when absent or unparsable (forces a refresh). */
     private fun jwtExpiryMs(token: String): Long {
         if (token.isBlank()) return 0L
-        return runCatching {
+        return cancellableCatching("CloudAuthBackend.desktop: token.split") {
             val payload = token.split('.').getOrNull(1) ?: return 0L
             val json = String(Base64.getUrlDecoder().decode(payload), Charsets.UTF_8)
             val exp = desktopJson.parseToJsonElement(json).jsonObject["exp"]?.jsonPrimitive?.contentOrNull

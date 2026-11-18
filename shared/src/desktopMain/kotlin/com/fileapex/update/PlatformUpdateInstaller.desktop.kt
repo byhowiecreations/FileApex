@@ -5,6 +5,7 @@ import com.fileapex.platform.DesktopPlatformPaths
 import java.io.File
 import kotlin.text.Charsets
 import kotlin.system.exitProcess
+import com.fileapex.util.cancellableCatching
 
 actual object PlatformUpdateInstaller {
     actual val opensReleasePage: Boolean
@@ -16,7 +17,7 @@ actual object PlatformUpdateInstaller {
         if (!dir.exists()) {
             dir.mkdirs()
         }
-        runCatching {
+        cancellableCatching("PlatformUpdateInstaller.desktop: java.nio.file.Files.setPosixFilePermi") {
             java.nio.file.Files.setPosixFilePermissions(dir.toPath(), java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))
         }
         return dir.absolutePath

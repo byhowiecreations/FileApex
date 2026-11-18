@@ -53,7 +53,7 @@ internal class DevicesRenameRemoveActions(
             return
         }
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("DevicesRenameRemoveActions confirmRename") {
                 if (deviceId == LocalIdentity.LOCAL_DEVICE_ID) {
                     com.fileapex.domain.device.DeviceNameCoordinator.saveLocalBroadcastName(trimmed)
                     _uiState.update {
@@ -95,7 +95,7 @@ internal class DevicesRenameRemoveActions(
                 }
                 return@launch
             }
-            cancellableCatching {
+            cancellableCatching("DevicesRenameRemoveActions removeDevice") {
                 val selfId = com.fileapex.data.identity.loadLocalIdentity().deviceId
                 val hub = FileApexServices.membershipHub
                 val before = hub?.chainLog?.view()?.state ?: com.fileapex.membership.ChainState.EMPTY

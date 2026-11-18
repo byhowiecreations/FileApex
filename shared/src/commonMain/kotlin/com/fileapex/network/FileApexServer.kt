@@ -130,7 +130,7 @@ class FileApexServer(
                 install(StatusPages) {
                     exception<Throwable> { call, cause ->
                         onLog("Unhandled route exception", cause)
-                        runCatching {
+                        cancellableCatching("answering after an unhandled route error") {
                             call.respond(
                                 HttpStatusCode.InternalServerError,
                                 cause.message ?: "Internal server error"
@@ -154,7 +154,7 @@ class FileApexServer(
                     if (bridged == null && !isBridgeConnection(call) && TlsTransportPolicy.requiresTls(path)) {
                         val claimed = requesterDeviceId(call)
                         val claimedDevice = claimed.takeIf { it.isNotEmpty() }
-                            ?.let { com.fileapex.util.cancellableCatching { FileApexServices.deviceRepository.getDevice(it) }.getOrNull() }
+                            ?.let { com.fileapex.util.cancellableCatching("FileApexServer: FileApexServices.deviceRepository.getDevice") { FileApexServices.deviceRepository.getDevice(it) }.getOrNull() }
                         if (claimedDevice != null && !claimedDevice.isRemoved && claimedDevice.tlsPin.isNotEmpty()) {
                             onLog("Rejected plain HTTP from pinned peer $claimed for ${path.substringBefore('?')} from ${com.fileapex.util.NetworkUtils.lastOctetLabel(call.request.local.remoteAddress.trim())}", null)
                             call.respond(HttpStatusCode.Forbidden, "tls_required")
@@ -311,7 +311,7 @@ class FileApexServer(
         }
         if (from.isEmpty()) return
         val ip = inboundPeerLanIpv4(call) ?: return
-        val selfId = runCatching { identityProvider().deviceId }.getOrNull().orEmpty()
+        val selfId = cancellableCatching("reading this device id for a route") { identityProvider().deviceId }.getOrNull().orEmpty()
         if (from == selfId) return
         val now = TimeUtils.now()
         val previous = inboundPeerWrites[from]
@@ -476,7 +476,7 @@ class FileApexServer(
                 }
             } finally {
                 if (received > recorded) {
-                    runCatching {
+                    cancellableCatching("FileApexServer: raf.channel.force") {
                         raf.channel.force(false)
                         RangeLedger.record(partPath, totalSize, ByteSpan(offset, offset + received))
                     }

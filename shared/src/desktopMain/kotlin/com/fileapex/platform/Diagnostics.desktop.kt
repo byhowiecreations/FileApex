@@ -33,7 +33,7 @@ actual object Diagnostics {
     actual fun dumpLogs(): List<String> = synchronized(lock) {
         val result = mutableListOf<String>()
         result.addAll(logBuffer)
-        runCatching {
+        cancellableCatching("Diagnostics dumpLogs") {
             val file = DesktopPlatformPaths.applicationSupportDirectory().resolve("desktop-lifecycle.log")
             if (file.isFile) {
                 val lines = file.readLines().takeLast(100)
@@ -82,7 +82,7 @@ actual object Diagnostics {
     }
 
     private fun revealInFileManager(file: java.io.File) {
-        cancellableCatching {
+        cancellableCatching("Diagnostics revealInFileManager") {
             val os = System.getProperty("os.name").orEmpty().lowercase()
             when {
                 os.contains("mac") -> {
@@ -108,7 +108,7 @@ actual object Diagnostics {
         val osVersion = System.getProperty("os.version").orEmpty()
         val osArch = System.getProperty("os.arch").orEmpty()
 
-        runCatching {
+        cancellableCatching("Diagnostics sendFeedbackEmail") {
             PlatformClipboard.setSystemClipboardText(file.readText())
         }
         revealInFileManager(file)
@@ -135,7 +135,7 @@ actual object Diagnostics {
         val subject = URLEncoder.encode("FileApex v${FileApexAppVersion.NAME} Feedback & Diagnostics", "UTF-8")
         val encodedBody = URLEncoder.encode(bodyText, "UTF-8")
         val mailto = "mailto:$FEEDBACK_EMAIL?subject=$subject&body=$encodedBody"
-        return runCatching {
+        return cancellableCatching("Diagnostics sendFeedbackEmail 2") {
             PlatformClipboard.openUrlInDefaultBrowser(mailto)
             true
         }.getOrDefault(false)

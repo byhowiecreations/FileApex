@@ -4,6 +4,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.platform.defaultDownloadsDir
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import com.fileapex.util.cancellableCatching
 
 /** The newest Bulletin Board APK already on this device that is newer than the installed app, if there is one. */
 internal fun resolveFallbackBulletinApkOffer(): PendingUpdateOffer? {
@@ -18,7 +19,7 @@ internal fun resolveFallbackBulletinApkOffer(): PendingUpdateOffer? {
         if (isRemoteVersionNewer(currentAppVersionName(), version)) {
             val localPath = noteRepo.resolveLocalAttachmentPath(candidateNote)
             if (!localPath.isNullOrBlank() && AppUpdateCoordinator.fileExists(localPath)) {
-                val apkSize = runCatching { SystemFileSystem.metadataOrNull(Path(localPath))?.size }.getOrNull()
+                val apkSize = cancellableCatching("BulletinApkFallbackOffer: SystemFileSystem.metadataOrNull") { SystemFileSystem.metadataOrNull(Path(localPath))?.size }.getOrNull()
                     ?: candidateNote.attachmentSizeBytes
                 return PendingUpdateOffer(
                     remoteVersion = version,
@@ -37,7 +38,7 @@ internal fun resolveFallbackBulletinApkOffer(): PendingUpdateOffer? {
     val downloadsDir = defaultDownloadsDir()
     val dir = Path(downloadsDir)
     if (SystemFileSystem.exists(dir)) {
-        val apks = runCatching {
+        val apks = cancellableCatching("BulletinApkFallbackOffer: SystemFileSystem.list") {
             SystemFileSystem.list(dir).filter { path ->
                 val name = path.name
                 BulletinApkUpdatePolicy.matchesAutoUpdateApk(name)
@@ -45,10 +46,10 @@ internal fun resolveFallbackBulletinApkOffer(): PendingUpdateOffer? {
         }.getOrNull().orEmpty()
 
         val newestApk = apks.maxByOrNull { path ->
-            runCatching { SystemFileSystem.metadataOrNull(path)?.size }.getOrNull() ?: 0L
+            cancellableCatching("BulletinApkFallbackOffer: SystemFileSystem.metadataOrNull") { SystemFileSystem.metadataOrNull(path)?.size }.getOrNull() ?: 0L
         }
         if (newestApk != null) {
-            val meta = runCatching { SystemFileSystem.metadataOrNull(newestApk) }.getOrNull()
+            val meta = cancellableCatching("BulletinApkFallbackOffer: SystemFileSystem.metadataOrNull") { SystemFileSystem.metadataOrNull(newestApk) }.getOrNull()
             if (meta != null && meta.size > 1024L) {
                 val fileName = newestApk.name
                 val version = BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"

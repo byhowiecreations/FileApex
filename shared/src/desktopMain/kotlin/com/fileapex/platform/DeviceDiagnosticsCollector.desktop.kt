@@ -25,7 +25,7 @@ import kotlin.math.roundToInt
 actual fun collectPlatformDeviceDiagnostics(groups: Set<DiagnosticGroup>?): PeerDeviceDiagnostics {
     fun <T> part(group: DiagnosticGroup, empty: T, read: () -> T): T =
         if (groups == null || group in groups) read() else empty
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector part") {
         PeerDeviceDiagnostics(
             collectedAtEpochMs = 0L,
             platform = readPlatformName(),
@@ -49,7 +49,7 @@ actual fun collectPlatformDeviceDiagnostics(groups: Set<DiagnosticGroup>?): Peer
 }
 
 actual fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics =
-    runCatching {
+    cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceSummary") {
         PeerDeviceDiagnostics(
             collectedAtEpochMs = 0L,
             platform = readPlatformName(),
@@ -68,7 +68,7 @@ actual fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics =
     }
 
 actual fun collectFastBatteryDiagnostics(): BatteryDiagnostics {
-    return runCatching { readBattery() }
+    return cancellableCatching("DeviceDiagnosticsCollector collectFastBatteryDiagnostics") { readBattery() }
         .getOrDefault(BatteryDiagnostics(chargingState = "Not available"))
 }
 
@@ -81,7 +81,7 @@ private fun readPlatformName(): String =
     }
 
 private fun readDeviceIdentitySafe(): DeviceIdentityDiagnostics {
-    return runCatching { readDeviceIdentity() }
+    return cancellableCatching("DeviceDiagnosticsCollector readDeviceIdentitySafe") { readDeviceIdentity() }
         .getOrDefault(DeviceIdentityDiagnostics())
 }
 
@@ -117,7 +117,7 @@ private fun readProcessor(): ProcessorDiagnostics {
 }
 
 private fun readMacProcessor(): ProcessorDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readMacProcessor") {
         val brand = readSysctl("machdep.cpu.brand_string")
             ?: readSysctl("hw.model")
             ?: "Apple Silicon"
@@ -136,13 +136,13 @@ private fun readMacProcessor(): ProcessorDiagnostics {
 }
 
 private fun readGenericProcessor(): ProcessorDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readGenericProcessor") {
         val totalCores = Runtime.getRuntime().availableProcessors().takeIf { it > 0 }
         val os = ManagementFactory.getOperatingSystemMXBean()
         val extended = os as? OperatingSystemMXBean
         val hardware = (if (isMacOs()) readSysctl("machdep.cpu.brand_string") else null)
             ?: os.name.orEmpty()
-        val loadPercent = runCatching {
+        val loadPercent = cancellableCatching("DeviceDiagnosticsCollector readGenericProcessor 2") {
             extended?.cpuLoad?.takeIf { it >= 0.0 }?.let { (it * 100.0).roundToInt() }
         }.getOrNull()
         val frequencyScaling = when {
@@ -176,7 +176,7 @@ private fun readDisplayBase(): DisplayDiagnostics {
     if (isMacOs()) {
         readMacDisplayViaSystemProfiler()?.let { return it }
     }
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readDisplayBase") {
         if (GraphicsEnvironment.isHeadless()) {
             readDisplayFromToolkit()
         } else {
@@ -232,7 +232,7 @@ private fun readMacDisplayViaSystemProfiler(): DisplayDiagnostics? {
 }
 
 private fun readDisplayFromToolkit(): DisplayDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readDisplayFromToolkit") {
         val size = Toolkit.getDefaultToolkit().screenSize
         DisplayDiagnostics(
             resolution = "${size.width} x ${size.height}",
@@ -273,7 +273,7 @@ private fun readMacBattery(): BatteryDiagnostics {
 }
 
 private fun readStorage(): StorageDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readStorage") {
         val home = File(System.getProperty("user.home").orEmpty().ifBlank { "/" })
         val total = home.totalSpace.takeIf { it > 0L }
         val free = home.freeSpace.takeIf { it >= 0L }
@@ -289,8 +289,8 @@ private fun readStorage(): StorageDiagnostics {
 }
 
 private fun readNetwork(): NetworkDiagnostics {
-    return runCatching {
-        val activeInterface = findActiveNetworkInterface() ?: return@runCatching NetworkDiagnostics(
+    return cancellableCatching("DeviceDiagnosticsCollector readNetwork") {
+        val activeInterface = findActiveNetworkInterface() ?: return@cancellableCatching NetworkDiagnostics(
             interfaceType = "Unknown"
         )
         val interfaceName = activeInterface.name
@@ -304,7 +304,7 @@ private fun readNetwork(): NetworkDiagnostics {
 }
 
 private fun findActiveNetworkInterface(): NetworkInterface? {
-    return cancellableCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector findActiveNetworkInterface") {
         NetworkInterface.getNetworkInterfaces()
             .toList()
             .asSequence()
@@ -353,7 +353,7 @@ private fun isMacOs(): Boolean =
     System.getProperty("os.name").orEmpty().contains("Mac", ignoreCase = true)
 
 private fun readUptimeSafe(): UptimeDiagnostics =
-    runCatching { readUptime() }.getOrDefault(UptimeDiagnostics())
+    cancellableCatching("DeviceDiagnosticsCollector readUptimeSafe") { readUptime() }.getOrDefault(UptimeDiagnostics())
 
 private fun readUptime(): UptimeDiagnostics {
     if (isMacOs()) return readMacUptime()
@@ -361,7 +361,7 @@ private fun readUptime(): UptimeDiagnostics {
 }
 
 private fun readMacUptime(): UptimeDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readMacUptime") {
         val bootEpochMs = readMacBootEpochMs()
         if (bootEpochMs != null && bootEpochMs > 0L) {
             val uptimeMs = (System.currentTimeMillis() - bootEpochMs).coerceAtLeast(0L)
@@ -373,7 +373,7 @@ private fun readMacUptime(): UptimeDiagnostics {
 }
 
 private fun readGenericUptime(): UptimeDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readGenericUptime") {
         val uptimeMs = ManagementFactory.getRuntimeMXBean().uptime
         val bootEpochMs = (System.currentTimeMillis() - uptimeMs).coerceAtLeast(0L)
         UptimeDiagnostics(uptimeMs = uptimeMs, bootEpochMs = bootEpochMs)
@@ -390,7 +390,7 @@ private fun readMemory(): MemoryDiagnostics {
 }
 
 private fun readMacMemory(): MemoryDiagnostics {
-    return cancellableCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readMacMemory") {
         val total = readSysctlLong("hw.memsize")
         val pageSize = readSysctlLong("hw.pagesize") ?: 4096L
         val vmStat = readCommandOutput("vm_stat").orEmpty()
@@ -411,7 +411,7 @@ private fun readMacMemory(): MemoryDiagnostics {
 }
 
 private fun readGenericMemory(): MemoryDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readGenericMemory") {
         val os = ManagementFactory.getOperatingSystemMXBean()
         val extended = os as? OperatingSystemMXBean
         val total = extended?.totalMemorySize?.takeIf { it > 0L }
@@ -430,7 +430,7 @@ private fun readSysctl(name: String): String? {
 }
 
 internal fun readCommandOutput(vararg command: String): String? {
-    return cancellableCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readCommandOutput") {
         ProcessBuilder(*command)
             .redirectErrorStream(true)
             .start()

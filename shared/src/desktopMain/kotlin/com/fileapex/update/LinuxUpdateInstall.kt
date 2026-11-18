@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
+import com.fileapex.util.cancellableCatching
 
 internal enum class LinuxInstallKind { AppImage, Deb, Rpm, Other }
 
@@ -28,7 +29,7 @@ internal object LinuxInstall {
         }
     }
 
-    private fun rpmKnowsFileApex(): Boolean = runCatching {
+    private fun rpmKnowsFileApex(): Boolean = cancellableCatching("LinuxUpdateInstall: ProcessBuilder") {
         val process = ProcessBuilder("rpm", "-q", "fileapex")
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
@@ -37,7 +38,7 @@ internal object LinuxInstall {
     }.getOrDefault(false)
 
     private fun osRelease(key: String): String =
-        runCatching { File("/etc/os-release").readLines() }.getOrDefault(emptyList())
+        cancellableCatching("LinuxUpdateInstall: File") { File("/etc/os-release").readLines() }.getOrDefault(emptyList())
             .firstOrNull { it.startsWith("$key=") }
             ?.substringAfter('=')?.trim()?.trim('"', '\'').orEmpty()
 }

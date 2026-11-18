@@ -12,6 +12,7 @@ import android.view.accessibility.AccessibilityManager
 import androidx.core.net.toUri
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 
 actual object ClipboardAccessibilitySettings {
     private const val OP_ACCESS_RESTRICTED_SETTINGS = "android:access_restricted_settings"
@@ -79,7 +80,7 @@ actual object ClipboardAccessibilitySettings {
     private fun restrictedSettingsMode(context: Context): Int {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
             ?: return AppOpsManager.MODE_ALLOWED
-        return runCatching {
+        return cancellableCatching("ClipboardAccessibilitySettings restrictedSettingsMode") {
             appOps.checkOpNoThrow(
                 OP_ACCESS_RESTRICTED_SETTINGS,
                 Process.myUid(),
@@ -89,7 +90,7 @@ actual object ClipboardAccessibilitySettings {
     }
 
     private fun isSideloaded(context: Context): Boolean {
-        val installer = runCatching {
+        val installer = cancellableCatching("ClipboardAccessibilitySettings isSideloaded") {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val info = context.packageManager.getInstallSourceInfo(context.packageName)
                 info.installingPackageName ?: info.initiatingPackageName

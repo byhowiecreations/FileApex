@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.security.CommandRunner
 import com.fileapex.security.ProcessCommandRunner
+import com.fileapex.util.cancellableCatching
 import java.io.File
 
 /**
@@ -88,7 +89,7 @@ object DesktopAutostart {
             return true
         }
         if (executable == null) return false
-        return runCatching {
+        return cancellableCatching("DesktopAutostart setLinux") {
             file.parentFile.mkdirs()
             file.writeText(linuxDesktopEntry(executable))
         }.isSuccess

@@ -110,7 +110,10 @@ actual object PairingBeaconTransport {
     private fun stopListenerLocked() {
         listenJob?.cancel()
         listenJob = null
-        runCatching { listenSocket?.close() }
+        try {
+            listenSocket?.close()
+        } catch (_: java.io.IOException) {
+        }
         listenSocket = null
         if (listenLockHeld) {
             releasePairingMulticastLock()
@@ -160,7 +163,10 @@ actual object PairingBeaconTransport {
             } catch (_: SocketException) {
                 if (!currentCoroutineContext().isActive) return
             } finally {
-                runCatching { socket.close() }
+                try {
+                    socket.close()
+                } catch (_: java.io.IOException) {
+                }
                 if (listenSocket === socket) {
                     listenSocket = null
                 }
@@ -230,7 +236,7 @@ actual object PairingBeaconTransport {
             .forEach { networkInterface ->
                 val hasIpv4 = networkInterface.inetAddresses.toList().any { it is Inet4Address }
                 if (!hasIpv4) return@forEach
-                runCatching {
+                cancellableCatching {
                     joinGroup(
                         InetSocketAddress(groupAddress, PairingBeacon.PORT),
                         networkInterface
@@ -275,7 +281,7 @@ actual object PairingBeaconTransport {
             )
             directedBroadcastOrNull(localIp, networkInterface)?.let { targets.add(it) }
             for (target in targets) {
-                cancellableCatching {
+                cancellableCatching("PairingBeaconTransport.jvm: InetAddress.getByName") {
                     val address = InetAddress.getByName(target)
                     val packet = DatagramPacket(
                         payload,
@@ -308,7 +314,7 @@ actual object PairingBeaconTransport {
                     directedBroadcastOrNull(localIp, networkInterface)?.let { targets.add(it) }
                 }
                 for (target in targets) {
-                    cancellableCatching {
+                    cancellableCatching("PairingBeaconTransport.jvm: InetAddress.getByName") {
                         val address = InetAddress.getByName(target)
                         val packet = DatagramPacket(
                             payload,

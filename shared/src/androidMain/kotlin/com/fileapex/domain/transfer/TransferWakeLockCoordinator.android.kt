@@ -71,7 +71,7 @@ internal actual object TransferWakeLockCoordinator {
                     Log.i(TAG, "Acquired transfer WakeLock and WifiLock")
                 }
             } else {
-                cancellableCatching { wakeLock?.acquire(SAFETY_TIMEOUT_MS) }
+                cancellableCatching("TransferWakeLockCoordinator.android: acquire") { wakeLock?.acquire(SAFETY_TIMEOUT_MS) }
             }
             safetyHandler.removeCallbacks(safetyRelease)
             safetyHandler.postDelayed(safetyRelease, SAFETY_TIMEOUT_MS)
@@ -102,13 +102,13 @@ internal actual object TransferWakeLockCoordinator {
 
     private fun cleanupLocks() {
         safetyHandler.removeCallbacks(safetyRelease)
-        runCatching {
+        cancellableCatching("TransferWakeLockCoordinator.android: it.release") {
             wakeLock?.let {
                 if (it.isHeld) it.release()
             }
         }
         wakeLock = null
-        runCatching {
+        cancellableCatching("TransferWakeLockCoordinator.android: it.release") {
             wifiLock?.let {
                 if (it.isHeld) it.release()
             }

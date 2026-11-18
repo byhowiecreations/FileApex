@@ -19,7 +19,7 @@ internal object MacPasteboard {
     }
 
     private fun runProcess(command: List<String>, timeoutMs: Long): String? {
-        return cancellableCatching {
+        return cancellableCatching("MacPasteboard runProcess") {
             val builder = ProcessBuilder(command)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
             builder.environment()["LANG"] = "en_US.UTF-8"

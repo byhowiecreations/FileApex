@@ -3,6 +3,7 @@ package com.fileapex.domain.pairing
 import com.fileapex.i18n.AppI18n
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 @Serializable
 data class PairingPayload(
@@ -69,7 +70,7 @@ data class PairingPayload(
                 .mapNotNull { parseOrNull(it) }
                 .firstOrNull()
 
-        fun parseOrNull(qrText: String): PairingPayload? = runCatching { parseNormalized(qrText) }.getOrNull()
+        fun parseOrNull(qrText: String): PairingPayload? = cancellableCatching("PairingPayload: parseNormalized") { parseNormalized(qrText) }.getOrNull()
 
         fun looksLikePairingCandidate(raw: String): Int {
             val text = normalizeScannedText(raw)

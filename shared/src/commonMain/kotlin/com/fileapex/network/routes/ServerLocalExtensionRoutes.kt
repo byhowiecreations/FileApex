@@ -16,6 +16,7 @@ import io.ktor.server.routing.post
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import com.fileapex.util.cancellableCatching
 
 private const val MAX_PATHS = 1000
 private const val MAX_TEXT_CHARS = 100_000
@@ -50,7 +51,7 @@ internal fun Route.registerLocalExtensionRoutes(server: FileApexServer) {
 
     post("/api/v1/local/send") {
         if (!call.localCaller()) return@post
-        val body = runCatching { server.json.decodeFromString(SendBody.serializer(), call.receiveBoundedText()) }.getOrNull()
+        val body = cancellableCatching("ServerLocalExtensionRoutes: server.json.decodeFromString") { server.json.decodeFromString(SendBody.serializer(), call.receiveBoundedText()) }.getOrNull()
         if (body == null || body.paths.isEmpty() || body.deviceIds.isEmpty() || !usableFiles(body.paths)) {
             call.respond(HttpStatusCode.BadRequest, "send_refused")
             return@post
@@ -60,7 +61,7 @@ internal fun Route.registerLocalExtensionRoutes(server: FileApexServer) {
 
     post("/api/v1/local/bulletin") {
         if (!call.localCaller()) return@post
-        val body = runCatching { server.json.decodeFromString(BulletinBody.serializer(), call.receiveBoundedText()) }.getOrNull()
+        val body = cancellableCatching("ServerLocalExtensionRoutes: server.json.decodeFromString") { server.json.decodeFromString(BulletinBody.serializer(), call.receiveBoundedText()) }.getOrNull()
         val text = body?.text?.trim().orEmpty()
         if (body == null || (text.isEmpty() && body.paths.isEmpty()) || text.length > MAX_TEXT_CHARS || !usableFiles(body.paths)) {
             call.respond(HttpStatusCode.BadRequest, "bulletin_refused")

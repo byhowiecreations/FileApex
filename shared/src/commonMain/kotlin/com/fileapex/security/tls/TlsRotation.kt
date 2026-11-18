@@ -9,6 +9,7 @@ import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
+import com.fileapex.util.cancellableCatching
 
 /**
  * A device that replaces its TLS key signs the new pin with the old key. A peer that pinned the old key can then accept
@@ -45,7 +46,7 @@ object TlsRotation {
         proof ?: return false
         if (!TlsPinFormat.isValid(proof.newPin) || !proof.newPin.equals(newPin, ignoreCase = true)) return false
         if (nowMs - proof.issuedAtEpochMs > MAX_AGE_MS || proof.issuedAtEpochMs - nowMs > TlsPinAnnouncements.MAX_SKEW_MS) return false
-        return runCatching {
+        return cancellableCatching("TlsRotation: Base64.getDecoder") {
             val encoded = Base64.getDecoder().decode(proof.oldPublicKey)
             val oldPin = MessageDigest.getInstance("SHA-256").digest(encoded).joinToString("") { "%02x".format(it) }
             if (storedPins.none { it.isNotEmpty() && it.equals(oldPin, ignoreCase = true) }) return false
@@ -61,7 +62,7 @@ object TlsRotation {
     fun encode(proof: TlsRotationProof): String = json.encodeToString(TlsRotationProof.serializer(), proof)
 
     fun decode(text: String): TlsRotationProof? =
-        if (text.isBlank()) null else runCatching { json.decodeFromString(TlsRotationProof.serializer(), text) }.getOrNull()
+        if (text.isBlank()) null else cancellableCatching("decoding the TLS rotation proof") { json.decodeFromString(TlsRotationProof.serializer(), text) }.getOrNull()
 
     private fun message(newPin: String, issuedAt: Long) = "fileapex-tls-rotation-v1|${newPin.lowercase()}|$issuedAt".toByteArray()
 }

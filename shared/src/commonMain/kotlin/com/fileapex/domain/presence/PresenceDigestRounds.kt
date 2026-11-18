@@ -65,7 +65,7 @@ internal class PresenceDigestRounds(private val view: DigestPeerView) {
             val stamp = PresenceDigests.newStamp()
             val ask = PresenceDigests.buildAsk(localId, live, stamp, TimeUtils.now()) ?: continue
             val startedAt = TimeUtils.now()
-            val result = cancellableCatching { view.fetchDigest(endpoint.host, endpoint.port, ask) }
+            val result = cancellableCatching("PresenceDigestRounds: view.fetchDigest") { view.fetchDigest(endpoint.host, endpoint.port, ask) }
             if (result.isFailure) continue
             val reply = result.getOrNull()
             if (reply == null) {

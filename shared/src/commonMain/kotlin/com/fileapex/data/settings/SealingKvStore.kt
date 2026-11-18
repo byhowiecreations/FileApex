@@ -2,6 +2,7 @@ package com.fileapex.data.settings
 
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import com.fileapex.util.cancellableCatching
 
 /** Wraps and unwraps a secret with something the platform protects (Keystore, Keychain, DPAPI, keyring). */
 interface SecretSealer {
@@ -82,8 +83,8 @@ class SealingKvStore(
         val stored = inner.getString(key, "")
         if (stored.isEmpty()) return default
         if (stored.startsWith(PREFIX)) {
-            val blob = runCatching { Base64.getDecoder().decode(stored.removePrefix(PREFIX)) }.getOrNull()
-            val plain = runCatching { String(sealer.open(checkNotNull(blob)), Charsets.UTF_8) }.getOrElse {
+            val blob = cancellableCatching("SealingKvStore getString") { Base64.getDecoder().decode(stored.removePrefix(PREFIX)) }.getOrNull()
+            val plain = cancellableCatching("SealingKvStore getString 2") { String(sealer.open(checkNotNull(blob)), Charsets.UTF_8) }.getOrElse {
                 if (generateSequence(it) { e -> e.cause }.any { e -> e is SecretUnavailableException }) {
                     SecretAvailability.markUnavailable(key)
                     log("SealingKvStore: a stored secret cannot be opened right now (${it.javaClass.simpleName}); it is kept and tried again")
@@ -119,7 +120,7 @@ class SealingKvStore(
     }
 
     private fun sealInto(key: String, plain: String, legacyPlain: Boolean) {
-        val sealed = runCatching { sealer.seal(plain.toByteArray(Charsets.UTF_8)) }.getOrElse {
+        val sealed = cancellableCatching("SealingKvStore sealInto") { sealer.seal(plain.toByteArray(Charsets.UTF_8)) }.getOrElse {
             if (legacyPlain) {
                 // Already in clear text from an older version: leave it until it can be sealed.
                 log("SealingKvStore: a secret could not be sealed (${it.javaClass.simpleName}); it stays as stored for now")

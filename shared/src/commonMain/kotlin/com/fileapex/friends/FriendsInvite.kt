@@ -5,6 +5,7 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
+import com.fileapex.util.cancellableCatching
 
 /**
  * What the inviter shares as a QR or link. The PIN is NOT inside it: the inviter tells it to the friend another way, so a
@@ -48,7 +49,7 @@ data class FriendInviteLink(
         }
 
         private fun enc(v: String) = URLEncoder.encode(v, "UTF-8")
-        private fun dec(v: String) = runCatching { URLDecoder.decode(v, "UTF-8") }.getOrDefault("")
+        private fun dec(v: String) = cancellableCatching("FriendsInvite: URLDecoder.decode") { URLDecoder.decode(v, "UTF-8") }.getOrDefault("")
     }
 }
 

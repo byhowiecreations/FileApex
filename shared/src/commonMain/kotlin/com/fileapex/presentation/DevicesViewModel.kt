@@ -207,7 +207,7 @@ class DevicesViewModel : ViewModel() {
     init {
         LocalDeviceNameStore.ensureLoaded()
         viewModelScope.launch {
-            cancellableCatching { repository.reconcileDuplicateEndpoints() }
+            cancellableCatching("DevicesViewModel init") { repository.reconcileDuplicateEndpoints() }
         }
         viewModelScope.launch {
             LocalDeviceNameStore.deviceName.collect { name ->

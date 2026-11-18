@@ -80,3 +80,6 @@
 -keep class * implements com.sun.jna.** { *; }
 -dontwarn java.awt.**
 -dontwarn com.sun.jna.**
+
+# Failure logs name the exception class only; renamed classes would read "w1" in a release build.
+-keepnames class * extends java.lang.Throwable

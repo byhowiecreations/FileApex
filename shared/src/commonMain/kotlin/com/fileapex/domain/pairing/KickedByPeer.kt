@@ -48,7 +48,7 @@ object KickedByPeer {
 
     /** Pulls the chain from every roster peer. */
     internal var pullChainFromRoster: suspend () -> Unit = {
-        FileApexServices.membershipHub?.let { hub -> hub.chainRoster().forEach { cancellableCatching { hub.chainReplicator.reconcile(it) } } }
+        FileApexServices.membershipHub?.let { hub -> hub.chainRoster().forEach { cancellableCatching("KickedByPeer: hub.chainReplicator.reconcile") { hub.chainReplicator.reconcile(it) } } }
     }
 
     /**
@@ -59,7 +59,7 @@ object KickedByPeer {
     fun onRevoked(peerId: String?, roster: List<PairedDeviceEntity>) {
         val peer = roster.firstOrNull { !it.isRemoved && it.tlsPin.isNotEmpty() && it.deviceId == peerId } ?: return
         println("KickedByPeer: ${peer.deviceId} refuses this device: pulling the chain from it")
-        scope.launch { cancellableCatching { pullChainFrom(peer.deviceId) } }
+        scope.launch { cancellableCatching("KickedByPeer: pullChainFrom") { pullChainFrom(peer.deviceId) } }
     }
 
     /**
@@ -73,7 +73,7 @@ object KickedByPeer {
             try {
                 cancellableCatching { signOut() }
                     .onFailure { println("KickedByPeer: Google sign-out failed - ${it::class.simpleName}") }
-                cancellableCatching { pullChainFromRoster() }
+                cancellableCatching("KickedByPeer: pullChainFromRoster") { pullChainFromRoster() }
             } finally {
                 signingOut.set(false)
             }

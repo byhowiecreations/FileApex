@@ -5,6 +5,7 @@ import com.fileapex.platform.BriefToast
 import com.fileapex.platform.PlatformClipboard
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import com.fileapex.util.cancellableCatching
 
 /**
  * Bounded E2EE payload framing for syncing small clipboard images (e.g. screenshots) over the
@@ -36,7 +37,7 @@ object ClipboardImageEnvelope {
         if (!mime.startsWith("image/")) return null
         val b64 = rest.substring(newline + 1).trim()
         if (b64.isEmpty()) return null
-        val decoded = runCatching { Base64.decode(b64) }.getOrNull() ?: return null
+        val decoded = cancellableCatching("ClipboardImageEnvelope: Base64.decode") { Base64.decode(b64) }.getOrNull() ?: return null
         if (decoded.isEmpty() || decoded.size > MAX_RAW_IMAGE_BYTES) return null
         return DecodedImage(mimeType = mime, bytes = decoded)
     }

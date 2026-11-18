@@ -5,12 +5,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.fileapex.util.cancellableCatching
 
 /** Reads claims out of a Firebase ID token the app already holds; the signature is the server's business. */
 internal object IdTokenClaims {
     fun claim(token: String, name: String): String? {
         val payload = token.split('.').getOrNull(1) ?: return null
-        return runCatching {
+        return cancellableCatching("reading a claim of the cloud id token") {
             val json = String(Base64.getUrlDecoder().decode(payload), Charsets.UTF_8)
             Json.parseToJsonElement(json).jsonObject[name]?.jsonPrimitive?.contentOrNull
         }.getOrNull()

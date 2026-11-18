@@ -62,7 +62,7 @@ object CliIpcDaemon {
     }
 
     fun stop() {
-        runCatching {
+        cancellableCatching("CliIpcDaemon stop") {
             serverSocket?.close()
             serverSocket = null
             clients.forEach { it.close() }
@@ -81,7 +81,7 @@ object CliIpcDaemon {
             val firstLine = reader.readBoundedLine() ?: return
             s.soTimeout = 0
             // Check if this is a structured CLI request or legacy path handoff
-            val request = runCatching {
+            val request = cancellableCatching("CliIpcDaemon handleClient") {
                 json.decodeFromString<CliRequest>(firstLine)
             }.getOrNull()
 
@@ -110,7 +110,7 @@ object CliIpcDaemon {
                         s.soTimeout = PROMPT_TIMEOUT_MS
                         val responseLine = try { reader.readBoundedLine() } catch (_: java.net.SocketTimeoutException) { null } finally { s.soTimeout = 0 }
                         if (responseLine != null) {
-                            runCatching {
+                            cancellableCatching("CliIpcDaemon handleClient 2") {
                                 val inputPacket = json.decodeFromString<CliIpcPacket>(responseLine)
                                 (inputPacket as? CliIpcPacket.Input)?.text
                             }.getOrNull() ?: responseLine

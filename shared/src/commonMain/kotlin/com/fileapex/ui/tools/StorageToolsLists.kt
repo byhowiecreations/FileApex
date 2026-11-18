@@ -66,6 +66,7 @@ import com.fileapex.ui.ageChoices
 import com.fileapex.ui.explorer.FavoriteMark
 import com.fileapex.ui.explorer.ItemContextMenu
 import com.fileapex.ui.explorerIcon
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -174,7 +175,7 @@ private fun trashPaths(
     onDone: () -> Unit,
 ) {
     scope.launch {
-        val outcome = withContext(Dispatchers.IO) { runCatching { trashLocalEntries(paths) } }
+        val outcome = withContext(Dispatchers.IO) { cancellableCatching("StorageToolsLists trashPaths") { trashLocalEntries(paths) } }
         outcome.onSuccess { finished ->
             onError(null)
             if (finished) reload()

@@ -2,9 +2,10 @@ package com.fileapex.platform
 
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import com.fileapex.util.cancellableCatching
 
 actual fun activeLanIpv4Addresses(): List<String> {
-    return runCatching {
+    return cancellableCatching("ActiveLanNetwork activeLanIpv4Addresses") {
         NetworkInterface.getNetworkInterfaces()
             .toList()
             .filter { it.isUp && !it.isLoopback && isAndroidLanDataInterface(it) }

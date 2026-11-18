@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 
 private lateinit var clipboardOptInContext: Context
 private const val CLIPBOARD_OPT_IN_TAG = "fileapex.clipboard.optin"
@@ -61,7 +62,7 @@ actual fun notifyClipboardOptInRequested(senderDeviceName: String) {
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .build()
 
-    runCatching {
+    cancellableCatching("ClipboardOptInNotifier notifyClipboardOptInRequested") {
         manager.notify(CLIPBOARD_OPT_IN_TAG, CLIPBOARD_OPT_IN_NOTIFICATION_ID, notification)
     }.onFailure { error ->
         println("ClipboardOptInNotifier: notify failed :: ${error.message}")

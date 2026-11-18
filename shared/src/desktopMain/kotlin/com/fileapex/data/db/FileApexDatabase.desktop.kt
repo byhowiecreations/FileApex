@@ -6,18 +6,9 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.fileapex.data.db.seal.DbFieldKeys
 import com.fileapex.data.db.seal.SealingPassCallback
 import com.fileapex.data.db.seal.SealingSqliteDriver
-import com.fileapex.data.db.MIGRATION_2_3
-import com.fileapex.data.db.MIGRATION_3_4
-import com.fileapex.data.db.MIGRATION_4_5
-import com.fileapex.data.db.MIGRATION_5_6
-import com.fileapex.data.db.MIGRATION_6_7
-import com.fileapex.data.db.MIGRATION_7_8
-import com.fileapex.data.db.MIGRATION_8_9
-import com.fileapex.data.db.MIGRATION_9_10
-import com.fileapex.data.db.MIGRATION_10_11
-import com.fileapex.data.db.MIGRATION_11_12
 import com.fileapex.data.bulletin.BulletinBoardMerge
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import kotlin.text.Charsets
@@ -47,7 +38,7 @@ private fun backupDesktopDatabaseIfPresent(dbFile: File) {
     if (!dbFile.isFile || dbFile.length() <= 0L) return
     val backup = File(dbFile.parentFile, "${dbFile.name}.pre-v3-backup")
     if (backup.exists()) return
-    runCatching {
+    cancellableCatching("FileApexDatabase backupDesktopDatabaseIfPresent") {
         Files.copy(dbFile.toPath(), backup.toPath(), StandardCopyOption.COPY_ATTRIBUTES)
         listOf("-wal", "-shm").forEach { suffix ->
             val sidecar = File(dbFile.parentFile, "${dbFile.name}$suffix")
@@ -81,7 +72,7 @@ internal fun resolveDesktopDatabaseFile(): File {
         if (!supportDb.exists()) {
             val source = legacyCandidates.firstOrNull { it.exists() }
             if (source != null) {
-                runCatching {
+                cancellableCatching("FileApexDatabase resolveDesktopDatabaseFile") {
                     copyDatabaseTree(source, supportDb, supportDir)
                 }.onFailure { error ->
                     println("FileApexDatabase: DB migration failed - ${error.message}")
@@ -90,7 +81,7 @@ internal fun resolveDesktopDatabaseFile(): File {
         } else if (countPairedDevices(supportDb) == 0) {
             val source = legacyCandidates.firstOrNull { countPairedDevices(it) > 0 }
             if (source != null) {
-                runCatching {
+                cancellableCatching("FileApexDatabase resolveDesktopDatabaseFile 2") {
                     copyDatabaseTree(source, supportDb, supportDir)
                     println(
                         "FileApexDatabase: restored empty roster from ${source.absolutePath}"
@@ -101,7 +92,7 @@ internal fun resolveDesktopDatabaseFile(): File {
             }
         }
 
-        runCatching {
+        cancellableCatching("FileApexDatabase resolveDesktopDatabaseFile 3") {
             rosterResolvedMarker.writeText("ok", Charsets.UTF_8)
         }.onFailure { error ->
             println("FileApexDatabase: roster marker write failed - ${error.message}")
@@ -114,12 +105,12 @@ internal fun resolveDesktopDatabaseFile(): File {
 /** Devices in a database file: the profiles of a current file, or the paired devices of an older one. */
 internal fun countPairedDevices(dbFile: File): Int {
     if (!dbFile.isFile) return 0
-    return runCatching {
+    return cancellableCatching("FileApexDatabase countPairedDevices") {
         val connection = BundledSQLiteDriver().open(dbFile.absolutePath)
         try {
             val table = listOf("member_profiles", "paired_devices").firstOrNull { name ->
                 connection.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '$name'").use { it.step() }
-            } ?: return@runCatching 0
+            } ?: return@cancellableCatching 0
             connection.prepare("SELECT COUNT(*) FROM $table").use { statement ->
                 if (statement.step()) statement.getLong(0).toInt() else 0
             }

@@ -436,6 +436,23 @@ public func fileapex_clipboard_stop_watch() {
     clipboardCallback = nil
 }
 
+/// The type names on the general pasteboard, one per line, so the shared policy can tell a password manager's clip from an ordinary one.
+@_cdecl("fileapex_clipboard_read_types")
+public func fileapex_clipboard_read_types(
+    _ outText: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32 {
+    var names: [String] = []
+    _ = onMainThreadAndWait(timeout: 1.0) {
+        names = NSPasteboard.general.types?.map { $0.rawValue } ?? []
+    }
+    guard !names.isEmpty else {
+        outText.pointee = nil
+        return 0
+    }
+    outText.pointee = strdupClipboard(names.joined(separator: "\n"))
+    return 1
+}
+
 @_cdecl("fileapex_clipboard_read_text")
 public func fileapex_clipboard_read_text(
     _ outText: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>

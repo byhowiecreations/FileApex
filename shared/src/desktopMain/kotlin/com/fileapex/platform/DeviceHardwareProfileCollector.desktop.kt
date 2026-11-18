@@ -27,7 +27,7 @@ actual fun localDeviceHardwareProfile(): DeviceHardwareProfile = when (DesktopPl
 
 private fun archName(): String = System.getProperty("os.arch").orEmpty().trim().ifBlank { "Desktop" }
 
-private fun readMacHardwareModel(): String? = cancellableCatching {
+private fun readMacHardwareModel(): String? = cancellableCatching("DeviceHardwareProfileCollector readMacHardwareModel") {
     ProcessBuilder("/usr/sbin/sysctl", "-n", "hw.model")
         .redirectErrorStream(true)
         .start()

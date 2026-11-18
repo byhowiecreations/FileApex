@@ -2,6 +2,7 @@ package com.fileapex.domain.transfer
 
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import com.fileapex.util.cancellableCatching
 
 /**
  * Android share-sheet files are copied into `cache/share-staging/{sessionId}/` so sends can
@@ -23,9 +24,9 @@ object ShareStagingCleanup {
         paths.mapNotNull(::sessionRootForFile).distinct().forEach { root ->
             val dir = Path(root)
             if (!SystemFileSystem.exists(dir)) return@forEach
-            runCatching {
+            cancellableCatching("ShareStagingCleanup: SystemFileSystem.list") {
                 SystemFileSystem.list(dir).forEach { child ->
-                    runCatching { SystemFileSystem.delete(child) }
+                    cancellableCatching("ShareStagingCleanup: SystemFileSystem.delete") { SystemFileSystem.delete(child) }
                 }
                 SystemFileSystem.delete(dir)
             }

@@ -22,6 +22,7 @@ import java.net.Inet4Address
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.fileapex.util.cancellableCatching
 
 /**
  * Userspace tsnet state directory. This path is the node home for an in-process stack.
@@ -41,7 +42,7 @@ private class AndroidEmbeddedTsnetEngine : TailscaleUserspaceEngine {
                     nativeLinked = false,
                     tailnetIp = ""
                 )
-            val identity = runCatching { loadLocalIdentity() }.getOrElse { error ->
+            val identity = cancellableCatching { loadLocalIdentity() }.getOrElse { error ->
                 if (error is CancellationException) throw error
                 null
             }
@@ -219,7 +220,7 @@ private object AndroidTsnetBridge {
     fun loadOrNull(): Class<*>? {
         if (missing) return null
         loaded?.let { return it }
-        val found = runCatching { Class.forName(CLASS_NAME) }.getOrNull()
+        val found = cancellableCatching("loading the tailnet library class") { Class.forName(CLASS_NAME) }.getOrNull()
         if (found == null) {
             missing = true
             return null
@@ -230,7 +231,7 @@ private object AndroidTsnetBridge {
 
     fun stopIfLoaded() {
         val cls = loaded ?: return
-        runCatching { cls.getMethod("stop").invoke(null) }
+        cancellableCatching("stopping the tailnet library") { cls.getMethod("stop").invoke(null) }
     }
 
     fun publishLinkAddress() {
@@ -239,7 +240,7 @@ private object AndroidTsnetBridge {
             it.name == "setLinkAddress" && it.parameterTypes.size == 3
         } ?: return
         val link = androidLinkAddress()
-        runCatching { method.invoke(null, link.name, link.ip, link.prefix) }
+        cancellableCatching("telling the tailnet library about the network") { method.invoke(null, link.name, link.ip, link.prefix) }
     }
 
     fun notifyLinkChange() {
@@ -247,7 +248,7 @@ private object AndroidTsnetBridge {
         val method = cls.methods.firstOrNull {
             it.name == "notifyLinkChange" && it.parameterTypes.isEmpty()
         } ?: return
-        runCatching { method.invoke(null) }
+        cancellableCatching("telling the tailnet library about the network") { method.invoke(null) }
     }
 }
 
@@ -268,7 +269,7 @@ private object AndroidLinkWatch {
                     linkProperties: android.net.LinkProperties
                 ) = refresh()
             }
-            runCatching { manager.registerDefaultNetworkCallback(created) }
+            cancellableCatching("registering the tailnet network callback") { manager.registerDefaultNetworkCallback(created) }
                 .onSuccess { callback = created }
         }
     }
@@ -279,7 +280,10 @@ private object AndroidLinkWatch {
         synchronized(lock) {
             val current = callback ?: return
             callback = null
-            runCatching { manager.unregisterNetworkCallback(current) }
+            try {
+                manager.unregisterNetworkCallback(current)
+            } catch (_: IllegalArgumentException) {
+            }
         }
     }
 
@@ -294,7 +298,7 @@ private data class AndroidLink(val name: String, val ip: String, val prefix: Str
 private fun androidLinkAddress(): AndroidLink {
     val context = androidAppContextOrNull() ?: return AndroidLink("", "", "")
     val manager = context.getSystemService(ConnectivityManager::class.java) ?: return AndroidLink("", "", "")
-    val properties = runCatching { manager.getLinkProperties(manager.activeNetwork) }.getOrNull()
+    val properties = cancellableCatching("TailscaleUserspaceEngine.android: manager.getLinkProperties") { manager.getLinkProperties(manager.activeNetwork) }.getOrNull()
         ?: return AndroidLink("", "", "")
     val name = properties.interfaceName.orEmpty()
     val link = properties.linkAddresses.firstOrNull { candidate ->
@@ -334,6 +338,7 @@ private fun Class<*>.start(authKey: String, dir: String, hostname: String, share
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
+        Log.w(TAG, "tsnet start failed: ${error::class.simpleName}")
         TsnetStart(ok = false, ip = "", error = error.message ?: "start_failed")
     }
 }

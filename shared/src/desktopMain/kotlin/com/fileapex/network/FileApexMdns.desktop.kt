@@ -9,12 +9,13 @@ import javax.jmdns.JmDNS
 import javax.jmdns.ServiceEvent
 import javax.jmdns.ServiceInfo
 import javax.jmdns.ServiceListener
+import com.fileapex.util.cancellableCatching
 
 private fun desktopMdnsBindAddress(): InetAddress? {
     val host = LanInterfaceBinding.primaryLanIpv4OrNull()
         ?: LanInterfaceBinding.lanBindCandidates().firstOrNull()
     if (host.isNullOrBlank()) return null
-    return runCatching { Inet4Address.getByName(host) }.getOrNull()
+    return cancellableCatching("FileApexMdns.desktop: Inet4Address.getByName") { Inet4Address.getByName(host) }.getOrNull()
 }
 
 private fun resolveMdnsIpv4(info: ServiceInfo): String? {
@@ -29,7 +30,7 @@ private fun resolveMdnsIpv4(info: ServiceInfo): String? {
     NetworkUtils.selectBestLanIpv4(ipv4)?.let { return it }
     val server = info.server?.trim().orEmpty().removeSuffix(".")
     if (server.isNotEmpty()) {
-        return runCatching { InetAddress.getByName(server) }
+        return cancellableCatching("FileApexMdns.desktop: InetAddress.getByName") { InetAddress.getByName(server) }
             .getOrNull()
             ?.takeIf { it is Inet4Address }
             ?.hostAddress
@@ -57,7 +58,7 @@ actual object FileApexMdnsAdvertiser {
             return
         }
         stop()
-        runCatching {
+        cancellableCatching {
             val instance = JmDNS.create(bindAddress)
             val name = FileApexMdns.serviceNameFor(deviceId)
             instance.registerService(
@@ -89,7 +90,7 @@ actual object FileApexMdnsAdvertiser {
         registeredDeviceId = null
         registeredBindHost = null
         if (fast) return
-        runCatching {
+        cancellableCatching("stopping mDNS") {
             instance.unregisterAllServices()
             instance.close()
         }
@@ -126,7 +127,7 @@ actual object FileApexMdnsBrowser {
         instances.clear()
         callback = null
         for (instance in toClose) {
-            runCatching {
+            cancellableCatching("stopping mDNS") {
                 if (!fast) {
                     instance.unregisterAllServices()
                 }
@@ -137,7 +138,7 @@ actual object FileApexMdnsBrowser {
 
     actual fun requestProbe() {
         for (instance in instances.toList()) {
-            runCatching {
+            cancellableCatching {
                 instance.requestServiceInfo(FileApexMdns.SERVICE_TYPE, null, 1_500L)
             }.onFailure { error ->
                 if (error !is IOException) {
@@ -148,7 +149,7 @@ actual object FileApexMdnsBrowser {
     }
 
     private fun startOnAddress(address: InetAddress?) {
-        runCatching {
+        cancellableCatching {
             val instance = if (address != null) JmDNS.create(address) else JmDNS.create()
             val listener = object : ServiceListener {
                 override fun serviceAdded(event: ServiceEvent) {
@@ -181,6 +182,6 @@ private fun desktopMdnsBrowseAddresses(): List<InetAddress> {
     LanInterfaceBinding.primaryLanIpv4OrNull()?.let { ips.add(it) }
     ips.addAll(LanInterfaceBinding.lanBindCandidates())
     return ips.mapNotNull { ip ->
-        runCatching { Inet4Address.getByName(ip) }.getOrNull()?.takeIf { it is Inet4Address }
+        cancellableCatching("FileApexMdns.desktop: Inet4Address.getByName") { Inet4Address.getByName(ip) }.getOrNull()?.takeIf { it is Inet4Address }
     }
 }

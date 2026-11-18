@@ -18,6 +18,7 @@ import com.fileapex.friends.transfer.FriendTransfer
 import com.fileapex.friends.transfer.FriendTransferDirection
 import com.fileapex.friends.transfer.FriendTransferStatus
 import com.fileapex.platform.AndroidNotificationChannels
+import com.fileapex.util.cancellableCatching
 
 private lateinit var friendsNotifierContext: Context
 
@@ -94,7 +95,7 @@ actual object FriendsNotifier {
             .setAutoCancel(true)
             .setTimeoutAfter(OFFER_TIMEOUT_MS)
             .build()
-        runCatching { manager.notify("$NOTIFICATION_TAG:${offer.id}", id, notification) }
+        cancellableCatching { manager.notify("$NOTIFICATION_TAG:${offer.id}", id, notification) }
             .onFailure { println("FriendsNotifier: notify failed :: ${it.message}") }
     }
 
@@ -105,7 +106,7 @@ actual object FriendsNotifier {
         val id = transferNotificationId(transfer.id)
         if (transfer.status.finished) {
             lastTransferPost.remove(transfer.id)
-            runCatching { manager.cancel("$TRANSFER_TAG:${transfer.id}", id) }
+            cancellableCatching("FriendsNotifier.android: manager.cancel") { manager.cancel("$TRANSFER_TAG:${transfer.id}", id) }
             return
         }
         val now = System.currentTimeMillis()
@@ -133,7 +134,7 @@ actual object FriendsNotifier {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(0, AppI18n.t("friends_cancel"), cancel)
             .build()
-        runCatching { manager.notify("$TRANSFER_TAG:${transfer.id}", id, notification) }
+        cancellableCatching { manager.notify("$TRANSFER_TAG:${transfer.id}", id, notification) }
             .onFailure { println("FriendsNotifier: progress notify failed :: ${it.message}") }
     }
 
@@ -148,7 +149,7 @@ actual object FriendsNotifier {
         AndroidNotificationChannels.ensureTransferReceiveChannel(context)
         val id = 4200 + (file.path.hashCode() and 0xFFFF)
         val target = File(file.path)
-        val viewUri = runCatching { FileProvider.getUriForFile(context, FileApexFileProvider.authority(context), target) }.getOrNull()
+        val viewUri = cancellableCatching("FriendsNotifier.android: FileProvider.getUriForFile") { FileProvider.getUriForFile(context, FileApexFileProvider.authority(context), target) }.getOrNull()
         val view = viewUri?.let {
             Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(it, resolveMimeType(file.fileName))
@@ -171,13 +172,13 @@ actual object FriendsNotifier {
             builder.addAction(0, AppI18n.t("friends_open_location"), it)
         }
         view?.let { builder.addAction(0, AppI18n.t("friends_view"), PendingIntent.getActivity(context, id * 2 + 1, it, flags())) }
-        runCatching { manager.notify("friends_received:${file.path}", id, builder.build()) }
+        cancellableCatching { manager.notify("friends_received:${file.path}", id, builder.build()) }
             .onFailure { println("FriendsNotifier: received notify failed :: ${it.message}") }
     }
 
     actual fun offerResolved(offerId: String) {
         if (!::friendsNotifierContext.isInitialized) return
-        runCatching { NotificationManagerCompat.from(friendsNotifierContext).cancel("$NOTIFICATION_TAG:$offerId", notificationId(offerId)) }
+        cancellableCatching("FriendsNotifier.android: NotificationManagerCompat.from") { NotificationManagerCompat.from(friendsNotifierContext).cancel("$NOTIFICATION_TAG:$offerId", notificationId(offerId)) }
     }
 }
 
@@ -191,7 +192,7 @@ class FriendsOfferActionReceiver : BroadcastReceiver() {
         if (intent.action !in setOf(FRIENDS_ACTION_ACCEPT, FRIENDS_ACTION_DECLINE, FRIENDS_ACTION_ACCEPT_ALWAYS)) return
         val offerId = intent.getStringExtra(FRIENDS_EXTRA_OFFER_ID) ?: return
         FriendsHub.decide(offerId, intent.action != FRIENDS_ACTION_DECLINE, intent.action == FRIENDS_ACTION_ACCEPT_ALWAYS)
-        runCatching { NotificationManagerCompat.from(context).cancel("$NOTIFICATION_TAG:$offerId", notificationId(offerId)) }
+        cancellableCatching("FriendsNotifier.android: NotificationManagerCompat.from") { NotificationManagerCompat.from(context).cancel("$NOTIFICATION_TAG:$offerId", notificationId(offerId)) }
     }
 }
 

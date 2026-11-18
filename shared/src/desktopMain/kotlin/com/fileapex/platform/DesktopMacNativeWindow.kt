@@ -10,7 +10,7 @@ object DesktopMacNativeWindow {
         if (!DesktopPlatformPaths.isMacOs()) {
             return null
         }
-        return runCatching { resolvePointer(window) }
+        return cancellableCatching("DesktopMacNativeWindow nsWindowPointer") { resolvePointer(window) }
             .getOrNull()
     }
 
@@ -49,7 +49,7 @@ object DesktopMacNativeWindow {
     private fun readPtrField(platformWindow: Any): Long? {
         var type: Class<*> = platformWindow.javaClass
         while (type != Any::class.java) {
-            val value = runCatching {
+            val value = cancellableCatching("DesktopMacNativeWindow readPtrField") {
                 val field = type.getDeclaredField("ptr")
                 field.isAccessible = true
                 field.getLong(platformWindow)
@@ -65,9 +65,9 @@ object DesktopMacNativeWindow {
         component.javaClass.methods
             .firstOrNull { it.name == "getPeer" && it.parameterCount == 0 }
             ?.let { method ->
-                runCatching { method.invoke(component) }.getOrNull()?.let { return it }
+                cancellableCatching("DesktopMacNativeWindow resolvePeer") { method.invoke(component) }.getOrNull()?.let { return it }
             }
-        return cancellableCatching {
+        return cancellableCatching("DesktopMacNativeWindow resolvePeer 2") {
             val peerField = Component::class.java.getDeclaredField("peer")
             peerField.isAccessible = true
             peerField.get(component)
@@ -75,7 +75,7 @@ object DesktopMacNativeWindow {
     }
 
     private fun resolvePeerViaAwtAccessor(component: Component): Any? {
-        return runCatching {
+        return cancellableCatching("DesktopMacNativeWindow resolvePeerViaAwtAccessor") {
             val accessorClass = Class.forName("sun.awt.AWTAccessor")
             val componentAccessor = accessorClass.getMethod("getComponentAccessor").invoke(null)
             componentAccessor.javaClass.getMethod("getPeer", Component::class.java)

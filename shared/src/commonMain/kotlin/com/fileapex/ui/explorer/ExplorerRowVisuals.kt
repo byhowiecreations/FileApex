@@ -29,6 +29,7 @@ import com.fileapex.platform.decodeVideoPoster
 import com.fileapex.ui.ExplorerEntryIcon
 import com.fileapex.ui.JadedFileGlyph
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -87,11 +88,11 @@ private fun rememberMediaThumb(item: RemoteFileItem, isRemoteTarget: Boolean): I
     }
     LaunchedEffect(item.absolutePath, isRemoteTarget, item.lastModified, item.sizeBytes, remoteFetcher) {
         bitmap = if (isRemoteTarget) {
-            runCatching { remoteFetcher?.invoke(item) }.getOrNull()
+            cancellableCatching("ExplorerRowVisuals rememberMediaThumb") { remoteFetcher?.invoke(item) }.getOrNull()
         } else {
             val inferredMime = RemoteThumbnailPolicy.inferMimeType(item.name, item.mimeType)
             withContext(Dispatchers.IO) {
-                runCatching {
+                cancellableCatching("ExplorerRowVisuals rememberMediaThumb 2") {
                     if (inferredMime.startsWith("video/")) {
                         decodeVideoPoster(item.absolutePath, 256)
                     } else {

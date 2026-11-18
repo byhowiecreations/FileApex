@@ -46,7 +46,7 @@ actual fun rememberGoogleSignInLauncher(
                 onResult(null, null, "OAuth callback missing code")
                 return@collect
             }
-            cancellableCatching {
+            cancellableCatching("GoogleSignInLauncher rememberGoogleSignInLauncher") {
                 DesktopAuthCoordinator.exchangeCodeForIdToken(code, result.state)
             }.onSuccess { idToken ->
                 onResult(idToken, null, null)
@@ -71,7 +71,7 @@ actual fun rememberGoogleSignInLauncher(
                         onResult(null, null, setupError)
                         return@launch
                     }
-                    runCatching {
+                    cancellableCatching("GoogleSignInLauncher rememberGoogleSignInLauncher 2") {
                         DesktopAuthCoordinator.cancelPending()
                         val url = DesktopAuthCoordinator.beginAuthorizationUrl(clientId)
                         if (!Desktop.isDesktopSupported() ||

@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 
 private lateinit var driveNotifierContext: Context
 
@@ -59,13 +60,13 @@ actual object DriveRelayNotifier {
     actual fun retractRetrieved(fileName: String) {
         if (!::driveNotifierContext.isInitialized) return
         val manager = NotificationManagerCompat.from(driveNotifierContext)
-        runCatching { manager.cancel(DRIVE_RETRIEVE_TAG, NOTIFICATION_ID_RETRIEVED) }
-        runCatching { manager.cancel(NOTIFICATION_ID_RETRIEVED) }
-        runCatching {
+        cancellableCatching("DriveRelayNotifier retractRetrieved") { manager.cancel(DRIVE_RETRIEVE_TAG, NOTIFICATION_ID_RETRIEVED) }
+        cancellableCatching("DriveRelayNotifier retractRetrieved 2") { manager.cancel(NOTIFICATION_ID_RETRIEVED) }
+        cancellableCatching("DriveRelayNotifier retractRetrieved 3") {
             manager.cancel(NOTIFICATION_ID_BASE + ("Received via Google Drive Relay".hashCode() and 0xFFFF))
         }
         if (fileName.isNotBlank()) {
-            runCatching { manager.cancel(NOTIFICATION_ID_BASE + (fileName.hashCode() and 0xFFFF)) }
+            cancellableCatching("DriveRelayNotifier retractRetrieved 4") { manager.cancel(NOTIFICATION_ID_BASE + (fileName.hashCode() and 0xFFFF)) }
         }
     }
 
@@ -97,7 +98,7 @@ actual object DriveRelayNotifier {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
-        runCatching {
+        cancellableCatching("DriveRelayNotifier post") {
             if (tag.isNullOrBlank()) {
                 manager.notify(id, notification)
             } else {

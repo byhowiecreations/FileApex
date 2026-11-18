@@ -13,6 +13,7 @@ import com.fileapex.platform.FileApexFileProvider
 import java.io.File
 import java.io.RandomAccessFile
 import java.security.MessageDigest
+import com.fileapex.util.cancellableCatching
 
 actual object PlatformUpdateInstaller {
     actual val opensReleasePage: Boolean = false
@@ -86,7 +87,7 @@ actual object PlatformUpdateInstaller {
         val matches = context.packageManager.queryIntentActivities(intent, flags)
         for (resolve in matches) {
             val packageName = resolve.activityInfo?.packageName ?: continue
-            runCatching {
+            cancellableCatching("PlatformUpdateInstaller.android: context.grantUriPermission") {
                 context.grantUriPermission(
                     packageName,
                     uri,

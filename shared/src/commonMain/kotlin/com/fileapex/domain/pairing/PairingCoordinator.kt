@@ -23,7 +23,7 @@ class PairingCoordinator(
     private val identityProvider: () -> LocalIdentity,
     private val onPassiveReachability: suspend (deviceIds: List<String>, epochMs: Long) -> Unit = { _, _ -> },
     private val fetchNodeState: suspend (host: String, port: Int) -> PeerNodeState? = { host, port ->
-        cancellableCatching { withTimeoutOrNull(HANDSHAKE_FETCH_MS) { client.fetchPeerNodeState(host, port) } }.getOrNull()
+        cancellableCatching("PairingCoordinator: withTimeoutOrNull") { withTimeoutOrNull(HANDSHAKE_FETCH_MS) { client.fetchPeerNodeState(host, port) } }.getOrNull()
     }
 ) {
     /**
@@ -83,7 +83,7 @@ class PairingCoordinator(
     suspend fun afterOutboundPair(peer: PairedDeviceEntity, preexistingDeviceIds: Set<String>? = null) {
         com.fileapex.cloud.device.DeviceIdentity.onPaired()
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
-        cancellableCatching { FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer) }
+        cancellableCatching("PairingCoordinator: FileApexServices.bulletinSyncEngineOrNull") { FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer) }
     }
 
     /**

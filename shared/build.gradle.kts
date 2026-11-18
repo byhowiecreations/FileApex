@@ -199,6 +199,7 @@ kotlin {
         }
 
         jvmCommon.dependencies {
+            implementation(libs.okhttp)
             implementation(libs.bouncycastle.provider)
             implementation(libs.bouncycastle.pkix)
         }

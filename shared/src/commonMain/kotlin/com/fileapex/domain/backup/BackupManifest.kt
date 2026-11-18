@@ -9,6 +9,7 @@ import kotlinx.io.writeString
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** A local file that could be backed up. */
 data class BackupCandidate(
@@ -51,7 +52,7 @@ class BackupManifest private constructor(
 
     fun save() {
         val target = file ?: return
-        runCatching {
+        cancellableCatching("BackupManifest: SystemFileSystem.createDirectories") {
             target.parent?.let { SystemFileSystem.createDirectories(it) }
             SystemFileSystem.sink(target).buffered().use { sink ->
                 sink.writeString(json.encodeToString(serializer, entries))
@@ -74,8 +75,8 @@ class BackupManifest private constructor(
         fun load(destinationDeviceId: String): BackupManifest {
             val safeId = destinationDeviceId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
             val path = Path(backupStateDirectory(), "manifest-$safeId.json")
-            val entries = runCatching {
-                if (!SystemFileSystem.exists(path)) return@runCatching mutableMapOf<String, String>()
+            val entries = cancellableCatching("BackupManifest: SystemFileSystem.exists") {
+                if (!SystemFileSystem.exists(path)) return@cancellableCatching mutableMapOf<String, String>()
                 val text = SystemFileSystem.source(path).buffered().use { it.readString() }
                 json.decodeFromString(serializer, text).toMutableMap()
             }.getOrDefault(mutableMapOf())

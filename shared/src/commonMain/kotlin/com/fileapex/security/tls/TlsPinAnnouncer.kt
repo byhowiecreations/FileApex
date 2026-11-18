@@ -210,7 +210,7 @@ class TlsPinAnnouncer(
         // A chain member's new key arrives as its signed pin record: the chain is pulled, nothing is adopted here and
         // nothing is asked; until the record arrives the connection stays refused.
         if (chainOwnsPin(id)) {
-            cancellableCatching { pullChain(id) }
+            cancellableCatching("TlsPinAnnouncer: pullChain") { pullChain(id) }
             return true
         }
         if (TlsVouches.voucherFor(id, observed, now()) != null) return adopt(id, observed, prompt.port)
@@ -224,7 +224,7 @@ class TlsPinAnnouncer(
             }
         }
         if (reachable) {
-            val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
+            val state = cancellableCatching("TlsPinAnnouncer: client.fetchPeerNodeState") { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
             val pins = setOfNotNull(device.tlsPin, device.tlsPinAlt.ifEmpty { null })
             if (state != null && state.deviceId.trim() == id &&
                 TlsRotation.verify(TlsRotation.decode(state.tlsRotation), pins, observed, now())
@@ -258,7 +258,7 @@ class TlsPinAnnouncer(
     /** No shared key to authenticate with: surface the peer's claimed pin for the user to verify. */
     private suspend fun offerFingerprint(device: PairedDeviceEntity): Long {
         if (chainOwnsPin(device.deviceId)) return OLD_PEER_MS
-        val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
+        val state = cancellableCatching("TlsPinAnnouncer: client.fetchPeerNodeState") { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
             ?: return RETRY_MS
         if (state.deviceId.trim() == device.deviceId &&
             repository.recordBoundPublicKey(device.deviceId, state.publicKey)

@@ -1,6 +1,7 @@
 package com.fileapex.cli
 
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.util.cancellableCatching
 import java.io.File
 
 object CliPathIntegration {
@@ -9,7 +10,7 @@ object CliPathIntegration {
      * Installs or updates the macOS CLI wrapper. Windows gets its PATH entry from the installer (`windows/FileApex.iss`).
      */
     fun ensureInstalled() {
-        runCatching {
+        cancellableCatching("CliPathIntegration ensureInstalled") {
             if (DesktopPlatformPaths.isMacOs()) installMacOs()
         }.onFailure { error ->
             println("CliPathIntegration: Silent installation notice: ${error.message}")

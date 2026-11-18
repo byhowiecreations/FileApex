@@ -7,6 +7,7 @@ import java.net.Socket
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import com.fileapex.util.cancellableCatching
 
 /**
  * Keeps [socket] on the cancel list for the whole call.
@@ -24,6 +25,9 @@ internal suspend fun <T> withTrackedTransferSocket(socket: Socket, block: suspen
         throw error
     } finally {
         TransferActivityGuard.releaseTransferSocket(socket)
-        runCatching { socket.close() }
+        try {
+            socket.close()
+        } catch (_: java.io.IOException) {
+        }
     }
 }

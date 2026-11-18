@@ -46,7 +46,7 @@ object ClipboardShareCoordinator {
         if (started) return
         started = true
         ClipboardPushDeduper.beginInitialization()
-        val initialText = cancellableCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+        val initialText = cancellableCatching("ClipboardShareCoordinator: PlatformClipboard.getSystemClipboardText") { PlatformClipboard.getSystemClipboardText() }.getOrNull()
         if (!initialText.isNullOrBlank()) {
             ClipboardPushDeduper.remember(initialText)
         }
@@ -100,18 +100,18 @@ object ClipboardShareCoordinator {
     fun onLocalClipboardChanged(text: String) {
         if (!shouldWatchLocalClipboard()) return
         val trimmed = ClipboardImageEnvelope.preparedAutomaticText(text) ?: return
-        val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
-        if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed, clipTs)) return
-        if (!FileApexServices.settings.clipboardSharingEnabled.value) return
-        if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
-            showClipboardToast(com.fileapex.i18n.AppI18n.t("choose_all_or_specific_toast"))
-            return
-        }
-        val android = currentPlatformLabel() == "Android"
         scope.launch {
-            captureAndBroadcast(trimmed, desktopPeersOnly = android)
+            if (SensitiveClipPolicy.blocksAutomaticSend(trimmed, PlatformClipboard::isSystemClipboardSensitive)) return@launch
+            val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
+            if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed, clipTs)) return@launch
+            if (!FileApexServices.settings.clipboardSharingEnabled.value) return@launch
+            if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
+                showClipboardToast(com.fileapex.i18n.AppI18n.t("choose_all_or_specific_toast"))
+                return@launch
+            }
+            showClipboardToast(com.fileapex.i18n.AppI18n.t("sending_clipboard"))
+            captureAndBroadcast(trimmed, desktopPeersOnly = currentPlatformLabel() == "Android")
         }
-        showClipboardToast(com.fileapex.i18n.AppI18n.t("sending_clipboard"))
     }
 
     @Volatile
@@ -122,7 +122,7 @@ object ClipboardShareCoordinator {
         scope.launch {
             ClipboardChangeMonitor.onAppForegrounded()
             if (ClipboardPushDeduper.isInitializing) {
-                val initClip = cancellableCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+                val initClip = cancellableCatching("ClipboardShareCoordinator: PlatformClipboard.getSystemClipboardText") { PlatformClipboard.getSystemClipboardText() }.getOrNull()
                 if (!initClip.isNullOrBlank()) {
                     ClipboardPushDeduper.remember(initClip)
                 }
@@ -140,7 +140,7 @@ object ClipboardShareCoordinator {
         ClipboardChangeMonitor.onWindowFocusChanged(hasFocus)
         if (!hasFocus || currentPlatformLabel() != "Android") return
         if (ClipboardPushDeduper.isInitializing) {
-            val initClip = cancellableCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+            val initClip = cancellableCatching("ClipboardShareCoordinator: PlatformClipboard.getSystemClipboardText") { PlatformClipboard.getSystemClipboardText() }.getOrNull()
             if (!initClip.isNullOrBlank()) {
                 ClipboardPushDeduper.remember(initClip)
             }
@@ -170,9 +170,10 @@ object ClipboardShareCoordinator {
         ) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) return
         val text = ClipboardImageEnvelope.preparedAutomaticText(PlatformClipboard.getSystemClipboardText()) ?: return
-        val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
-        if (!ClipboardPushDeduper.shouldAllowAutomaticPush(text, clipTs)) return
         scope.launch {
+            if (SensitiveClipPolicy.blocksAutomaticSend(text, PlatformClipboard::isSystemClipboardSensitive)) return@launch
+            val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
+            if (!ClipboardPushDeduper.shouldAllowAutomaticPush(text, clipTs)) return@launch
             captureAndBroadcast(
                 text,
                 desktopPeersOnly = currentPlatformLabel() == "Android"
@@ -427,7 +428,7 @@ object ClipboardShareCoordinator {
         var optInMessage: String? = null
         for (deviceId in remaining) {
             val device = FileApexServices.deviceRepository.getDevice(deviceId) ?: continue
-            val (delivered, error) = cancellableCatching {
+            val (delivered, error) = cancellableCatching("delivering a clip to a device") {
                 deliverToDeviceWithDetail(device, snapshot.text, snapshot.capturedAtEpochMs)
             }.getOrElse { Pair(false, it) }
             if (delivered) {
@@ -501,7 +502,7 @@ object ClipboardShareCoordinator {
         val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
 
         suspend fun askPeerToOptIn(host: String, port: Int): Throwable {
-            cancellableCatching {
+            cancellableCatching("ClipboardShareCoordinator: FileApexServices.client.clipboard.requestCl") {
                 FileApexServices.client.clipboard.requestClipboardOptIn(
                     host = host,
                     port = port,
@@ -512,7 +513,7 @@ object ClipboardShareCoordinator {
             }
             val settings = FileApexServices.settings
             if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
-                cancellableCatching {
+                cancellableCatching("ClipboardShareCoordinator: FcmWakeCoordinator.dispatchClipboardOptIn") {
                     FcmWakeCoordinator.dispatchClipboardOptIn(
                         targetDeviceId = device.deviceId,
                         senderDeviceName = identity.deviceName,
@@ -535,11 +536,11 @@ object ClipboardShareCoordinator {
                 localBindIps = NetworkUtils.lanBindCandidates()
             )
             if (!usable) break
-            val status = cancellableCatching { FileApexServices.client.clipboard.getClipboardStatus(host, port) }.getOrNull()
+            val status = cancellableCatching("ClipboardShareCoordinator: FileApexServices.client.clipboard.getClipbo") { FileApexServices.client.clipboard.getClipboardStatus(host, port) }.getOrNull()
             if (status != null && !status.sharingEnabled) {
                 return Pair(false, askPeerToOptIn(host, port))
             }
-            val sent = cancellableCatching {
+            val sent = cancellableCatching("ClipboardShareCoordinator: FileApexServices.client.clipboard.sendClipb") {
                 FileApexServices.client.clipboard.sendClipboard(
                     host = host,
                     port = port,
@@ -607,12 +608,12 @@ object ClipboardShareCoordinator {
             ?.clipboardPublicKey.orEmpty().trim()
         if (cloud.isNotEmpty()) return cloud
         val route = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return ""
-        val live = cancellableCatching {
+        val live = cancellableCatching("ClipboardShareCoordinator: FileApexServices.client.fetchPeerNodeState") {
             FileApexServices.client.fetchPeerNodeState(route.host, route.port)
         }.getOrNull() ?: return ""
         val key = live.publicKey.trim()
         if (key.isNotEmpty()) {
-            cancellableCatching {
+            cancellableCatching("ClipboardShareCoordinator: FileApexServices.deviceRepository.applyPeer") {
                 FileApexServices.deviceRepository.applyPeerNodeState(live, device.deviceId)
             }
         }
@@ -630,7 +631,7 @@ object ClipboardShareCoordinator {
     }
 
     private suspend fun publishClipboardPublicKey() {
-        cancellableCatching {
+        cancellableCatching("ClipboardShareCoordinator: GoogleLinkCoordinator.publishClipboardPubli") {
             GoogleLinkCoordinator.publishClipboardPublicKey(ClipboardE2ee.publicKeyBase64())
         }
     }

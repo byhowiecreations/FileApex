@@ -20,7 +20,7 @@ import kotlinx.serialization.encodeToString
 
 internal fun Route.registerClipboardRoutes(server: FileApexServer) {
     get("/api/v1/clipboard/status") {
-        runCatching {
+        cancellableCatching {
             val settings = FileApexServices.settings
             val enabled = settings.clipboardSharingEnabled.value
             val identity = server.identityProvider()

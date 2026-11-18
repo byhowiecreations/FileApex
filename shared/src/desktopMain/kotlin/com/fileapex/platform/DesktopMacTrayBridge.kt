@@ -16,7 +16,7 @@ import kotlin.math.roundToInt
  */
 object DesktopMacTrayBridge {
     @Volatile
-    private var native: FileApexTrayNative? = null
+    internal var native: FileApexTrayNative? = null
 
     // Strong refs, JNA discards unretained callback proxies and native calls become no-ops.
     @Volatile
@@ -73,7 +73,7 @@ object DesktopMacTrayBridge {
         // Native.load only, never call AppKit here. fileapex_tray_install_app_lifecycle
         // uses DispatchQueue.main.sync; invoking that from a background preload/IO thread
         // stalls behind Compose's first frames (~6s+) and made Mac cold start feel broken.
-        return runCatching {
+        return com.fileapex.util.cancellableCatching("DesktopMacTrayBridge load") {
             val lib = Native.load(dylib.absolutePath, FileApexTrayNative::class.java)
             // Published only after the TLS identity and route table are in the native client; a request
             // that got there first would be sent as plain HTTP to a pinned peer.
@@ -99,7 +99,7 @@ object DesktopMacTrayBridge {
     }
 
     private fun pushLanTlsIdentity(lib: FileApexTrayNative) {
-        runCatching {
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge pushLanTlsIdentity") {
             val identity = com.fileapex.security.tls.DesktopTlsIdentity.store().getOrCreate()
             val password = java.util.UUID.randomUUID().toString()
             val p12 = com.fileapex.security.tls.TlsPkcs12.export(identity, password.toCharArray())
@@ -114,7 +114,7 @@ object DesktopMacTrayBridge {
     /** The native client refused a pinned peer; if it saw a different key, ask the user about it. */
     internal fun reportNativeTlsMismatch(url: String) {
         val lib = native ?: return
-        runCatching {
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge reportNativeTlsMismatch") {
             val uri = java.net.URI(url)
             val host = uri.host ?: return
             val port = uri.port
@@ -132,23 +132,23 @@ object DesktopMacTrayBridge {
             val pins = entry.route.pins.joinToString(prefix = "[", postfix = "]", separator = ",") { "\"$it\"" }
             "{\"host\":\"${entry.host}\",\"port\":${entry.httpPort},\"tlsPort\":${entry.route.tlsPort},\"pins\":$pins}"
         }
-        runCatching { lib.fileapex_lan_tls_set_routes(json) }
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge pushLanTlsRoutes") { lib.fileapex_lan_tls_set_routes(json) }
             .onFailure { println("DesktopMacTrayBridge: native TLS routes failed :: ${it.message}") }
     }
 
     fun startLocalNetworkProbe() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        runCatching { native?.fileapex_tray_start_local_network_probe() }
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge startLocalNetworkProbe") { native?.fileapex_tray_start_local_network_probe() }
     }
 
     fun installAppLifecycle() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        runCatching { native?.fileapex_tray_install_app_lifecycle() }
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge installAppLifecycle") { native?.fileapex_tray_install_app_lifecycle() }
     }
 
     fun requestAppTerminate() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        runCatching { native?.fileapex_tray_request_app_terminate() }
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge requestAppTerminate") { native?.fileapex_tray_request_app_terminate() }
     }
 
     /**
@@ -158,7 +158,7 @@ object DesktopMacTrayBridge {
         if (!DesktopPlatformPaths.isMacOs()) return
         lanPeerListener = listener
         if (listener == null) {
-            runCatching { native?.fileapex_lan_set_peer_callback(null) }
+            com.fileapex.util.cancellableCatching("DesktopMacTrayBridge setLanPeerDiscoveredListener") { native?.fileapex_lan_set_peer_callback(null) }
             lanPeerCallback = null
             return
         }
@@ -190,7 +190,7 @@ object DesktopMacTrayBridge {
         val bodyMem = body?.takeIf { it.isNotEmpty() }?.let { bytes ->
             Memory(bytes.size.toLong()).also { memory -> memory.write(0, bytes, 0, bytes.size) }
         }
-        val rc = runCatching {
+        val rc = com.fileapex.util.cancellableCatching("DesktopMacTrayBridge lanHttp") {
             lib.fileapex_lan_http_execute_headers(
                 method,
                 url,
@@ -234,7 +234,7 @@ object DesktopMacTrayBridge {
             }
         }
         val timeout = timeoutMs.coerceIn(250L, 600_000L).toInt()
-        val rc = runCatching {
+        val rc = com.fileapex.util.cancellableCatching("DesktopMacTrayBridge lanHttpUploadFile") {
             if (lengthBytes >= 0L) {
                 lib.fileapex_lan_http_upload_file_range(
                     url,
@@ -279,7 +279,7 @@ object DesktopMacTrayBridge {
     ): Int? {
         val lib = native ?: return null
         val status = IntByReference()
-        val rc = runCatching {
+        val rc = com.fileapex.util.cancellableCatching("DesktopMacTrayBridge lanHttpDownloadFile") {
             lib.fileapex_lan_http_download_file(
                 url,
                 destinationPath,
@@ -319,7 +319,7 @@ object DesktopMacTrayBridge {
             val length = len.value.coerceAtLeast(0)
             if (pointer == null || length <= 0) "" else String(pointer.getByteArray(0, length), Charsets.UTF_8)
         } finally {
-            if (pointer != null) runCatching { lib.fileapex_lan_http_free(pointer) }
+            if (pointer != null) com.fileapex.util.cancellableCatching("DesktopMacTrayBridge takeNativeText") { lib.fileapex_lan_http_free(pointer) }
         }
     }
 
@@ -387,7 +387,7 @@ object DesktopMacTrayBridge {
         lib.fileapex_tray_set_check_batteries_callback(checkBatteriesCallback)
         lib.fileapex_tray_set_browse_device_callback(browseDeviceCallback)
         lib.fileapex_tray_set_post_note_callback(postNoteCallback)
-        runCatching { lib.fileapex_tray_set_cancel_send_callback(cancelSendCallback) }
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge registerCallbacks") { lib.fileapex_tray_set_cancel_send_callback(cancelSendCallback) }
         seedDropBoxFrame()
     }
 
@@ -435,7 +435,7 @@ object DesktopMacTrayBridge {
         if (native == null) load()
         val lib = native ?: return null
         val outPath = PointerByReference()
-        val ok = runCatching {
+        val ok = com.fileapex.util.cancellableCatching("DesktopMacTrayBridge pickOpenFile") {
             lib.fileapex_pick_open_file(title, initialDirectory, outPath)
         }.getOrElse { error ->
             println("DesktopMacTrayBridge: NSOpenPanel failed :: ${error.message}")
@@ -500,14 +500,14 @@ object DesktopMacTrayBridge {
         if (native == null) load()
         val lib = native ?: return false
         val callback = ClipboardTextCallback { pointer ->
-            val text = runCatching { pointer?.getString(0).orEmpty() }.getOrDefault("")
+            val text = com.fileapex.util.cancellableCatching("DesktopMacTrayBridge startClipboardWatch") { pointer?.getString(0).orEmpty() }.getOrDefault("")
             if (text.isBlank()) return@ClipboardTextCallback
             clipboardCallbackExecutor.execute {
-                runCatching { onText(text) }
+                com.fileapex.util.cancellableCatching("DesktopMacTrayBridge startClipboardWatch 2") { onText(text) }
             }
         }
         clipboardCallback = callback
-        return runCatching {
+        return com.fileapex.util.cancellableCatching("DesktopMacTrayBridge startClipboardWatch 3") {
             lib.fileapex_clipboard_start_watch(callback)
             true
         }.getOrElse { error ->
@@ -519,12 +519,12 @@ object DesktopMacTrayBridge {
 
     fun cancelLanTransfers() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        runCatching { native?.fileapex_lan_http_cancel_transfers() }
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge cancelLanTransfers") { native?.fileapex_lan_http_cancel_transfers() }
     }
 
     fun noteClipboardApplied() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        runCatching { native?.fileapex_clipboard_note_applied() }
+        com.fileapex.util.cancellableCatching("DesktopMacTrayBridge noteClipboardApplied") { native?.fileapex_clipboard_note_applied() }
     }
 
     fun stopClipboardWatch() {
@@ -538,7 +538,7 @@ object DesktopMacTrayBridge {
         if (native == null) load()
         val lib = native ?: return null
         val outText = PointerByReference()
-        val ok = runCatching {
+        val ok = com.fileapex.util.cancellableCatching("DesktopMacTrayBridge readClipboardText") {
             lib.fileapex_clipboard_read_text(outText)
         }.getOrDefault(0)
         if (ok == 0) return null

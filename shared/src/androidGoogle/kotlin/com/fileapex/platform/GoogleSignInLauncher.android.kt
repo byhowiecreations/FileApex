@@ -22,7 +22,7 @@ actual fun rememberGoogleSignInLauncher(
                 onResult(null, null, "Google sign-in requires an Activity context")
             } else {
                 scope.launch {
-                    cancellableCatching {
+                    cancellableCatching("GoogleSignInLauncher rememberGoogleSignInLauncher") {
                         interactiveGoogleIdToken(activity)
                     }.onSuccess { (idToken, email) ->
                         onResult(idToken, email, null)

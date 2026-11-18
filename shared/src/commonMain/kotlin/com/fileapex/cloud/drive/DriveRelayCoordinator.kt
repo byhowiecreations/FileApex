@@ -69,7 +69,7 @@ object DriveRelayCoordinator {
                         if (error is CancellationException) throw error
                         driveLogError("launch Drive sweep failed", error)
                     }
-                runCatching { FileApexServices.transferQueue.scheduleDrain() }
+                cancellableCatching("scheduling a transfer drain after a Drive retrieve") { FileApexServices.transferQueue.scheduleDrain() }
             }
         }
     }
@@ -335,9 +335,9 @@ object DriveRelayCoordinator {
         if (entries.isEmpty()) return
         val entryIds = entries.map { it.entryId }.toSet()
         entries.map { it.driveFileId }.distinct().forEach { driveFileId ->
-            cancellableCatching { GoogleDriveClient.deleteFile(driveFileId) }
+            cancellableCatching("deleting a relayed file from Drive") { GoogleDriveClient.deleteFile(driveFileId) }
         }
-        cancellableCatching {
+        cancellableCatching("DriveRelayCoordinator: ledger.copy") {
             mutex.withLock {
                 mutateLedger { ledger ->
                     ledger.copy(entries = ledger.entries.filterNot { it.entryId in entryIds })
@@ -467,7 +467,7 @@ object DriveRelayCoordinator {
                     !entry.pinned &&
                     now - entry.uploadedAtEpochMs >= DriveRelayPolicy.PURGE_AFTER_MS
                 if (expired || entry.isDirectTransferComplete()) {
-                    cancellableCatching { GoogleDriveClient.deleteFile(entry.driveFileId) }
+                    cancellableCatching("deleting a relayed file from Drive") { GoogleDriveClient.deleteFile(entry.driveFileId) }
                     dirty = true
                 } else {
                     retain += entry
@@ -647,14 +647,14 @@ object DriveRelayCoordinator {
         when (downloadWithProgress(entry, partPath)) {
             DownloadOutcome.DONE -> Unit
             DownloadOutcome.CANCELLED -> {
-                runCatching { SystemFileSystem.delete(Path(partPath)) }
+                cancellableCatching("removing a partial download") { SystemFileSystem.delete(Path(partPath), mustExist = false) }
                 driveLog("retrieve cancelled by user ${entry.fileName}; kept on Drive")
                 return RetrieveResult.CANCELLED
             }
             DownloadOutcome.CANCELLED_REMOVE -> {
-                runCatching { SystemFileSystem.delete(Path(partPath)) }
+                cancellableCatching("removing a partial download") { SystemFileSystem.delete(Path(partPath), mustExist = false) }
                 withContext(NonCancellable) {
-                    cancellableCatching { GoogleDriveClient.deleteFile(entry.driveFileId) }
+                    cancellableCatching("deleting a relayed file from Drive") { GoogleDriveClient.deleteFile(entry.driveFileId) }
                 }
                 driveLog("retrieve cancelled by user ${entry.fileName}; removed from Drive")
                 return RetrieveResult.GONE
@@ -671,9 +671,9 @@ object DriveRelayCoordinator {
         val readyPart = entry.encryption?.let { encryption ->
             val plainPath = "$destPath.dec.part"
             val decrypted = decryptReceived(entry, encryption, partPath, plainPath)
-            runCatching { SystemFileSystem.delete(part) }
+            cancellableCatching("removing a partial download") { SystemFileSystem.delete(part, mustExist = false) }
             if (!decrypted) {
-                runCatching { SystemFileSystem.delete(Path(plainPath)) }
+                cancellableCatching("removing a partial download") { SystemFileSystem.delete(Path(plainPath), mustExist = false) }
                 return RetrieveResult.FAILED
             }
             Path(plainPath)
@@ -756,7 +756,7 @@ object DriveRelayCoordinator {
         while (attempt < 4) {
             val snapshot = GoogleDriveClient.loadLedger()
             val next = transform(snapshot.ledger)
-            val result = cancellableCatching { GoogleDriveClient.saveLedger(next, snapshot.etag) }
+            val result = cancellableCatching("DriveRelayCoordinator: GoogleDriveClient.saveLedger") { GoogleDriveClient.saveLedger(next, snapshot.etag) }
             if (result.isSuccess) {
                 val saved = result.getOrThrow()
                 cachedLedger = saved.ledger

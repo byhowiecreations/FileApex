@@ -17,7 +17,7 @@ actual object ClusterResetPlatform {
     actual val keepsAppRunning: Boolean = false
 
     actual fun eraseKeystoreAndSecureStorage() {
-        runCatching {
+        cancellableCatching("ClusterResetPlatform.android: KeyStore.getInstance") {
             val ks = KeyStore.getInstance("AndroidKeyStore")
             ks.load(null)
             val aliases = ks.aliases()
@@ -27,8 +27,8 @@ actual object ClusterResetPlatform {
         }
         val context = androidAppContextOrNull() ?: return
         // The identity file in here is encrypted with a Keystore key that was just deleted.
-        cancellableCatching { File(context.filesDir, "tls").deleteRecursively() }
-        cancellableCatching {
+        cancellableCatching("ClusterResetPlatform.android: File") { File(context.filesDir, "tls").deleteRecursively() }
+        cancellableCatching("ClusterResetPlatform.android: context.getSharedPreferences") {
             context.getSharedPreferences("fileapex_identity", Context.MODE_PRIVATE)
                 .edit()
                 .clear()
@@ -40,7 +40,7 @@ actual object ClusterResetPlatform {
         val context = androidAppContextOrNull() ?: return
 
         ServiceWatchdog.markCleanStop()
-        cancellableCatching {
+        cancellableCatching("ClusterResetPlatform.android: Intent") {
             val serviceIntent = Intent().apply {
                 setClassName(context.packageName, "com.fileapex.network.FileShareServerService")
             }
@@ -61,15 +61,15 @@ actual object ClusterResetPlatform {
             "pending_updates"
         )
         for (pref in knownPrefs) {
-            cancellableCatching {
+            cancellableCatching("ClusterResetPlatform.android: context.getSharedPreferences") {
                 context.getSharedPreferences(pref, Context.MODE_PRIVATE).edit().clear().commit()
             }
         }
-        val keepWelcomeTutorial = cancellableCatching {
+        val keepWelcomeTutorial = cancellableCatching("ClusterResetPlatform.android: context.getSharedPreferences") {
             context.getSharedPreferences("fileapex_settings", Context.MODE_PRIVATE)
                 .getBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_WELCOME_TUTORIAL_SHOWN, false)
         }.getOrDefault(false)
-        cancellableCatching {
+        cancellableCatching("ClusterResetPlatform.android: File") {
             val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
             if (sharedPrefsDir.isDirectory) {
                 sharedPrefsDir.listFiles()?.forEach { file ->
@@ -83,7 +83,7 @@ actual object ClusterResetPlatform {
         // The loop above deleted the settings file that held the "default theme decided" marker; the database
         // file still exists, so without it the next launch counts as an old install and switches to Clean.
         // The first-run tutorial dismissal also persists so Leave Cluster does not re-nag an experienced user.
-        cancellableCatching {
+        cancellableCatching("ClusterResetPlatform.android: context.getSharedPreferences") {
             context.getSharedPreferences("fileapex_settings", Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_THEME_DEFAULT_MIGRATED, true)

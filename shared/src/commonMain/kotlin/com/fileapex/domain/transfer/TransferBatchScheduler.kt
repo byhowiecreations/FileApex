@@ -33,7 +33,7 @@ internal object TransferBatchScheduler {
 
         suspend fun execute(index: Int) {
             val job = jobs[index]
-            val outcome = transferCatching { job.run() }
+            val outcome = transferCatching("TransferBatchScheduler: step") { job.run() }
             results[index] = outcome.getOrElse { error -> onFailure(job, error) }
         }
 

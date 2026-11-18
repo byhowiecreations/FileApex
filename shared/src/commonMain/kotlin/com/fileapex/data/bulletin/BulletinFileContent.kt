@@ -1,6 +1,7 @@
 package com.fileapex.data.bulletin
 
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** A file message's content is an optional caption, a newline and the metadata JSON. */
 internal object BulletinFileContent {
@@ -18,7 +19,7 @@ internal object BulletinFileContent {
     }
 
     fun decode(content: String): BulletinFileMetadata? =
-        runCatching { json.decodeFromString<BulletinFileMetadata>(metadataJson(content)) }.getOrNull()
+        cancellableCatching("BulletinFileContent decode") { json.decodeFromString<BulletinFileMetadata>(metadataJson(content)) }.getOrNull()
 
     fun rebuild(captionAndJson: String, meta: BulletinFileMetadata): String {
         val idx = captionAndJson.indexOf("\n{")

@@ -104,7 +104,7 @@ object DesktopAwtTrayCoordinator {
     }
 
     private fun requestForeground() {
-        runCatching {
+        cancellableCatching("DesktopAwtTrayCoordinator requestForeground") {
             val desktop = java.awt.Desktop.getDesktop()
             if (desktop.isSupported(java.awt.Desktop.Action.APP_REQUEST_FOREGROUND)) {
                 desktop.requestForeground(true)

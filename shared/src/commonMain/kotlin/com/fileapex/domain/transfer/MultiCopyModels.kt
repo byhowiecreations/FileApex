@@ -68,5 +68,17 @@ data class MultiCopyResult(
     val succeededDeviceIds: Set<String>,
     val failures: Map<String, String>,
     /** Subset of [failures] where no TCP connection could be opened to the stored endpoint. */
-    val unreachableDeviceIds: Set<String> = emptySet()
+    val unreachableDeviceIds: Set<String> = emptySet(),
+    /** Subset of [failures] where the receiving user cancelled. The send ends; it is not retried. */
+    val cancelledByReceiverDeviceIds: Set<String> = emptySet()
 )
+
+internal fun MultiCopyResult.mergedWith(retry: MultiCopyResult): MultiCopyResult {
+    val retriedIds = retry.succeededDeviceIds + retry.failures.keys
+    return copy(
+        succeededDeviceIds = succeededDeviceIds + retry.succeededDeviceIds,
+        failures = failures.filterKeys { it !in retriedIds } + retry.failures,
+        unreachableDeviceIds = unreachableDeviceIds.filterTo(HashSet()) { it !in retriedIds } + retry.unreachableDeviceIds,
+        cancelledByReceiverDeviceIds = cancelledByReceiverDeviceIds.filterTo(HashSet()) { it !in retriedIds } + retry.cancelledByReceiverDeviceIds
+    )
+}

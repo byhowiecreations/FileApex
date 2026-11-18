@@ -17,7 +17,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -274,20 +273,26 @@ private fun startDesktopApplication() {
 
         fun shutdownDesktop() {
             DesktopLifecycleLog.log("shutdownDesktop")
+            val started = System.nanoTime()
+            fun step(name: String) = DesktopLifecycleLog.log("shutdown: $name done after ${(System.nanoTime() - started) / 1_000_000}ms")
             if (!windowState.isMinimized) {
                 val (size, position) = fileManagerWindow.boundsToPersist()
                 DesktopWindowBoundsStore.persist(size, position)
                 sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), size) }
             }
+            step("window bounds")
             com.fileapex.cloud.DesktopAuthCoordinator.cancelPending()
             if (com.fileapex.di.FileApexServices.isDatabaseReady()) {
                 kotlinx.coroutines.runBlocking { com.fileapex.di.FileApexServices.presenceMonitor.sayGoodbyeToOnlinePeers() }
             }
+            step("goodbye to peers")
             DesktopShareServerController.shutdownForQuit()
+            step("share server")
             DesktopTraySupport.dispose()
             DesktopUriHandler.stop()
             DesktopSingleInstance.stopLiveForwarding()
             CliIpcDaemon.stop()
+            step("tray, uri, forwarding, cli")
         }
 
         fun quitDesktop() {

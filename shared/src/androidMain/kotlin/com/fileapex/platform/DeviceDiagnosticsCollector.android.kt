@@ -37,33 +37,33 @@ actual fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics = collectPlatfo
 
 actual fun collectPlatformDeviceDiagnostics(groups: Set<com.fileapex.domain.diagnostics.DiagnosticGroup>?): PeerDeviceDiagnostics {
     val context = androidAppContextOrNull()
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics") {
         PeerDeviceDiagnostics(
             collectedAtEpochMs = 0L,
             platform = "",
-            device = runCatching { readDeviceIdentity() }.getOrDefault(DeviceIdentityDiagnostics()),
-            processor = runCatching { readProcessor() }.getOrDefault(ProcessorDiagnostics()),
+            device = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 2") { readDeviceIdentity() }.getOrDefault(DeviceIdentityDiagnostics()),
+            processor = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 3") { readProcessor() }.getOrDefault(ProcessorDiagnostics()),
             display = readDisplay(context),
-            battery = runCatching { readBattery(context) }
+            battery = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 4") { readBattery(context) }
                 .getOrDefault(BatteryDiagnostics(chargingState = "Not available")),
-            storage = runCatching { readStorage() }.getOrDefault(StorageDiagnostics()),
+            storage = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 5") { readStorage() }.getOrDefault(StorageDiagnostics()),
             network = readNetwork(context),
-            uptime = runCatching { readUptime() }.getOrDefault(UptimeDiagnostics()),
-            thermal = runCatching { readThermal(context) }.getOrDefault(ThermalDiagnostics()),
-            memory = runCatching { readMemory(context) }.getOrDefault(MemoryDiagnostics())
+            uptime = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 6") { readUptime() }.getOrDefault(UptimeDiagnostics()),
+            thermal = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 7") { readThermal(context) }.getOrDefault(ThermalDiagnostics()),
+            memory = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 8") { readMemory(context) }.getOrDefault(MemoryDiagnostics())
         )
     }.getOrElse {
         PeerDeviceDiagnostics(
             collectedAtEpochMs = 0L,
-            device = runCatching { readDeviceIdentity() }.getOrDefault(DeviceIdentityDiagnostics()),
-            uptime = runCatching { readUptime() }.getOrDefault(UptimeDiagnostics())
+            device = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 9") { readDeviceIdentity() }.getOrDefault(DeviceIdentityDiagnostics()),
+            uptime = cancellableCatching("DeviceDiagnosticsCollector collectPlatformDeviceDiagnostics 10") { readUptime() }.getOrDefault(UptimeDiagnostics())
         )
     }
 }
 
 actual fun collectFastBatteryDiagnostics(): BatteryDiagnostics {
     val context = androidAppContextOrNull()
-    return runCatching { readBattery(context) }
+    return cancellableCatching("DeviceDiagnosticsCollector collectFastBatteryDiagnostics") { readBattery(context) }
         .getOrDefault(BatteryDiagnostics(chargingState = "Not available"))
 }
 
@@ -110,11 +110,11 @@ private fun readProcessor(): ProcessorDiagnostics {
 
 private fun readDisplay(context: Context?): DisplayDiagnostics {
     if (context == null) return DisplayDiagnostics()
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readDisplay") {
         val appContext = context.applicationContext
-        val (width, height) = readDisplayPixelSize(appContext) ?: return@runCatching DisplayDiagnostics()
+        val (width, height) = readDisplayPixelSize(appContext) ?: return@cancellableCatching DisplayDiagnostics()
         val refreshRate = readDisplayRefreshRate(appContext)
-        val brightnessPercent = runCatching {
+        val brightnessPercent = cancellableCatching("DeviceDiagnosticsCollector readDisplay 2") {
             val brightnessRaw = Settings.System.getInt(
                 appContext.contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS,
@@ -129,7 +129,7 @@ private fun readDisplay(context: Context?): DisplayDiagnostics {
 }
 
 private fun readDisplayPixelSize(context: Context): Pair<Int, Int>? {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readDisplayPixelSize") {
         readDisplayPixelSizeUnsafe(context)
     }.getOrNull()
 }
@@ -159,7 +159,7 @@ private fun readDisplayPixelSizeUnsafe(context: Context): Pair<Int, Int>? {
 }
 
 private fun readDisplayRefreshRate(context: Context): Float? {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readDisplayRefreshRate") {
         val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
         val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
         display?.refreshRate?.takeIf { it.isFinite() && it > 0f }
@@ -203,7 +203,7 @@ private fun readBattery(context: Context?): BatteryDiagnostics {
 }
 
 private fun readStorage(): StorageDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readStorage") {
         val stat = StatFs(Environment.getDataDirectory().absolutePath)
         val total = stat.blockSizeLong * stat.blockCountLong
         val available = stat.blockSizeLong * stat.availableBlocksLong
@@ -216,12 +216,12 @@ private fun readStorage(): StorageDiagnostics {
 
 private fun readNetwork(context: Context?): NetworkDiagnostics {
     if (context == null) return NetworkDiagnostics()
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readNetwork") {
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return@runCatching NetworkDiagnostics()
+            ?: return@cancellableCatching NetworkDiagnostics()
         val network = connectivity.activeNetwork
         val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
-            ?: return@runCatching NetworkDiagnostics(interfaceType = "Unknown")
+            ?: return@cancellableCatching NetworkDiagnostics(interfaceType = "Unknown")
 
         val interfaceType = when {
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
@@ -271,7 +271,7 @@ private fun readWifiInfo(
         (capabilities.transportInfo as? android.net.wifi.WifiInfo)?.let { return it }
     }
     val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return null
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readWifiInfo") {
         val method = wifiManager.javaClass.getMethod("getConnectionInfo")
         method.invoke(wifiManager) as? android.net.wifi.WifiInfo
     }.getOrNull()
@@ -285,7 +285,7 @@ private fun readAndroidSsidFallback(context: Context): String {
         return ""
     }
     val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return ""
-    val info = runCatching {
+    val info = cancellableCatching("DeviceDiagnosticsCollector readAndroidSsidFallback") {
         val method = wifiManager.javaClass.getMethod("getConnectionInfo")
         method.invoke(wifiManager) as? android.net.wifi.WifiInfo
     }.getOrNull()
@@ -293,7 +293,7 @@ private fun readAndroidSsidFallback(context: Context): String {
 }
 
 private fun readCellularNetwork(context: Context): NetworkDiagnostics {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readCellularNetwork") {
         readCellularNetworkUnsafe(context)
     }.getOrDefault(NetworkDiagnostics(interfaceType = "Cellular"))
 }
@@ -339,7 +339,7 @@ private fun readCellularSignalDbm(
     ) {
         return null
     }
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readCellularSignalDbm") {
         telephony.signalStrength?.cellSignalStrengths
             ?.mapNotNull { it.dbm.takeIf { dbm -> dbm != Int.MAX_VALUE && dbm != 0 } }
             ?.maxOrNull()
@@ -358,8 +358,8 @@ private fun readCellularBandInfo(
     ) {
         return null to ""
     }
-    return cancellableCatching {
-        val cellInfoList = runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readCellularBandInfo") {
+        val cellInfoList = cancellableCatching("DeviceDiagnosticsCollector readCellularBandInfo 2") {
             val method = telephony.javaClass.getMethod("getAllCellInfo")
             (method.invoke(telephony) as? List<*>)?.filterIsInstance<android.telephony.CellInfo>()
         }.getOrNull().orEmpty()
@@ -372,7 +372,7 @@ private fun readCellularBandInfo(
                 } else {
                     ""
                 }
-                val freq = runCatching {
+                val freq = cancellableCatching("DeviceDiagnosticsCollector readCellularBandInfo 3") {
                     val method = identity.javaClass.getMethod("getEarfcn")
                     (method.invoke(identity) as? Int)?.takeIf { it != Int.MAX_VALUE && it > 0 }
                 }.getOrNull()
@@ -465,7 +465,7 @@ private fun readMemory(context: Context?): MemoryDiagnostics {
 }
 
 private fun readOnlineCpuCount(): Int? {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readOnlineCpuCount") {
         val online = File("/sys/devices/system/cpu/online").readText(Charsets.UTF_8).trim()
         parseCpuRangeCount(online)
     }.getOrNull()
@@ -486,7 +486,7 @@ private fun readOnlineCpuFrequenciesMhz(): List<Int> {
 }
 
 private fun readCpuFrequencyMhz(cpuIndex: Int): Int? {
-    val freqKhz = runCatching {
+    val freqKhz = cancellableCatching("DeviceDiagnosticsCollector readCpuFrequencyMhz") {
         File("/sys/devices/system/cpu/cpu$cpuIndex/cpufreq/scaling_cur_freq")
             .takeIf { it.canRead() }
             ?.readText(Charsets.UTF_8)
@@ -497,7 +497,7 @@ private fun readCpuFrequencyMhz(cpuIndex: Int): Int? {
 }
 
 private fun readCpuGovernor(): String {
-    return runCatching {
+    return cancellableCatching("DeviceDiagnosticsCollector readCpuGovernor") {
         File("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
             .takeIf { it.canRead() }
             ?.readText(Charsets.UTF_8)

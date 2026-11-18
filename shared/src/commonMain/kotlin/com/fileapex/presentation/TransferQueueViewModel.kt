@@ -44,7 +44,7 @@ class TransferQueueViewModel : ViewModel() {
 
     fun remove(id: String) {
         viewModelScope.launch {
-            cancellableCatching { queue.remove(id) }.onFailure { error ->
+            cancellableCatching("TransferQueueViewModel remove") { queue.remove(id) }.onFailure { error ->
                 _uiState.update {
                 it.copy(errorMessage = UserFacingErrors.message(error, "no_queued_remove"))
                 }
@@ -58,7 +58,7 @@ class TransferQueueViewModel : ViewModel() {
 
     fun retryNow(id: String) {
         viewModelScope.launch {
-            cancellableCatching { queue.retryNow(id) }.onFailure { error ->
+            cancellableCatching("TransferQueueViewModel retryNow") { queue.retryNow(id) }.onFailure { error ->
                 _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "queue_retry_failed")) }
             }
         }

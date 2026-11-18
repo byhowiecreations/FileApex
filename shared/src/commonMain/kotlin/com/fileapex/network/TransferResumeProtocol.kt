@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
  */
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import com.fileapex.util.cancellableCatching
 
 @Serializable
 data class ResumeOffsetResponse(
@@ -77,7 +78,7 @@ object TransferTransactionJournal {
                 record.transactionId == transactionId &&
                     (senderDeviceId.isBlank() || record.senderDeviceId.isBlank() || record.senderDeviceId.equals(senderDeviceId, ignoreCase = true)) &&
                     (expectedSize <= 0L || record.byteSize == expectedSize) &&
-                    runCatching { java.io.File(record.finalPath).exists() || SystemFileSystem.exists(Path(record.finalPath)) }.getOrDefault(false)
+                    cancellableCatching("TransferResumeProtocol: java.io.File") { java.io.File(record.finalPath).exists() || SystemFileSystem.exists(Path(record.finalPath)) }.getOrDefault(false)
             }
         }
         if (inMemory != null) return inMemory
@@ -86,7 +87,7 @@ object TransferTransactionJournal {
         if (persisted != null &&
             (senderDeviceId.isBlank() || persisted.senderDeviceId.isBlank() || persisted.senderDeviceId.equals(senderDeviceId, ignoreCase = true)) &&
             (expectedSize <= 0L || persisted.byteSize == expectedSize) &&
-            runCatching { java.io.File(persisted.finalPath).exists() || SystemFileSystem.exists(Path(persisted.finalPath)) }.getOrDefault(false)
+            cancellableCatching("TransferResumeProtocol: java.io.File") { java.io.File(persisted.finalPath).exists() || SystemFileSystem.exists(Path(persisted.finalPath)) }.getOrDefault(false)
         ) {
             synchronized(lock) { records.add(persisted) }
             return persisted

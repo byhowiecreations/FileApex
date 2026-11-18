@@ -82,7 +82,7 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         // Running as a foreground service lifts the roughly ten-minute worker limit, so a first backup
         // finishes in one go. Android may refuse that for a run started in the background; that run
         // stops a little early instead, saves its progress, and the rest follows.
-        val foreground = runCatching { setForeground(foregroundInfo(null)) }.isSuccess
+        val foreground = cancellableCatching("BackupPlatform doWork") { setForeground(foregroundInfo(null)) }.isSuccess
         val result = coroutineScope {
             val progress = launch {
                 var lastShown = 0L
@@ -90,7 +90,7 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     val now = System.currentTimeMillis()
                     if (foreground && status is BackupStatus.Running && now - lastShown > NOTIFICATION_INTERVAL_MS) {
                         lastShown = now
-                        runCatching { setForeground(foregroundInfo(status)) }
+                        cancellableCatching("BackupPlatform doWork 2") { setForeground(foregroundInfo(status)) }
                     }
                 }
             }

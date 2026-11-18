@@ -11,7 +11,7 @@ actual fun stopLocalLocatorSound() = Unit
 
 actual fun triggerLocalLocatorSound(continuous: Boolean) {
     CoroutineScope(Dispatchers.Default).launch {
-        cancellableCatching {
+        cancellableCatching("DeviceLocator triggerLocalLocatorSound") {
             val toolkit = Toolkit.getDefaultToolkit()
             repeat(4) {
                 toolkit.beep()

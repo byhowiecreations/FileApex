@@ -139,7 +139,7 @@ internal class PeerOutboundRoutes(
             return
         }
         stats.sent()
-        val reached = cancellableCatching { tailnetRoute(peer) != null || irohVerdict(peer) != null }.getOrDefault(false)
+        val reached = cancellableCatching("PeerOutboundRoutes: tailnetRoute") { tailnetRoute(peer) != null || irohVerdict(peer) != null }.getOrDefault(false)
         if (reached) {
             irohBackoff.recordSuccess(peer.deviceId)
         } else {
@@ -176,7 +176,7 @@ internal class PeerOutboundRoutes(
             host.noteRoute(peer.deviceId, RouteKind.Lan)
             return PeerLanReachabilityVerdict.Direct(ip, port)
         }
-        val state = cancellableCatching {
+        val state = cancellableCatching("PeerOutboundRoutes: host.fetchNodeState") {
             host.fetchNodeState(ip, port, LanPresenceTiming.DEVICE_DETAILS_PING_TIMEOUT_MS)
         }.getOrNull()
         val verified = state != null && sameDevice(peer, state)

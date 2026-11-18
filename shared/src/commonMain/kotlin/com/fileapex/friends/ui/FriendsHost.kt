@@ -80,6 +80,7 @@ import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import com.fileapex.util.cancellableCatching
 
 /** What the Friends entry points toggle. Every theme's "Connect with friends" item calls [open]. */
 object FriendsUi {
@@ -284,7 +285,7 @@ private fun FriendsPanel(onClose: () -> Unit) {
             onDismissRequest = { renameOf = null },
             title = { Text(stringRes("friends_rename")) },
             text = { Column { OutlinedTextField(text, { text = it.take(40); failed = false }, singleLine = true); if (failed) Text(stringRes("friends_rename_failed"), color = MaterialTheme.colorScheme.error) } },
-            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.rename(f.friendKey, text) }.onSuccess { renameOf = null }.onFailure { failed = true } } }) { Text(stringRes("save")) } },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching("a Friends action") { FriendsHub.rename(f.friendKey, text) }.onSuccess { renameOf = null }.onFailure { failed = true } } }) { Text(stringRes("save")) } },
             dismissButton = { TextButton(onClick = { renameOf = null }) { Text(stringRes("cancel")) } }
         )
     }
@@ -294,7 +295,7 @@ private fun FriendsPanel(onClose: () -> Unit) {
             onDismissRequest = { removeOf = null },
             title = { Text(stringRes("friends_remove") + " " + f.label + "?") },
             text = { if (failed) Text(stringRes("friends_remove_failed"), color = MaterialTheme.colorScheme.error) },
-            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.remove(f.friendKey) }.onSuccess { removeOf = null }.onFailure { failed = true } } }) { Text(stringRes("friends_remove")) } },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching("a Friends action") { FriendsHub.remove(f.friendKey) }.onSuccess { removeOf = null }.onFailure { failed = true } } }) { Text(stringRes("friends_remove")) } },
             dismissButton = { TextButton(onClick = { removeOf = null }) { Text(stringRes("cancel")) } }
         )
     }
@@ -330,7 +331,7 @@ private fun InvitePane(onBack: () -> Unit) {
                 busy = true; error = null
                 val group = if (groupKey == "friends_group_other") custom.ifBlank { groupLabel } else groupLabel
                 scope.launch {
-                    runCatching { FriendsHub.createInvite(group, myName.trim()) }.onFailure { error = it.message ?: genericError }
+                    cancellableCatching("a Friends action") { FriendsHub.createInvite(group, myName.trim()) }.onFailure { error = it.message ?: genericError }
                     busy = false
                 }
             }) { Text(stringRes("friends_create_invite")) }
@@ -358,7 +359,7 @@ private fun InvitePane(onBack: () -> Unit) {
             TextButton(enabled = !busy, onClick = {
                 busy = true; error = null
                 scope.launch {
-                    com.fileapex.util.cancellableCatching { FriendsHub.cancelInvite(); onBack() }
+                    com.fileapex.util.cancellableCatching("a Friends action") { FriendsHub.cancelInvite(); onBack() }
                         .onFailure { error = genericError }
                     busy = false
                 }

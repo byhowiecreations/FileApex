@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.fileapex.util.cancellableCatching
 
 data class HostPairingBroadcastState(
     val active: Boolean = false,
@@ -149,7 +150,7 @@ object LanPairingDiscovery {
     }
 
     fun pruneStalePeers() {
-        val localId = runCatching { loadLocalIdentity().deviceId }.getOrNull().orEmpty()
+        val localId = cancellableCatching("LanPairingDiscovery: loadLocalIdentity") { loadLocalIdentity().deviceId }.getOrNull().orEmpty()
         val now = TimeUtils.now()
         val fresh = synchronized(lock) {
             val iterator = seen.entries.iterator()
@@ -168,7 +169,7 @@ object LanPairingDiscovery {
     }
 
     private fun onBeaconReceived(beacon: PairingBeacon) {
-        val localId = runCatching { loadLocalIdentity().deviceId }.getOrNull().orEmpty()
+        val localId = cancellableCatching("LanPairingDiscovery: loadLocalIdentity") { loadLocalIdentity().deviceId }.getOrNull().orEmpty()
         if (beacon.deviceId == localId) return
         if (!NetworkUtils.isUsableLanIpv4(beacon.ipAddress)) return
         synchronized(lock) {

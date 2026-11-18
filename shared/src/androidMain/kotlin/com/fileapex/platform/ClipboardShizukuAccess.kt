@@ -9,6 +9,7 @@ import com.fileapex.platform.log.Log
 import androidx.annotation.RequiresApi
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.clipboard.ClipboardCopySignals
+import com.fileapex.util.cancellableCatching
 import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -20,7 +21,7 @@ object ClipboardShizukuAccess {
     private val started = AtomicBoolean(false)
 
     private val shizukuClass: Class<*>? by lazy {
-        runCatching { Class.forName("rikka.shizuku.Shizuku") }.getOrNull()
+        cancellableCatching("ClipboardShizukuAccess init") { Class.forName("rikka.shizuku.Shizuku") }.getOrNull()
     }
 
     fun start() {
@@ -28,7 +29,7 @@ object ClipboardShizukuAccess {
         if (!started.compareAndSet(false, true)) return
         val clazz = shizukuClass ?: return
         val loader = clazz.classLoader ?: return
-        runCatching {
+        cancellableCatching("ClipboardShizukuAccess start") {
             val receivedInterface = Class.forName("rikka.shizuku.Shizuku\$OnBinderReceivedListener", true, loader)
             val receivedProxy = Proxy.newProxyInstance(loader, arrayOf(receivedInterface)) { _, method, _ ->
                 if (method.name == "onBinderReceived") {
@@ -71,7 +72,7 @@ object ClipboardShizukuAccess {
     fun isInstalled(): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         val context = androidAppContextOrNull() ?: return false
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess isInstalled") {
             context.packageManager.getPackageInfo(SHIZUKU_PACKAGE, 0)
             true
         }.getOrDefault(false)
@@ -79,7 +80,7 @@ object ClipboardShizukuAccess {
 
     fun isReady(): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess isReady") {
             val ping = getBinder() != null && pingBinder()
             val granted = checkSelfPermission() == PackageManager.PERMISSION_GRANTED
             ClipboardShizukuPolicy.binderReady(ping, granted)
@@ -88,14 +89,14 @@ object ClipboardShizukuAccess {
 
     fun isOptedIn(): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess isOptedIn") {
             com.fileapex.di.FileApexServices.settings.clipboardShizukuEnabled.value
         }.getOrDefault(false)
     }
 
     fun shouldUse(): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess shouldUse") {
             val ping = getBinder() != null && pingBinder()
             val granted = checkSelfPermission() == PackageManager.PERMISSION_GRANTED
             ClipboardShizukuPolicy.shouldUsePrivilegedClipboard(isOptedIn(), ping, granted)
@@ -104,12 +105,12 @@ object ClipboardShizukuAccess {
 
     fun isRunning(): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
-        return runCatching { pingBinder() }.getOrDefault(false)
+        return cancellableCatching("ClipboardShizukuAccess isRunning") { pingBinder() }.getOrDefault(false)
     }
 
     fun requestPermission() {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
-        runCatching {
+        cancellableCatching("ClipboardShizukuAccess requestPermission") {
             if (!pingBinder()) return
             if (checkSelfPermission() == PackageManager.PERMISSION_GRANTED) return
             invokeRequestPermission(PERMISSION_REQUEST_CODE)
@@ -121,7 +122,7 @@ object ClipboardShizukuAccess {
     fun activate() {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         start()
-        runCatching {
+        cancellableCatching("ClipboardShizukuAccess activate") {
             com.fileapex.di.FileApexServices.settings.setClipboardShizukuEnabled(true)
         }
         if (!isInstalled()) {
@@ -146,7 +147,7 @@ object ClipboardShizukuAccess {
         val launch = context.packageManager.getLaunchIntentForPackage(SHIZUKU_PACKAGE)
         if (launch != null) {
             launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            runCatching { context.startActivity(launch) }
+            cancellableCatching("ClipboardShizukuAccess openManager") { context.startActivity(launch) }
                 .onFailure { error -> Log.w(TAG, "open shizuku failed :: ${error.message}") }
             return
         }
@@ -154,13 +155,13 @@ object ClipboardShizukuAccess {
             android.content.Intent.ACTION_VIEW,
             android.net.Uri.parse("https://shizuku.rikka.app/")
         ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(site) }
+        cancellableCatching("ClipboardShizukuAccess openManager 2") { context.startActivity(site) }
             .onFailure { error -> Log.w(TAG, "open shizuku site failed :: ${error.message}") }
     }
 
     fun tryReadText(): String? {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild || !shouldUse()) return null
-        val text = runCatching { readViaIClipboard() }
+        val text = cancellableCatching("ClipboardShizukuAccess tryReadText") { readViaIClipboard() }
             .onFailure { error -> Log.w(TAG, "privileged clipboard read failed :: ${error.message}") }
             .getOrNull()
             ?.let { ClipboardCopySignals.usableText(it) }
@@ -172,7 +173,7 @@ object ClipboardShizukuAccess {
 
     fun tryWriteText(text: String): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild || !shouldUse() || text.isBlank()) return false
-        return runCatching { writeViaIClipboard(text) }
+        return cancellableCatching("ClipboardShizukuAccess tryWriteText") { writeViaIClipboard(text) }
             .onFailure { error -> Log.w(TAG, "privileged clipboard write failed :: ${error.message}") }
             .getOrDefault(false)
     }
@@ -214,7 +215,7 @@ object ClipboardShizukuAccess {
     }
 
     private fun systemClipboardBinder(): IBinder? {
-        val helper = runCatching {
+        val helper = cancellableCatching("ClipboardShizukuAccess systemClipboardBinder") {
             Class.forName("rikka.shizuku.SystemServiceHelper")
                 .getMethod("getSystemService", String::class.java)
                 .invoke(null, "clipboard") as? IBinder
@@ -226,7 +227,7 @@ object ClipboardShizukuAccess {
     }
 
     private fun wrapBinder(raw: IBinder): IBinder? {
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess wrapBinder") {
             val wrapperClass = Class.forName("rikka.shizuku.ShizukuBinderWrapper")
             wrapperClass.getConstructor(IBinder::class.java).newInstance(raw) as? IBinder
         }.getOrNull()
@@ -234,21 +235,21 @@ object ClipboardShizukuAccess {
 
     private fun pingBinder(): Boolean {
         val clazz = shizukuClass ?: return false
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess pingBinder") {
             clazz.getMethod("pingBinder").invoke(null) as? Boolean
         }.getOrNull() ?: false
     }
 
     private fun getBinder(): IBinder? {
         val clazz = shizukuClass ?: return null
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess getBinder") {
             clazz.getMethod("getBinder").invoke(null) as? IBinder
         }.getOrNull()
     }
 
     private fun checkSelfPermission(): Int {
         val clazz = shizukuClass ?: return PackageManager.PERMISSION_DENIED
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess checkSelfPermission") {
             clazz.getMethod("checkSelfPermission").invoke(null) as? Int
         }.getOrNull() ?: PackageManager.PERMISSION_DENIED
     }
@@ -260,7 +261,7 @@ object ClipboardShizukuAccess {
 
     private fun getUid(): Int {
         val clazz = shizukuClass ?: return Process.myUid()
-        return runCatching {
+        return cancellableCatching("ClipboardShizukuAccess getUid") {
             clazz.getMethod("getUid").invoke(null) as? Int
         }.getOrNull() ?: Process.myUid()
     }
@@ -271,13 +272,13 @@ object ClipboardShizukuAccess {
         pkg: String,
         extraFirst: Any? = null
     ): Any? {
-        val userId = runCatching {
+        val userId = cancellableCatching("ClipboardShizukuAccess invokeNamed") {
             Class.forName("android.os.UserHandle").getMethod("myUserId").invoke(null) as Int
         }.getOrDefault(0)
         val methods = target.javaClass.methods.filter { it.name == methodName }
         for (method in methods.sortedBy { it.parameterCount }) {
             val args = argumentsFor(method.parameterTypes, pkg, userId, extraFirst) ?: continue
-            val result = runCatching { method.invoke(target, *args) }.getOrNull()
+            val result = cancellableCatching("ClipboardShizukuAccess invokeNamed 2") { method.invoke(target, *args) }.getOrNull()
             if (result != null || method.returnType == Void.TYPE) return result ?: true
         }
         return null

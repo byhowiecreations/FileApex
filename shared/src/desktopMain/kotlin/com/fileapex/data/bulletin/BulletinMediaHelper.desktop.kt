@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Base64
 import javax.imageio.ImageIO
+import com.fileapex.util.cancellableCatching
 
 actual object BulletinMediaHelper {
     private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
@@ -17,7 +18,7 @@ actual object BulletinMediaHelper {
         val file = File(absolutePath)
         if (!file.isFile) return null
         if (!isImageFile(file.name)) return null
-        val image = runCatching { ImageIO.read(file) }.getOrNull() ?: return null
+        val image = cancellableCatching("BulletinMediaHelper buildImagePreviewBase64") { ImageIO.read(file) }.getOrNull() ?: return null
         val fitted = BulletinPreviewFit.encode(BulletinBoardPolicy.IMAGE_PREVIEW_MAX_BYTES) { edge, quality ->
             val scale = minOf(
                 edge.toDouble() / image.width.coerceAtLeast(1),

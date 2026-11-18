@@ -9,6 +9,7 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlin.math.abs
+import com.fileapex.util.cancellableCatching
 
 @Serializable
 data class IrohAddressMessage(
@@ -100,10 +101,10 @@ object IrohAddressExchange {
     ): AddressAnswer {
         if (sender == null || sender.isRemoved || sender.deviceId != message.senderDeviceId) return AddressAnswer.Denied
         if (sender.publicKey.isBlank() || sender.publicKey != message.senderPublicKey) return AddressAnswer.Denied
-        val plain = runCatching {
+        val plain = cancellableCatching("IrohAddressExchange: crypto.decrypt") {
             crypto.decrypt(message.ciphertext, localDeviceId, sender.deviceId, sender.publicKey)
         }.getOrNull() ?: return AddressAnswer.Denied
-        val ask = runCatching {
+        val ask = cancellableCatching("IrohAddressExchange: json.decodeFromString") {
             json.decodeFromString(IrohAddressPayload.serializer(), plain.decodeToString())
         }.getOrNull() ?: return AddressAnswer.Invalid
         if (ask.stamp.length !in 16..64) return AddressAnswer.Invalid
@@ -137,10 +138,10 @@ object IrohAddressExchange {
     ): OpenedAddress? {
         if (source.isRemoved || reply.senderDeviceId != source.deviceId) return null
         if (source.publicKey.isBlank() || reply.senderPublicKey != source.publicKey) return null
-        val plain = runCatching {
+        val plain = cancellableCatching("IrohAddressExchange: crypto.decrypt") {
             crypto.decrypt(reply.ciphertext, localDeviceId, source.deviceId, source.publicKey)
         }.getOrNull() ?: return null
-        val payload = runCatching {
+        val payload = cancellableCatching("IrohAddressExchange: json.decodeFromString") {
             json.decodeFromString(IrohAddressPayload.serializer(), plain.decodeToString())
         }.getOrNull() ?: return null
         if (payload.stamp != stamp || !isValidAddress(payload.address)) return null
@@ -178,7 +179,7 @@ class IrohPeerBook private constructor(private val entries: Map<String, String>)
 
         fun parse(raw: String): IrohPeerBook {
             if (raw.isBlank()) return empty()
-            val map = runCatching { json.decodeFromString(serializer, raw) }.getOrNull() ?: return empty()
+            val map = cancellableCatching("IrohAddressExchange: json.decodeFromString") { json.decodeFromString(serializer, raw) }.getOrNull() ?: return empty()
             return IrohPeerBook(
                 map.filter { (id, address) -> id.isNotBlank() && IrohAddressExchange.isValidAddress(address) }
                     .entries.take(MAX_PEERS).associate { it.key to it.value }

@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
+import com.fileapex.util.cancellableCatching
 import java.awt.Window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -238,16 +239,16 @@ object DesktopMacTrayCoordinator {
     }
 
     private fun publishLocalApi() {
-        runCatching { LocalApiFile.publish(LocalApiInfo.payload(com.fileapex.data.identity.LocalIdentity.DEFAULT_SHARE_PORT)) }
+        cancellableCatching("DesktopMacTrayCoordinator publishLocalApi") { LocalApiFile.publish(LocalApiInfo.payload(com.fileapex.data.identity.LocalIdentity.DEFAULT_SHARE_PORT)) }
     }
 
     private fun handleSend(deviceIdsJson: String, filePathsJson: String) {
         if (!DesktopPlatformPaths.isMacOs()) return
         scope.launch {
-            val allIds = runCatching {
+            val allIds = cancellableCatching("DesktopMacTrayCoordinator handleSend") {
                 json.decodeFromString<List<String>>(deviceIdsJson)
             }.getOrDefault(emptyList())
-            val filePaths = runCatching {
+            val filePaths = cancellableCatching("DesktopMacTrayCoordinator handleSend 2") {
                 json.decodeFromString<List<String>>(filePathsJson)
             }.getOrDefault(emptyList())
             if (allIds.isEmpty() || filePaths.isEmpty()) return@launch
@@ -279,6 +280,7 @@ object DesktopMacTrayCoordinator {
             } catch (error: kotlin.coroutines.cancellation.CancellationException) {
                 throw error
             } catch (error: Exception) {
+                com.fileapex.util.logFailureOnce("DesktopMacTrayCoordinator send", error)
                 DesktopMacTrayBridge.showToast(error.message ?: com.fileapex.i18n.AppI18n.t("send_failed"))
             } finally {
                 DesktopMacTrayBridge.endBackgroundActivity()

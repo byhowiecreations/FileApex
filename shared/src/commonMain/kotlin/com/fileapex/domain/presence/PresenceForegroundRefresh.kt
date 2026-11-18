@@ -6,6 +6,7 @@ import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.fileapex.util.cancellableCatching
 
 /** App lifecycle hook, debounced foreground peer refresh (no idle background polling). */
 object PresenceForegroundRefresh {
@@ -20,7 +21,7 @@ object PresenceForegroundRefresh {
 
     fun onAppForegrounded() {
         _isForeground.value = true
-        runCatching { com.fileapex.network.FileApexMdnsBrowser.requestProbe() }
+        cancellableCatching("PresenceForegroundRefresh: com.fileapex.network.FileApexMdnsBrowser.re") { com.fileapex.network.FileApexMdnsBrowser.requestProbe() }
         if (!FileApexServices.isDatabaseReady()) return
         _foregroundedAtMs.value = TimeUtils.now()
         FileApexServices.presenceMonitor.setAppInForeground(true)

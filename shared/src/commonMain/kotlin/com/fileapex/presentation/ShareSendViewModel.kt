@@ -121,7 +121,7 @@ class ShareSendViewModel(
             _uiState.update {
                 it.copy(isPreparing = true, errorMessage = null, statusMessage = AppI18n.t("preparing"))
             }
-            cancellableCatching {
+            cancellableCatching("ShareSendViewModel prepareDestinations") {
                 transferManager.awaitReady()
                 val onlineIds = FileApexServices.presenceMonitor.onlineDeviceIds.value
                 val options = transferManager.buildShareSheetDeviceOptions()
@@ -160,7 +160,7 @@ class ShareSendViewModel(
                     statusMessage = AppI18n.t("sending")
                 )
             }
-            cancellableCatching {
+            cancellableCatching("ShareSendViewModel sendDirectToDevice") {
                 transferManager.awaitReady()
                 transferManager.resolveRemoteDeviceOptionsForImmediateSend(listOf(deviceId))
             }.fold(
@@ -192,7 +192,7 @@ class ShareSendViewModel(
         _uiState.update {
             it.copy(isSending = true, errorMessage = null, statusMessage = AppI18n.t("sending"))
         }
-        cancellableCatching {
+        cancellableCatching("ShareSendViewModel runSend") {
             check(payload.hasResolvedPaths) { AppI18n.t("preparing_shared_files") }
             transferManager.awaitReady()
             val sources = payload.files.map { it.toSource().verifiedFromDisk() }

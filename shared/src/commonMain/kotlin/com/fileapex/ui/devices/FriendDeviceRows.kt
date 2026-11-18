@@ -28,6 +28,7 @@ import com.fileapex.friends.ui.FriendSendTarget
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.FRIEND_ROW_PREFIX
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -103,7 +104,7 @@ fun rememberFriendDeviceActions(showLocalFiles: () -> Unit): FriendDeviceActions
             onDismissRequest = { renaming = null },
             title = { Text(stringRes("friends_rename")) },
             text = { Column { OutlinedTextField(value = text, onValueChange = { text = it; failed = false }, singleLine = true); if (failed) Text(stringRes("friends_rename_failed")) } },
-            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.rename(key, text) }.onSuccess { renaming = null }.onFailure { failed = true } } }) { Text(stringRes("save")) } },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching("FriendDeviceRows rememberFriendDeviceActions") { FriendsHub.rename(key, text) }.onSuccess { renaming = null }.onFailure { failed = true } } }) { Text(stringRes("save")) } },
             dismissButton = { TextButton(onClick = { renaming = null }) { Text(stringRes("cancel")) } }
         )
     }

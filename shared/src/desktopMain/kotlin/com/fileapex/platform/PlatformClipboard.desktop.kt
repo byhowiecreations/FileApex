@@ -9,6 +9,7 @@ import java.net.URI
 import java.net.URL
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 import com.fileapex.domain.clipboard.ClipboardImageEnvelope
+import com.fileapex.util.cancellableCatching
 import java.awt.Graphics2D
 import java.awt.Image
 import java.awt.datatransfer.Transferable
@@ -40,18 +41,20 @@ actual object PlatformClipboard {
 
     actual fun getSystemClipboardTimestamp(): Long? = null
 
+    actual fun isSystemClipboardSensitive(): Boolean = DesktopClipboardMarkers.isMarked()
+
     actual fun getSystemClipboardImageBytes(): ByteArray? {
-        return runCatching {
+        return cancellableCatching("PlatformClipboard getSystemClipboardImageBytes") {
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-            val contents = clipboard.getContents(null) ?: return@runCatching null
-            if (!contents.isDataFlavorSupported(DataFlavor.imageFlavor)) return@runCatching null
-            val rawImage = contents.getTransferData(DataFlavor.imageFlavor) as? Image ?: return@runCatching null
+            val contents = clipboard.getContents(null) ?: return@cancellableCatching null
+            if (!contents.isDataFlavorSupported(DataFlavor.imageFlavor)) return@cancellableCatching null
+            val rawImage = contents.getTransferData(DataFlavor.imageFlavor) as? Image ?: return@cancellableCatching null
             encodeBoundedClipboardImage(toBufferedImage(rawImage))
         }.getOrNull()
     }
 
     actual fun setSystemClipboardText(text: String) {
-        runCatching {
+        cancellableCatching("PlatformClipboard setSystemClipboardText") {
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
             val selection = StringSelection(text)
             clipboard.setContents(selection, null)
@@ -69,7 +72,7 @@ actual object PlatformClipboard {
     }
 
     actual fun applyRemoteImage(bytes: ByteArray, mimeType: String, sourceDeviceName: String) {
-        val image = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull() ?: return
+        val image = cancellableCatching("PlatformClipboard applyRemoteImage") { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull() ?: return
         ClipboardShareSuppressor.isApplyingRemote = true
         try {
             val selection = object : Transferable {
@@ -140,7 +143,7 @@ actual object PlatformClipboard {
     }
 
     actual fun openUrlInDefaultBrowser(url: String) {
-        runCatching {
+        cancellableCatching("PlatformClipboard openUrlInDefaultBrowser") {
             if (Desktop.isDesktopSupported()) {
                 val desktop = Desktop.getDesktop()
                 if (desktop.isSupported(Desktop.Action.BROWSE)) {
@@ -156,28 +159,28 @@ actual object PlatformClipboard {
     }
 
     private fun readAwtClipboardText(): String? {
-        return runCatching {
+        return cancellableCatching("PlatformClipboard readAwtClipboardText") {
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-            val contents = clipboard.getContents(null) ?: return@runCatching null
+            val contents = clipboard.getContents(null) ?: return@cancellableCatching null
             if (contents.isDataFlavorSupported(DataFlavor.stringFlavor)) {
                 (contents.getTransferData(DataFlavor.stringFlavor) as? String)
                     ?.takeIf { it.isNotBlank() }
-                    ?.let { return@runCatching it }
+                    ?.let { return@cancellableCatching it }
             }
             val urlFlavor = DataFlavor("application/x-java-url;class=java.net.URL")
             if (contents.isDataFlavorSupported(urlFlavor)) {
                 when (val data = contents.getTransferData(urlFlavor)) {
-                    is URL -> data.toString().takeIf { it.isNotBlank() }?.let { return@runCatching it }
-                    is URI -> data.toString().takeIf { it.isNotBlank() }?.let { return@runCatching it }
-                    is String -> data.takeIf { it.isNotBlank() }?.let { return@runCatching it }
+                    is URL -> data.toString().takeIf { it.isNotBlank() }?.let { return@cancellableCatching it }
+                    is URI -> data.toString().takeIf { it.isNotBlank() }?.let { return@cancellableCatching it }
+                    is String -> data.takeIf { it.isNotBlank() }?.let { return@cancellableCatching it }
                 }
             }
             contents.transferDataFlavors.forEach { flavor ->
                 if (!flavor.isFlavorTextType) return@forEach
-                when (val data = runCatching { contents.getTransferData(flavor) }.getOrNull()) {
-                    is String -> data.takeIf { it.isNotBlank() }?.let { return@runCatching it }
-                    is Reader -> data.readText().takeIf { it.isNotBlank() }?.let { return@runCatching it }
-                    is CharSequence -> data.toString().takeIf { it.isNotBlank() }?.let { return@runCatching it }
+                when (val data = cancellableCatching("PlatformClipboard readAwtClipboardText 2") { contents.getTransferData(flavor) }.getOrNull()) {
+                    is String -> data.takeIf { it.isNotBlank() }?.let { return@cancellableCatching it }
+                    is Reader -> data.readText().takeIf { it.isNotBlank() }?.let { return@cancellableCatching it }
+                    is CharSequence -> data.toString().takeIf { it.isNotBlank() }?.let { return@cancellableCatching it }
                 }
             }
             null

@@ -61,6 +61,7 @@ import com.fileapex.ui.tools.FileListPage
 import com.fileapex.ui.tools.FolderSizesPage
 import com.fileapex.ui.tools.ToolsHome
 import com.fileapex.ui.tools.TrashPage
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -157,7 +158,7 @@ internal fun StorageToolsScreen(
     fun reload() {
         scope.launch {
             loading = true
-            val result = withContext(Dispatchers.IO) { runCatching { scanStorage() to listTrashed() } }
+            val result = withContext(Dispatchers.IO) { cancellableCatching("StorageToolsScreen reload") { scanStorage() to listTrashed() } }
             result.onSuccess { (fresh, trashed) ->
                 scan = fresh
                 trash = trashed

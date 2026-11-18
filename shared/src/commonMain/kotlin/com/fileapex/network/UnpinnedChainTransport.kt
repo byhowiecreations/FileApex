@@ -4,13 +4,16 @@ import com.fileapex.data.device.DeviceRepository
 import com.fileapex.membership.ChainAnswer
 import com.fileapex.membership.ChainRecord
 import com.fileapex.membership.ChainTransport
-import com.fileapex.util.cancellableCatching
 
 /** Reads a peer's signed chain on its TLS port without holding it to the stored pin. It cannot push. */
 internal class UnpinnedChainTransport(
     private val repository: DeviceRepository,
-    private val http: FileApexClient
+    private val http: FileApexClient,
+    log: (String) -> Unit = { println(it) }
 ) : ChainTransport {
+    private val peers = PeerExchange(log)
+
+
     override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>): ChainAnswer? = null
 
     override suspend fun join(peerId: String, key: String, tlsPin: String, profile: com.fileapex.domain.peer.PeerNodeState?): ChainAnswer? = null
@@ -18,9 +21,10 @@ internal class UnpinnedChainTransport(
     override suspend fun pull(peerId: String): ChainAnswer? {
         val peer = repository.getDevice(peerId)?.takeUnless { it.isRemoved } ?: return null
         if (peer.tlsPort !in 1..65535) return null
-        return cancellableCatching {
-            decode(peerChainGetUnpinned(peer.lastKnownIp, peer.tlsPort, FileApexClient.PEER_REQUEST_TIMEOUT_MS), http.json)
-        }.getOrNull()
+        return peers.answer(peerId, "unpinned chain read", okOnly = true, call = {
+            peerChainGetUnpinned(peer.lastKnownIp, peer.tlsPort, FileApexClient.PEER_REQUEST_TIMEOUT_MS)
+                ?: throw PeerUnreachableException("no answer")
+        }) { body -> decode(PeerBoundHttpResponse(200, body), http.json) ?: throw kotlinx.serialization.SerializationException("not a chain") }
     }
 
     internal companion object {

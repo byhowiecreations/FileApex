@@ -4,6 +4,7 @@ import com.fileapex.data.db.seal.FieldSealer
 import com.fileapex.data.seal.SealedText
 import com.fileapex.platform.DesktopPlatformPaths
 import java.io.File
+import com.fileapex.util.cancellableCatching
 
 private const val PURPOSE = "peer-labels"
 
@@ -17,7 +18,7 @@ private fun labelsFile(): File =
 actual fun readPeerDeviceNameLabels(): StoredPeerLabels {
     val file = labelsFile()
     if (!file.isFile) return StoredPeerLabels(emptyList(), true)
-    val stored = runCatching { file.readText() }.getOrDefault("")
+    val stored = cancellableCatching("DeviceNamePeerLabelsStore.desktop: file.readText") { file.readText() }.getOrDefault("")
     if (stored.isEmpty()) return StoredPeerLabels(emptyList(), true)
     val plain = SealedText.open(PURPOSE, stored) ?: return StoredPeerLabels(emptyList(), false)
     val labels = DeviceNamePeerLabelsStore.decode(plain)

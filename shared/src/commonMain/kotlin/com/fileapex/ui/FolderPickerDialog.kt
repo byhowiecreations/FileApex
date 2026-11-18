@@ -30,6 +30,7 @@ import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.defaultStorageRoot
 import com.fileapex.platform.fastScanDirectory
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -47,7 +48,7 @@ internal fun FolderPickerDialog(
     var folders by remember { mutableStateOf<List<RemoteFileItem>>(emptyList()) }
     LaunchedEffect(path) {
         folders = withContext(Dispatchers.IO) {
-            runCatching { fastScanDirectory(path).first.sortedBy { it.name.lowercase() } }.getOrDefault(emptyList())
+            cancellableCatching("FolderPickerDialog FolderPickerDialog") { fastScanDirectory(path).first.sortedBy { it.name.lowercase() } }.getOrDefault(emptyList())
         }
     }
     AlertDialog(

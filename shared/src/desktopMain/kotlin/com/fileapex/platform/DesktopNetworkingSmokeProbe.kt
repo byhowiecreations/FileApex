@@ -81,7 +81,7 @@ object DesktopNetworkingSmokeProbe {
     private fun checkAppDataDirectory(): SmokeCheck {
         val dir = DesktopPlatformPaths.applicationSupportDirectory()
         val probe = java.io.File(dir, ".smoke-write")
-        val writable = runCatching {
+        val writable = cancellableCatching("DesktopNetworkingSmokeProbe checkAppDataDirectory") {
             probe.writeText("ok", Charsets.UTF_8)
             probe.delete()
             true
@@ -94,7 +94,7 @@ object DesktopNetworkingSmokeProbe {
     }
 
     private fun checkDatabaseBootstrap(): SmokeCheck = runBlocking {
-        cancellableCatching {
+        cancellableCatching("DesktopNetworkingSmokeProbe checkDatabaseBootstrap") {
             val db = createFileApexDatabase()
             db.deviceDao().getAllDevicesOnce()
             db.close()
@@ -148,7 +148,7 @@ object DesktopNetworkingSmokeProbe {
             )
         }
 
-        val bindAddress = runCatching { Inet4Address.getByName(host) }.getOrNull()
+        val bindAddress = cancellableCatching("DesktopNetworkingSmokeProbe checkJmdnsRoundTrip") { Inet4Address.getByName(host) }.getOrNull()
         if (bindAddress == null) {
             return@runBlocking SmokeCheck(
                 name = "jmdns_roundtrip",
@@ -157,7 +157,7 @@ object DesktopNetworkingSmokeProbe {
             )
         }
 
-        cancellableCatching {
+        cancellableCatching("DesktopNetworkingSmokeProbe checkJmdnsRoundTrip 2") {
             val jmdns = JmDNS.create(bindAddress)
             try {
                 val listener = object : ServiceListener {
@@ -191,7 +191,7 @@ object DesktopNetworkingSmokeProbe {
                 delay(2_000)
                 jmdns.removeServiceListener(FileApexMdns.SERVICE_TYPE, listener)
             } finally {
-                runCatching {
+                cancellableCatching("DesktopNetworkingSmokeProbe serviceResolved") {
                     jmdns.unregisterAllServices()
                     jmdns.close()
                 }
@@ -204,7 +204,7 @@ object DesktopNetworkingSmokeProbe {
             )
         }
 
-        val stackProbe = cancellableCatching {
+        val stackProbe = cancellableCatching("DesktopNetworkingSmokeProbe serviceResolved 2") {
             FileApexMdnsBrowser.start { _, _, _ -> }
             FileApexMdnsAdvertiser.start(SMOKE_MDNS_PORT, "stack-probe")
             FileApexMdnsAdvertiser.stop()
@@ -237,7 +237,7 @@ object DesktopNetworkingSmokeProbe {
 
     private fun checkShareServerHealth(): SmokeCheck {
         val server = FileApexServer(port = SMOKE_HTTP_PORT)
-        return cancellableCatching {
+        return cancellableCatching("DesktopNetworkingSmokeProbe checkShareServerHealth") {
             server.start()
             check(server.isRunning) { "engine not running" }
             val status = httpGetStatus("127.0.0.1", SMOKE_HTTP_PORT, "/api/v1/health")
@@ -254,7 +254,7 @@ object DesktopNetworkingSmokeProbe {
                 detail = error.message ?: error.toString()
             )
         }.also {
-            cancellableCatching { server.stop() }
+            cancellableCatching("DesktopNetworkingSmokeProbe checkShareServerHealth 2") { server.stop() }
         }
     }
 

@@ -52,14 +52,14 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/auth/verify-pin") {
-        runCatching {
+        cancellableCatching {
             if (server.pairingThrottle.hitAndCheck(call.request.local.remoteAddress.trim(), com.fileapex.util.TimeUtils.now())) {
                 call.respond(HttpStatusCode.TooManyRequests, "slow_down")
-                return@runCatching
+                return@cancellableCatching
             }
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             call.respond(HttpStatusCode.OK)
         }.onFailure { error ->

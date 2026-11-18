@@ -45,7 +45,7 @@ actual fun sendWakeBroadcastOnPrimaryInterface() {
             )
             directedBroadcastOrNull(localIp, networkInterface)?.let { targets.add(it) }
             for (target in targets) {
-                cancellableCatching {
+                cancellableCatching("LanWakeBroadcast.jvm: InetAddress.getByName") {
                     val address = InetAddress.getByName(target)
                     for (payload in payloads) {
                         socket.send(DatagramPacket(payload, payload.size, address, WakeProtocol.PORT))

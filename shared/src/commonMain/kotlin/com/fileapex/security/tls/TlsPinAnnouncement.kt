@@ -8,6 +8,7 @@ import com.fileapex.domain.clipboard.ClipboardE2ee
 import com.fileapex.membership.memberCanCommandMembership
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** [ciphertext] is [TlsPinPayload] sealed with the pair's clipboard E2EE key. */
 @Serializable
@@ -131,7 +132,7 @@ object TlsPinAnnouncements {
         if (device.publicKey.isBlank() || device.publicKey != announcement.senderPublicKey) {
             return TlsAnnouncementOutcome.SenderKeyMismatch
         }
-        val plain = runCatching {
+        val plain = cancellableCatching("TlsPinAnnouncement: crypto.decrypt") {
             crypto.decrypt(
                 ciphertextBase64 = announcement.ciphertext,
                 localDeviceId = localDeviceId,
@@ -139,7 +140,7 @@ object TlsPinAnnouncements {
                 peerPublicKeyBase64 = device.publicKey
             )
         }.getOrNull() ?: return TlsAnnouncementOutcome.Undecryptable
-        val payload = runCatching {
+        val payload = cancellableCatching("TlsPinAnnouncement: json.decodeFromString") {
             json.decodeFromString(TlsPinPayload.serializer(), plain.decodeToString())
         }.getOrNull() ?: return TlsAnnouncementOutcome.Invalid
         val pin = payload.pin.lowercase()

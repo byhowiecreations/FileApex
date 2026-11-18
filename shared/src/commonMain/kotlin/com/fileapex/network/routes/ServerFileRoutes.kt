@@ -174,12 +174,12 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     }
 
     get("/api/v1/files/resume") {
-        runCatching {
+        cancellableCatching {
             val preferredPathStr = server.targetPathParam(call)
-                ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+                ?: return@cancellableCatching call.respond(HttpStatusCode.BadRequest)
             if (!server.isPathAllowed(preferredPathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
+                return@cancellableCatching
             }
             val expectedSize = call.request.queryParameters[TransferResumeProtocol.EXPECTED_SIZE_QUERY]
                 ?.toLongOrNull()
@@ -521,14 +521,14 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/files/mkdir") {
-        runCatching {
+        cancellableCatching {
             val pathStr = server.targetPathParam(call)
-                ?: return@runCatching call.respond(HttpStatusCode.BadRequest, "Missing targetPath")
+                ?: return@cancellableCatching call.respond(HttpStatusCode.BadRequest, "Missing targetPath")
             if (!server.isPathAllowed(pathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
+                return@cancellableCatching
             }
-            if (server.denyWrite(call, pathStr)) return@runCatching
+            if (server.denyWrite(call, pathStr)) return@cancellableCatching
             val dir = java.io.File(pathStr)
             dir.mkdirs()
             call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)

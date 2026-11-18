@@ -59,7 +59,7 @@ object TerminalConsole {
 
     private val kernel32: WinKernel32? by lazy {
         if (isWindows) {
-            runCatching { Native.load("kernel32", WinKernel32::class.java) }.getOrNull()
+            cancellableCatching("TerminalConsole GetConsoleScreenBufferInfo") { Native.load("kernel32", WinKernel32::class.java) }.getOrNull()
         } else {
             null
         }
@@ -97,7 +97,7 @@ object TerminalConsole {
     }
 
     private fun enableRawModeWindowsJline(): Boolean {
-        return runCatching {
+        return cancellableCatching("TerminalConsole enableRawModeWindowsJline") {
             val terminal = TerminalBuilder.builder()
                 .system(true)
                 .jna(true)
@@ -123,7 +123,7 @@ object TerminalConsole {
     }
 
     private fun restoreWindowsJline() {
-        runCatching {
+        cancellableCatching("TerminalConsole restoreWindowsJline") {
             val terminal = jlineTerminal
             val saved = jlineSavedAttributes
             if (terminal != null && saved != null) {
@@ -173,7 +173,7 @@ object TerminalConsole {
     }
 
     private fun enableRawModeUnix(): Boolean {
-        return cancellableCatching {
+        return cancellableCatching("TerminalConsole enableRawModeUnix") {
             val pb = ProcessBuilder("/bin/sh", "-c", "stty raw -echo opost < /dev/tty").inheritIO()
             val p = pb.start()
             p.waitFor() == 0
@@ -181,7 +181,7 @@ object TerminalConsole {
     }
 
     private fun restoreUnix() {
-        cancellableCatching {
+        cancellableCatching("TerminalConsole restoreUnix") {
             val pb = ProcessBuilder("/bin/sh", "-c", "stty sane < /dev/tty").inheritIO()
             val p = pb.start()
             p.waitFor()
@@ -248,7 +248,7 @@ object TerminalConsole {
     }
 
     private fun queryUnixTerminalSize(): Pair<Int, Int> {
-        val sttyOutput = cancellableCatching {
+        val sttyOutput = cancellableCatching("TerminalConsole queryUnixTerminalSize") {
             val p = ProcessBuilder("/bin/sh", "-c", "stty size < /dev/tty").start()
             val text = p.inputStream.bufferedReader().readText().trim()
             p.waitFor()
@@ -276,7 +276,7 @@ object TerminalConsole {
 
     fun readKey(input: InputStream = System.`in`): KeyEvent? {
         if (!rawModeEnabled) {
-            val line = runCatching { readLine() }.getOrNull() ?: return null
+            val line = cancellableCatching("TerminalConsole readKey") { readLine() }.getOrNull() ?: return null
             val trimmed = line.trim()
             if (trimmed.isEmpty()) return KeyEvent(KeyAction.ENTER)
             return KeyEvent(KeyAction.CHAR, trimmed[0])
@@ -287,24 +287,24 @@ object TerminalConsole {
             return readKeyJline(reader)
         }
 
-        val available = runCatching { input.available() }.getOrDefault(0)
+        val available = cancellableCatching("TerminalConsole readKey 2") { input.available() }.getOrDefault(0)
         if (available <= 0) {
             return null
         }
 
-        val b1 = runCatching { input.read() }.getOrDefault(-1)
+        val b1 = cancellableCatching("TerminalConsole readKey 3") { input.read() }.getOrDefault(-1)
         if (b1 == -1) return null
         return decodeKeyByte(b1, input)
     }
 
     private fun readKeyJline(reader: NonBlockingReader): KeyEvent? {
         // NonBlockingReader.READ_EXPIRED == -2
-        val b1 = runCatching { reader.read(15L) }.getOrDefault(NonBlockingReader.READ_EXPIRED)
+        val b1 = cancellableCatching("TerminalConsole readKeyJline") { reader.read(15L) }.getOrDefault(NonBlockingReader.READ_EXPIRED)
         if (b1 == NonBlockingReader.READ_EXPIRED || b1 < 0) {
             return null
         }
         return decodeKeyByte(b1) { peekMs ->
-            runCatching { reader.read(peekMs) }.getOrDefault(NonBlockingReader.READ_EXPIRED)
+            cancellableCatching("TerminalConsole readKeyJline 2") { reader.read(peekMs) }.getOrDefault(NonBlockingReader.READ_EXPIRED)
                 .takeIf { it >= 0 }
         }
     }
@@ -360,7 +360,7 @@ object TerminalConsole {
 
         if (wasRaw) {
             if (jline != null && saved != null) {
-                runCatching { jline.setAttributes(saved) }
+                cancellableCatching("TerminalConsole readLinePrompt") { jline.setAttributes(saved) }
             } else if (isWindows) {
                 restoreWindows()
             } else {

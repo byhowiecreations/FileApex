@@ -260,6 +260,7 @@ class ExplorerViewModel(
                 requestPinThen { browseWithPinRetry(block) }
                 return
             }
+            com.fileapex.util.logFailureOnce("ExplorerViewModel browse", error)
             _uiState.update {
                 it.copy(
                     isLoading = false,
@@ -282,7 +283,7 @@ class ExplorerViewModel(
     fun confirmPinUnlock(pin: String) {
         val remote = target as? BrowseTarget.Remote ?: return
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("ExplorerViewModel confirmPinUnlock") {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 FileApexServices.client.verifyPin(
                     host = remote.host,

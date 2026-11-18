@@ -3,6 +3,7 @@ package com.fileapex.data.files
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.platform.fastScanDirectory
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.io.files.Path
 
 class LocalFileRepository : com.fileapex.platform.Trimmable {
@@ -21,13 +22,13 @@ class LocalFileRepository : com.fileapex.platform.Trimmable {
     override fun trimMemory() = invalidateCache()
 
     fun listDirectory(absolutePath: String, bypassCache: Boolean = false): Result<DirectoryListing> {
-        return runCatching {
+        return cancellableCatching("LocalFileRepository listDirectory") {
             val now = TimeUtils.now()
             if (!bypassCache) {
                 synchronized(cacheLock) {
                     val cached = cache[absolutePath]
                     if (cached != null && (now - cached.timestampEpochMs) < CACHE_TTL_MS) {
-                        return@runCatching cached.listing
+                        return@cancellableCatching cached.listing
                     }
                 }
             }

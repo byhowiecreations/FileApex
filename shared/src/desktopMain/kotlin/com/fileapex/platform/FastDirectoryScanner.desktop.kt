@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 
 actual suspend fun prepareLocalDirectoryAccess(absolutePath: String) {
     withContext(Dispatchers.Main) {
-        cancellableCatching {
+        cancellableCatching("FastDirectoryScanner prepareLocalDirectoryAccess") {
             Files.newDirectoryStream(Paths.get(absolutePath)).close()
         }
     }
@@ -32,12 +32,12 @@ actual fun fastScanDirectory(absolutePath: String): Pair<List<RemoteFileItem>, L
             val fileName = entry.fileName?.toString() ?: continue
             if (isHiddenDotName(fileName)) continue
 
-            val attrs = runCatching {
+            val attrs = cancellableCatching("FastDirectoryScanner fastScanDirectory") {
                 Files.readAttributes(entry, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
             }.getOrNull()
 
             val isDir = attrs?.isDirectory ?: Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)
-            val size = if (isDir) 0L else (attrs?.size() ?: runCatching { Files.size(entry) }.getOrDefault(0L)).coerceAtLeast(0L)
+            val size = if (isDir) 0L else (attrs?.size() ?: cancellableCatching("FastDirectoryScanner fastScanDirectory 2") { Files.size(entry) }.getOrDefault(0L)).coerceAtLeast(0L)
             val lastModified = attrs?.lastModifiedTime()?.toMillis() ?: 0L
             val fullPath = entry.toAbsolutePath().toString()
 

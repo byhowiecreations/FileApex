@@ -26,6 +26,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.fileapex.network.sendWakeBroadcast
+import com.fileapex.util.cancellableCatching
 
 
 /**
@@ -211,7 +212,7 @@ class TransferManager(
             }
         } finally {
             TransferActivityGuard.endTransfer()
-            runCatching { FileApexServices.transferQueue.scheduleDrain() }
+            cancellableCatching("TransferManager: FileApexServices.transferQueue.scheduleDrain") { FileApexServices.transferQueue.scheduleDrain() }
         }
     }
 
@@ -224,7 +225,7 @@ class TransferManager(
         val remoteTargets = selectedDevices.filter { !it.isLocal }
         if (remoteTargets.isNotEmpty()) {
             CoroutineScope(Dispatchers.IO).launch {
-                runCatching { sendWakeBroadcast() }
+                cancellableCatching("TransferManager: sendWakeBroadcast") { sendWakeBroadcast() }
             }
         }
         val devicesForTransfer = if (remoteTargets.isEmpty()) {
@@ -335,15 +336,6 @@ class TransferManager(
         return merged
     }
 
-    private fun MultiCopyResult.mergedWith(retry: MultiCopyResult): MultiCopyResult {
-        val retriedIds = retry.succeededDeviceIds + retry.failures.keys
-        return copy(
-            succeededDeviceIds = succeededDeviceIds + retry.succeededDeviceIds,
-            failures = failures.filterKeys { it !in retriedIds } + retry.failures,
-            unreachableDeviceIds = unreachableDeviceIds.filterTo(HashSet()) { it !in retriedIds } + retry.unreachableDeviceIds
-        )
-    }
-
     private suspend fun refreshRemoteHosts(
         options: List<MultiCopyDeviceOption>
     ): List<MultiCopyDeviceOption> = options.map { option ->
@@ -392,16 +384,21 @@ data class TransferBatchResult(
     val allFailed: Boolean,
     val partialFailure: Boolean
 ) {
+    /** Devices whose user cancelled the receive. The queue pauses these instead of retrying them. */
+    val cancelledByReceiverDeviceIds: Set<String> get() = results.flatMapTo(HashSet()) { it.cancelledByReceiverDeviceIds }
+
     companion object {
         fun from(
             results: List<MultiCopyResult>,
             sources: List<MultiCopySource>,
             selectedDevices: List<MultiCopyDeviceOption>
         ): TransferBatchResult {
-            val failCount = results.sumOf { it.failures.size }
+            val cancelledIds = results.flatMapTo(HashSet()) { it.cancelledByReceiverDeviceIds }
+            val failCount = results.sumOf { result -> result.failures.keys.count { it !in result.cancelledByReceiverDeviceIds } }
             val okDevices = results.flatMap { it.succeededDeviceIds }.toSet()
             val allFailed = okDevices.isEmpty() && failCount > 0
             val message = when {
+                failCount == 0 && cancelledIds.isNotEmpty() -> AppI18n.t("send_cancelled_by_receiver")
                 failCount == 0 -> {
                     val deviceLabel = if (selectedDevices.size == 1) {
                         selectedDevices.first().deviceName

@@ -6,6 +6,7 @@ import com.fileapex.tailscale.writeTailscaleDialToken
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.coroutines.cancellation.CancellationException
+import com.fileapex.util.cancellableCatching
 
 internal suspend fun PeerHttpPlatform.executeBoundGetStreamingOnLocalIp(
     localIp: String,
@@ -18,6 +19,9 @@ internal suspend fun PeerHttpPlatform.executeBoundGetStreamingOnLocalIp(
     onStatus: ((Int) -> Unit)?,
     dialToken: String = ""
 ): PeerBoundStreamResult {
+    if (PeerHttpClientSwitch.useOkHttp) {
+        return okHttpGetStreaming(localIp, host, port, pathWithQuery, connectTimeoutMs, readIdleTimeoutMs, onChunk, onStatus, dialToken)
+    }
     val connectTimeout = bindConnectTimeoutMs(localIp, connectTimeoutMs)
     val idleTimeout = readIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
     val socket = Socket()
@@ -82,7 +86,10 @@ internal suspend fun PeerHttpPlatform.executeBoundGetStreamingOnLocalIp(
         }
         return PeerBoundStreamResult(statusCode = statusCode)
     } finally {
-        runCatching { socket.close() }
+        try {
+            socket.close()
+        } catch (_: java.io.IOException) {
+        }
     }
 }
 
@@ -98,6 +105,10 @@ internal suspend fun PeerHttpPlatform.executeBoundUploadOnLocalIp(
     dialToken: String = "",
     writeBody: suspend (java.io.OutputStream) -> Unit
 ): PeerBoundHttpResponse {
+    // OkHttp frames an upload of unknown length as chunked; the wire stays as it was by sending those on the legacy path.
+    if (PeerHttpClientSwitch.useOkHttp && contentLength != null) {
+        return okHttpUpload(localIp, host, port, pathWithQuery, contentType, connectTimeoutMs, uploadIdleTimeoutMs, contentLength, dialToken, writeBody)
+    }
     val connectTimeout = bindConnectTimeoutMs(localIp, connectTimeoutMs)
     val idleTimeout = uploadIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
     val socket = Socket()
@@ -159,6 +170,7 @@ internal fun PeerHttpPlatform.executeBoundHttpOnLocalIp(
     timeoutMs: Long,
     dialToken: String = ""
 ): PeerBoundHttpResponse {
+    if (PeerHttpClientSwitch.useOkHttp) return okHttpSmall(localIp, host, port, method, path, body, contentType, timeoutMs, dialToken)
     val connectTimeout = bindConnectTimeoutMs(localIp, timeoutMs)
     val readTimeout = timeoutMs.coerceIn(250L, 60_000L).toInt()
     Socket().use { socket ->

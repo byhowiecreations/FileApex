@@ -93,7 +93,7 @@ class ChainStateSource(
             held to stale
         }
         if (known == null) return build(t) ?: NO_PROFILE
-        if (rebuild) scope.launch { cancellableCatching { build(t) } }
+        if (rebuild) scope.launch { cancellableCatching("building the chain state field") { build(t) } }
         return known
     }
 

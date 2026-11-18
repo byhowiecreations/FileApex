@@ -51,10 +51,10 @@ object ServerLifecycleManager {
             BackgroundPresenceServices.start()
             return
         }
-        cancellableCatching { current?.stop() }
+        cancellableCatching { current?.stop() }.onFailure { onLog("Stopping the previous server failed", it) }
         stopTlsFrontLocked(onLog)
         val identity = loadLocalIdentity()
-        val front = runCatching { TlsFrontProvider.factory?.invoke(LanInterfaceBinding.shareServerListenHost()) }
+        val front = cancellableCatching { TlsFrontProvider.factory?.invoke(LanInterfaceBinding.shareServerListenHost()) }
             .onFailure { error -> onLog("TLS front unavailable, serving HTTP only", error) }
             .getOrNull()
         val server = FileApexServer(
@@ -96,7 +96,7 @@ object ServerLifecycleManager {
                 }
                 .onFailure { error ->
                     onLog("TLS front failed to start, serving HTTP only", error)
-                    cancellableCatching { front.stop() }
+                    cancellableCatching { front.stop() }.onFailure { stopError -> onLog("Stopping the TLS front failed", stopError) }
                 }
         }
         BackgroundPresenceServices.onShareServerStarted(identity.sharePort, identity.deviceId)

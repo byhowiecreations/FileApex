@@ -9,6 +9,7 @@ import com.fileapex.platform.log.Log
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 
 /** AlarmManager FGS recovery for [FileApexWatchdogReceiver]; prefs use device-protected storage for direct boot. */
 object ServiceWatchdogScheduler {
@@ -58,7 +59,7 @@ object ServiceWatchdogScheduler {
         val pendingIntent = pendingIntent(context)
         val useExact = !com.fileapex.di.FileApexServices.isPlayStoreBuild && canScheduleExactAlarms(alarmManager)
         setExactAlarmWarning(context, if (com.fileapex.di.FileApexServices.isPlayStoreBuild) false else !useExact)
-        runCatching {
+        cancellableCatching("ServiceWatchdogScheduler scheduleAt") {
             when {
                 useExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
                     alarmManager.setExactAndAllowWhileIdle(
@@ -103,7 +104,7 @@ object ServiceWatchdogScheduler {
     fun cancel(context: Context) {
         lastScheduledTriggerAt = 0L
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        runCatching {
+        cancellableCatching("ServiceWatchdogScheduler cancel") {
             alarmManager.cancel(pendingIntent(context))
             Log.i(TAG, "Cancelled watchdog alarm")
         }.onFailure { error ->
@@ -178,7 +179,7 @@ object ServiceWatchdogScheduler {
 
     /** Mirror settings into device-protected storage for [LOCKED_BOOT_COMPLETED]. */
     fun syncWatchdogEnabledFromSettings(context: Context) {
-        val enabled = runCatching {
+        val enabled = cancellableCatching("ServiceWatchdogScheduler syncWatchdogEnabledFromSettings") {
             FileApexServices.settings.enableServiceWatchdog.value
         }.getOrDefault(true)
         syncWatchdogEnabledMirror(context, enabled)
@@ -192,7 +193,7 @@ object ServiceWatchdogScheduler {
 
     /** Mirror settings into device-protected storage for [LOCKED_BOOT_COMPLETED]. */
     fun syncAutoLaunchOnRebootFromSettings(context: Context) {
-        val enabled = runCatching {
+        val enabled = cancellableCatching("ServiceWatchdogScheduler syncAutoLaunchOnRebootFromSettings") {
             FileApexServices.settings.autoLaunchOnReboot.value
         }.getOrDefault(true)
         syncAutoLaunchOnRebootMirror(context, enabled)

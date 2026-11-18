@@ -3,6 +3,7 @@ package com.fileapex.domain.notifications
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
+import com.fileapex.util.cancellableCatching
 
 /**
  * TEMPORARY test aid for tracing how notification counts change on the computer.
@@ -25,7 +26,7 @@ internal object NotificationDebugLog {
 
     fun log(message: String) {
         val target = file ?: return
-        runCatching {
+        cancellableCatching("NotificationDebugLog: SimpleDateFormat") {
             val stamp = SimpleDateFormat("HH:mm:ss.SSS").format(Date())
             target.appendText("$stamp ${com.fileapex.util.LogRedactor.redact(message)}\n")
         }

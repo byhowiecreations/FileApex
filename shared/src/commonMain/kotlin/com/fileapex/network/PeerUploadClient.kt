@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import com.fileapex.util.logFailureOnce
 
 /**
  * Pushes files to paired peers (resumable and segmented uploads) and relays a file from one peer to another.
@@ -32,7 +33,7 @@ class PeerUploadClient internal constructor(private val http: FileApexClient, pr
         expectedSizeBytes: Long = 0L,
         transactionId: String = "", backup: Boolean = false
     ): Long {
-        return cancellableCatching {
+        return cancellableCatching("asking the receiver which bytes it already has") {
             PeerLanHttpPolicy.ensureRoute(host)
             val response = http.boundGet(
                 host = host,
@@ -57,7 +58,7 @@ class PeerUploadClient internal constructor(private val http: FileApexClient, pr
             response
         }.getOrNull()?.let { response ->
             if (response.statusCode !in 200..299) return@let 0L
-            runCatching {
+            cancellableCatching("reading the receiver's answer about received bytes") {
                 http.json.decodeFromString(ResumeOffsetResponse.serializer(), response.body).offset
             }.getOrDefault(0L).coerceAtLeast(0L)
         } ?: 0L
@@ -378,11 +379,9 @@ class PeerUploadClient internal constructor(private val http: FileApexClient, pr
                             withTimeoutOrNull(com.fileapex.iroh.IrohTransferProgress.pollTimeoutMs(host, port, CONFIRM_POLL_TIMEOUT_MS)) {
                                 querySegmentState(host, port, remoteTargetPath, totalSize, transactionId, prepare = false)
                             }
-                        } catch (cancelled: TransferCancelledException) {
-                            throw cancelled
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
+                            if (error is TransferCancelledException || error is CancellationException) throw error
+                            logFailureOnce("PeerUploadClient: polling the receiver's progress", error)
                             null
                         } ?: continue
                         if (polled.complete) continue
@@ -487,7 +486,7 @@ class PeerUploadClient internal constructor(private val http: FileApexClient, pr
                     TransferResumeProtocol.TIMESTAMP_QUERY to transactionTimestamp.toString()
                 )
             )
-            val result = transferCatching {
+            val result = transferCatching("sending a byte range to the receiver") {
                 PeerLanHttpPolicy.ensureRoute(host)
                 TransferRuntime.streamBudget(host).withPermit {
                     var reported = 0L

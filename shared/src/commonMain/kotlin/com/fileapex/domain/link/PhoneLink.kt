@@ -74,6 +74,6 @@ object PhoneLink {
         val device = FileApexServices.deviceRepository.getDevice(peerId) ?: return
         if (device.isRemoved || device.tlsPin.isEmpty() || !PeerPlatform.isDesktop(device.os, device.platform)) return
         val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return
-        cancellableCatching { FileApexServices.client.pingHealth(endpoint.host, endpoint.port, signal = signal) }
+        cancellableCatching("PhoneLink: FileApexServices.client.pingHealth") { FileApexServices.client.pingHealth(endpoint.host, endpoint.port, signal = signal) }
     }
 }

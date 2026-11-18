@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
+import com.fileapex.util.cancellableCatching
 
 /**
  * One secret kept in a file sealed by the first vault that works. The scheme of that vault is the first byte, so a later
@@ -24,7 +25,7 @@ internal class VaultFile(
         var chosen: TlsSecretVault = PlainTlsVault
         var sealed: ByteArray? = null
         for (vault in vaults + PlainTlsVault) {
-            val result = runCatching { vault.seal(plain) }
+            val result = cancellableCatching("VaultFile: vault.seal") { vault.seal(plain) }
             if (result.isSuccess) {
                 chosen = vault
                 sealed = result.getOrThrow()
@@ -54,10 +55,10 @@ internal class VaultFile(
 
     private fun writeAtomically(bytes: ByteArray) {
         directory.mkdirs()
-        runCatching { Files.setPosixFilePermissions(directory.toPath(), PosixFilePermissions.fromString("rwx------")) }
+        cancellableCatching("VaultFile: Files.setPosixFilePermissions") { Files.setPosixFilePermissions(directory.toPath(), PosixFilePermissions.fromString("rwx------")) }
         val temp = File(directory, "$fileName.tmp")
         temp.writeBytes(bytes)
-        runCatching { Files.setPosixFilePermissions(temp.toPath(), PosixFilePermissions.fromString("rw-------")) }
+        cancellableCatching("VaultFile: Files.setPosixFilePermissions") { Files.setPosixFilePermissions(temp.toPath(), PosixFilePermissions.fromString("rw-------")) }
         Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 }

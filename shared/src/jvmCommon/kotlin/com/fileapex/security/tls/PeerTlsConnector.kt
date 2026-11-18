@@ -12,6 +12,7 @@ import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509ExtendedTrustManager
+import com.fileapex.util.cancellableCatching
 
 class PeerPinMismatchException(val observedPin: String = "") : CertificateException("peer key does not match its pin")
 
@@ -81,7 +82,10 @@ object PeerTlsConnector {
             ssl.startHandshake()
             ssl
         } catch (e: Exception) {
-            runCatching { socket.close() }
+            try {
+                socket.close()
+            } catch (_: java.io.IOException) {
+            }
             val mismatch = e.findCause<PeerPinMismatchException>()
             if (mismatch != null) {
                 if (mismatch.observedPin.isNotEmpty()) {

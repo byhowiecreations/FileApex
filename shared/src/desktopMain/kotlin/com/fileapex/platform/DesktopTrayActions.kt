@@ -29,7 +29,7 @@ suspend fun sendTrayClipboard(deviceIds: List<String>): TrayActionMessage {
     if (ids.isEmpty()) return TrayActionMessage(AppI18n.t("clipboard_failed"), true)
     val names = mutableListOf<String>()
     for (id in ids) {
-        val result = cancellableCatching { ClipboardShareCoordinator.sendToDevice(id) }
+        val result = cancellableCatching("DesktopTrayActions sendTrayClipboard") { ClipboardShareCoordinator.sendToDevice(id) }
         val response = result.getOrNull()
         if (response == null) {
             val reason = result.exceptionOrNull()?.message.orEmpty().ifBlank { AppI18n.t("clipboard_failed") }
@@ -50,7 +50,7 @@ suspend fun postTrayNote(
 ): TrayActionMessage {
     val note = text.trim()
     if (note.isEmpty()) return TrayActionMessage(AppI18n.t("tray_post_hint"), true)
-    val result = cancellableCatching { post(note) }
+    val result = cancellableCatching("DesktopTrayActions postTrayNote") { post(note) }
     return if (result.isSuccess) {
         TrayActionMessage(AppI18n.t("posted_to_bulletin"), false)
     } else {

@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import com.fileapex.platform.log.Log
 import com.fileapex.shared.R
+import com.fileapex.util.cancellableCatching
 
 object AndroidNotificationChannels {
     /** Monochrome app silhouette, every FileApex status-bar notification icon. */
@@ -47,7 +48,7 @@ object AndroidNotificationChannels {
     fun ensureAppUpdatesChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        runCatching {
+        cancellableCatching("AndroidNotificationChannels ensureAppUpdatesChannel") {
             if (manager.getNotificationChannel(LEGACY_APP_UPDATES) != null) {
                 manager.deleteNotificationChannel(LEGACY_APP_UPDATES)
             }
@@ -113,8 +114,8 @@ object AndroidNotificationChannels {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_BATTERY_ALERTS_MIGRATED, false)) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        runCatching { manager.deleteNotificationChannel(LEGACY_BULLETIN_CRITICAL_CHANNEL) }
-        runCatching { manager.deleteNotificationChannel(LEGACY_BULLETIN_CRITICAL_CHANNEL_V1) }
+        cancellableCatching("AndroidNotificationChannels migrateLegacyBatteryAlertChannels") { manager.deleteNotificationChannel(LEGACY_BULLETIN_CRITICAL_CHANNEL) }
+        cancellableCatching("AndroidNotificationChannels migrateLegacyBatteryAlertChannels 2") { manager.deleteNotificationChannel(LEGACY_BULLETIN_CRITICAL_CHANNEL_V1) }
         prefs.edit().putBoolean(KEY_BATTERY_ALERTS_MIGRATED, true).apply()
     }
 
@@ -248,14 +249,14 @@ object AndroidNotificationChannels {
             Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL_V1 while active - deferring migration")
             deferred = true
         } else {
-            runCatching { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL_V1) }
+            cancellableCatching("AndroidNotificationChannels migrateLegacyShareServerChannels") { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL_V1) }
         }
 
         if (activeChannelIds.contains(LEGACY_SHARE_SERVER_CHANNEL)) {
             Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL while active - deferring migration")
             deferred = true
         } else {
-            runCatching { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL) }
+            cancellableCatching("AndroidNotificationChannels migrateLegacyShareServerChannels 2") { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL) }
         }
 
         val existing = manager.getNotificationChannel(SHARE_SERVER_ACTIVE)
@@ -267,7 +268,7 @@ object AndroidNotificationChannels {
                 )
                 deferred = true
             } else {
-                runCatching { manager.deleteNotificationChannel(SHARE_SERVER_ACTIVE) }
+                cancellableCatching("AndroidNotificationChannels migrateLegacyShareServerChannels 3") { manager.deleteNotificationChannel(SHARE_SERVER_ACTIVE) }
             }
         }
 

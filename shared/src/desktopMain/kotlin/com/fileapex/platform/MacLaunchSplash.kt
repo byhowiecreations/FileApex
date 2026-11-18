@@ -21,7 +21,7 @@ object MacLaunchSplash {
 
     fun show() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        cancellableCatching {
+        cancellableCatching("MacLaunchSplash show") {
             SwingUtilities.invokeAndWait {
                 if (window != null) return@invokeAndWait
                 val icon = DesktopAppIcon.loadTrayImage()?.getScaledInstance(96, 96, Image.SCALE_SMOOTH)
@@ -53,7 +53,7 @@ object MacLaunchSplash {
         if (!DesktopPlatformPaths.isMacOs()) return
         val toClose = window ?: return
         window = null
-        runCatching {
+        cancellableCatching("MacLaunchSplash hide") {
             SwingUtilities.invokeLater {
                 toClose.isVisible = false
                 toClose.dispose()

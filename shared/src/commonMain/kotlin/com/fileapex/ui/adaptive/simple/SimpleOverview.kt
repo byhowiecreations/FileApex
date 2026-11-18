@@ -274,7 +274,7 @@ private fun rememberClipboardCardState(
         val entity = FileApexServices.deviceRepository.getDevice(device.deviceId) ?: return@LaunchedEffect
         val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(entity) ?: return@LaunchedEffect
         do {
-            val fetched = cancellableCatching {
+            val fetched = cancellableCatching("SimpleOverview rememberClipboardCardState") {
                 FileApexServices.client.clipboard.getClipboardStatus(endpoint.host, endpoint.port).sharingEnabled
             }.getOrNull()
             sharingEnabled = fetched

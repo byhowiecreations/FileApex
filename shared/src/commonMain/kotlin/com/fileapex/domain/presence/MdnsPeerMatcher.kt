@@ -29,7 +29,7 @@ internal class MdnsPeerMatcher(private val roster: MdnsRosterHost) {
         }
         roster.devices().firstOrNull { device -> device.lastKnownIp.trim() == host }?.let { return it }
 
-        val state = cancellableCatching {
+        val state = cancellableCatching("MdnsPeerMatcher: roster.fetchNodeState") {
             roster.fetchNodeState(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
         }.getOrNull() ?: return null
         val stateId = state.deviceId.trim()

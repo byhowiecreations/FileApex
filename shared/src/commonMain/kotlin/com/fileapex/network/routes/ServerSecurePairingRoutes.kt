@@ -209,7 +209,7 @@ private suspend fun FileApexServer.securePairingPeer(call: ApplicationCall): Bri
 private suspend fun <T> FileApexServer.decodeSecure(
     call: ApplicationCall,
     serializer: kotlinx.serialization.KSerializer<T>
-): T? = runCatching { json.decodeFromString(serializer, call.receiveBoundedText()) }.getOrElse { error ->
+): T? = cancellableCatching { json.decodeFromString(serializer, call.receiveBoundedText()) }.getOrElse { error ->
     onLog("Invalid secure pairing payload", error)
     call.respond(HttpStatusCode.BadRequest, "Invalid pairing payload")
     null

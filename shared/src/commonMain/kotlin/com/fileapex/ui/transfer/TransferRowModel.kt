@@ -37,7 +37,9 @@ data class TransferRowModel(
     val canCancel: Boolean,
     val canRetry: Boolean,
     val canRemove: Boolean,
-    val isSend: Boolean
+    val isSend: Boolean,
+    /** The cancel button only pauses the send (it stays queued for a retry), so it shows a pause icon. */
+    val cancelPauses: Boolean = false
 ) {
     val working: Boolean
         get() = state == TransferRowState.Active || state == TransferRowState.Preparing ||

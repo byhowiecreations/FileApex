@@ -14,6 +14,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.fileapex.util.cancellableCatching
 
 internal data class GoogleOAuthTokenResponse(
     val accessToken: String,
@@ -52,7 +53,7 @@ internal suspend fun exchangeGoogleServerAuthCode(serverAuthCode: String): Googl
 internal fun emailFromGoogleIdToken(idToken: String): String? {
     val payload = idToken.split('.').getOrNull(1) ?: return null
     val padded = payload + "=".repeat((4 - payload.length % 4) % 4)
-    val json = runCatching {
+    val json = cancellableCatching("reading the Google token exchange answer") {
         String(Base64.getUrlDecoder().decode(padded), Charsets.UTF_8)
     }.getOrNull() ?: return null
     val obj = Json.parseToJsonElement(json).jsonObject

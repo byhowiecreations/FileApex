@@ -1,5 +1,7 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
+
 /**
  * Cross-platform desktop JVM entry hooks. Mac-only registrars and native bridges
  * are invoked only when [DesktopPlatformPaths.isMacOs].
@@ -23,7 +25,7 @@ object DesktopJvmStartup {
     /** X11 names the window after the main class, so the launcher's StartupWMClass never matches. Needs --add-opens for sun.awt.X11. */
     private fun configureLinuxWindowClass() {
         if (!DesktopPlatformPaths.isLinux()) return
-        runCatching {
+        cancellableCatching("DesktopJvmStartup configureLinuxWindowClass") {
             val toolkit = java.awt.Toolkit.getDefaultToolkit()
             val field = toolkit.javaClass.getDeclaredField("awtAppClassName")
             field.isAccessible = true
@@ -39,7 +41,7 @@ object DesktopJvmStartup {
             val programData = System.getenv("ProgramData")?.trim().takeIf { !it.isNullOrBlank() && !it.contains("!") && !it.contains("#") }
                 ?: "C:\\ProgramData"
             val safeTemp = java.io.File(programData, "FileApex\\temp")
-            runCatching {
+            cancellableCatching("DesktopJvmStartup sanitizeTempDirectories") {
                 safeTemp.mkdirs()
                 System.setProperty("java.io.tmpdir", safeTemp.absolutePath)
                 System.setProperty("jna.tmpdir", safeTemp.absolutePath)

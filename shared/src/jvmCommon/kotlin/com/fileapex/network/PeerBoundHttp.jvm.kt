@@ -68,7 +68,7 @@ internal suspend fun PeerHttpPlatform.get(
     val loop = loopbackDial(host, port)
     if (loop == null && PlainHttpGuard.blocks(host, port, path)) return@withContext null
     if (loop != null) {
-        return@withContext runCatching {
+        return@withContext cancellableCatching("PeerBoundHttp.jvm: executeBoundHttpOnLocalIp") {
             executeBoundHttpOnLocalIp(
                 localIp = "127.0.0.1",
                 host = loop.host,
@@ -97,7 +97,7 @@ internal suspend fun PeerHttpPlatform.post(
     val loop = loopbackDial(host, port)
     if (loop == null && PlainHttpGuard.blocks(host, port, path)) return@withContext null
     if (loop != null) {
-        return@withContext runCatching {
+        return@withContext cancellableCatching("PeerBoundHttp.jvm: executeBoundHttpOnLocalIp") {
             executeBoundHttpOnLocalIp(
                 localIp = "127.0.0.1",
                 host = loop.host,
@@ -257,7 +257,7 @@ private fun PeerHttpPlatform.executeBoundHttp(
     timeoutMs: Long
 ): PeerBoundHttpResponse? {
     for (localIp in bindAttemptIps(host)) {
-        val response = runCatching {
+        val response = cancellableCatching {
             executeBoundHttpOnLocalIp(
                 localIp = localIp,
                 host = host,

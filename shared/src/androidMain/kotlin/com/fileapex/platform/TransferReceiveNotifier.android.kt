@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 
 private lateinit var notifierContext: Context
 
@@ -57,7 +58,7 @@ actual fun notifyFilesReceived(fileNames: List<String>) {
         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
         .build()
 
-    runCatching {
+    cancellableCatching("TransferReceiveNotifier notifyFilesReceived") {
         manager.notify(notificationId, notification)
     }.onFailure { error ->
         println("TransferReceiveNotifier: notify failed :: ${error.message}")

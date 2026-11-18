@@ -25,6 +25,16 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.util.cancellableCatching
 
 actual object PlatformClipboard {
+    private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
+
+    actual fun isSystemClipboardSensitive(): Boolean {
+        val context = androidAppContextOrNull() ?: return false
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
+        return cancellableCatching("PlatformClipboard isSystemClipboardSensitive") {
+            clipboard.primaryClipDescription?.extras?.getBoolean(EXTRA_IS_SENSITIVE, false) == true
+        }.getOrDefault(false)
+    }
+
     actual fun getSystemClipboardText(): String? {
         val context = androidAppContextOrNull() ?: return null
         return readClipboardText(context)
@@ -32,21 +42,21 @@ actual object PlatformClipboard {
 
     actual fun getSystemClipboardImageBytes(): ByteArray? {
         val context = androidAppContextOrNull() ?: return null
-        return runCatching {
+        return cancellableCatching("PlatformClipboard getSystemClipboardImageBytes") {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                ?: return@runCatching null
-            val clip = clipboard.primaryClip ?: return@runCatching null
-            if (clip.itemCount <= 0) return@runCatching null
-            val uri = clip.getItemAt(0)?.uri ?: return@runCatching null
+                ?: return@cancellableCatching null
+            val clip = clipboard.primaryClip ?: return@cancellableCatching null
+            if (clip.itemCount <= 0) return@cancellableCatching null
+            val uri = clip.getItemAt(0)?.uri ?: return@cancellableCatching null
             val mime = context.contentResolver.getType(uri)
                 ?: (0 until (clip.description?.mimeTypeCount ?: 0))
                     .map { clip.description.getMimeType(it) }
                     .firstOrNull { it.startsWith("image/") }
-                ?: return@runCatching null
-            if (!mime.startsWith("image/")) return@runCatching null
+                ?: return@cancellableCatching null
+            if (!mime.startsWith("image/")) return@cancellableCatching null
             val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
                 BitmapFactory.decodeStream(stream)
-            } ?: return@runCatching null
+            } ?: return@cancellableCatching null
             encodeBoundedAndroidBitmap(bitmap)
         }.getOrNull()
     }
@@ -79,10 +89,10 @@ actual object PlatformClipboard {
 
     actual fun getSystemClipboardTimestamp(): Long? {
         val context = androidAppContextOrNull() ?: return null
-        return runCatching {
+        return cancellableCatching("PlatformClipboard getSystemClipboardTimestamp") {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                ?: return@runCatching null
-            val clip = clipboard.primaryClip ?: return@runCatching null
+                ?: return@cancellableCatching null
+            val clip = clipboard.primaryClip ?: return@cancellableCatching null
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 clip.description?.timestamp?.takeIf { it > 0L }
             } else {
@@ -101,34 +111,34 @@ actual object PlatformClipboard {
     }
 
     private fun readLocalClipboardText(context: Context): String? {
-        return runCatching {
+        return cancellableCatching("PlatformClipboard readLocalClipboardText") {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                ?: return@runCatching null
-            val clip = clipboard.primaryClip ?: return@runCatching null
-            if (clip.itemCount <= 0) return@runCatching null
+                ?: return@cancellableCatching null
+            val clip = clipboard.primaryClip ?: return@cancellableCatching null
+            if (clip.itemCount <= 0) return@cancellableCatching null
             val description = clip.description
             val mimes = if (description == null) {
                 emptyList()
             } else {
                 (0 until description.mimeTypeCount).map { description.getMimeType(it) }
             }
-            if (!ClipboardCopySignals.clipHasShareableText(mimes)) return@runCatching null
+            if (!ClipboardCopySignals.clipHasShareableText(mimes)) return@cancellableCatching null
             val item = clip.getItemAt(0)
             val direct = ClipboardCopySignals.boundedRaw(item.text?.toString())
-            if (!direct.isNullOrBlank()) return@runCatching direct
+            if (!direct.isNullOrBlank()) return@cancellableCatching direct
             val html = item.htmlText
             if (html != null && html.length > ClipboardCopySignals.MAX_RAW_HTML_CHARS) {
-                return@runCatching null
+                return@cancellableCatching null
             }
             val coerced = ClipboardCopySignals.boundedRaw(item.coerceToText(context)?.toString())
-            if (!coerced.isNullOrBlank()) return@runCatching coerced
+            if (!coerced.isNullOrBlank()) return@cancellableCatching coerced
             item.uri?.toString()?.takeIf { it.startsWith("http") }
         }.getOrNull()
     }
 
     actual fun setSystemClipboardText(text: String) {
         val context = androidAppContextOrNull() ?: return
-        val wrote = runCatching {
+        val wrote = cancellableCatching("PlatformClipboard setSystemClipboardText") {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             val clip = ClipData.newPlainText("FileApex", text)
             clipboard?.setPrimaryClip(clip)
@@ -150,7 +160,7 @@ actual object PlatformClipboard {
     actual fun applyRemoteImage(bytes: ByteArray, mimeType: String, sourceDeviceName: String) {
         val context = androidAppContextOrNull() ?: return
         val target = ClipboardImageStorage.writeClipboardCopy(File(context.cacheDir, "note-attachments").path, mimeType, bytes) ?: return
-        val uri = runCatching {
+        val uri = cancellableCatching("PlatformClipboard applyRemoteImage") {
             FileProvider.getUriForFile(context, FileApexFileProvider.authority(context), target)
         }.getOrNull() ?: return
         ClipboardShareSuppressor.isApplyingRemote = true
@@ -196,7 +206,7 @@ actual object PlatformClipboard {
             .addAction(0, AppI18n.t("clipboard_save_image"), savePending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-        runCatching {
+        cancellableCatching("PlatformClipboard notifyInboundClipboardImage") {
             manager.notify(ClipboardActionReceiver.CLIPBOARD_NOTIFICATION_TAG, notificationId, builder.build())
         }
     }
@@ -255,7 +265,7 @@ actual object PlatformClipboard {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
 
-        runCatching {
+        cancellableCatching("PlatformClipboard notifyInboundClipboard") {
             manager.notify(ClipboardActionReceiver.CLIPBOARD_NOTIFICATION_TAG, notificationId, builder.build())
         }
     }
@@ -280,7 +290,7 @@ actual object PlatformClipboard {
 
     actual fun sharePlainText(text: String, title: String) {
         val context = androidAppContextOrNull() ?: return
-        cancellableCatching {
+        cancellableCatching("PlatformClipboard sharePlainText") {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)

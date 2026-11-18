@@ -6,6 +6,7 @@ import com.fileapex.security.tls.PairCrypto
 import java.security.SecureRandom
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** Sealed with the pair key: TLS here is one-way, so the roster must not depend on who connected. */
 @Serializable
@@ -74,10 +75,10 @@ object PresenceDigests {
     ): DigestAnswer {
         if (sender == null || sender.isRemoved || sender.deviceId != message.senderDeviceId) return DigestAnswer.Denied
         if (sender.publicKey.isBlank() || sender.publicKey != message.senderPublicKey) return DigestAnswer.Denied
-        val plain = runCatching {
+        val plain = cancellableCatching("PresenceDigest: crypto.decrypt") {
             crypto.decrypt(message.ciphertext, localDeviceId, sender.deviceId, sender.publicKey)
         }.getOrNull() ?: return DigestAnswer.Denied
-        val ask = runCatching {
+        val ask = cancellableCatching("PresenceDigest: json.decodeFromString") {
             json.decodeFromString(PresenceDigestAsk.serializer(), plain.decodeToString())
         }.getOrNull() ?: return DigestAnswer.Invalid
         if (ask.stamp.length !in 16..64) return DigestAnswer.Invalid
@@ -106,10 +107,10 @@ object PresenceDigests {
     ): OpenedDigest? {
         if (source.isRemoved || reply.senderDeviceId != source.deviceId) return null
         if (source.publicKey.isBlank() || reply.senderPublicKey != source.publicKey) return null
-        val plain = runCatching {
+        val plain = cancellableCatching("PresenceDigest: crypto.decrypt") {
             crypto.decrypt(reply.ciphertext, localDeviceId, source.deviceId, source.publicKey)
         }.getOrNull() ?: return null
-        val payload = runCatching {
+        val payload = cancellableCatching("PresenceDigest: json.decodeFromString") {
             json.decodeFromString(PresenceDigestPayload.serializer(), plain.decodeToString())
         }.getOrNull() ?: return null
         if (payload.askStamp != askStamp) return null

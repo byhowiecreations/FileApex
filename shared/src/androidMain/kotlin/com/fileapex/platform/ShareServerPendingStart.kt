@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.fileapex.platform.log.Log
+import com.fileapex.util.cancellableCatching
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
@@ -99,7 +100,7 @@ object ShareServerPendingStart {
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
-        runCatching {
+        cancellableCatching("ShareServerPendingStart postRecoveryNotification") {
             manager.notify(NOTIFICATION_ID, notification)
         }.onFailure { error ->
             Log.w(TAG, "Recovery notification failed :: ${error.message}")

@@ -6,20 +6,22 @@ import com.fileapex.membership.ChainJoinRequest
 import com.fileapex.membership.ChainPush
 import com.fileapex.membership.ChainRecord
 import com.fileapex.membership.ChainTransport
-import com.fileapex.util.cancellableCatching
 
 /** Chain push and pull over the same pinned connections as every other peer request. A null answer means unreachable. */
 internal class HttpChainTransport(
     private val repository: DeviceRepository,
-    private val http: FileApexClient
+    private val http: FileApexClient,
+    log: (String) -> Unit = { println(it) }
 ) : ChainTransport {
+    private val peers = PeerExchange(log)
+
     override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>): ChainAnswer? =
         push(peerId, records, profiles, "")
 
     override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>, head: String): ChainAnswer? {
         val peer = repository.getDevice(peerId)?.takeUnless { it.isRemoved } ?: return null
-        return cancellableCatching {
-            val response = http.boundPost(
+        return peers.answer(peerId, "chain push", okOnly = true, call = {
+            http.boundPost(
                 host = peer.lastKnownIp,
                 port = peer.port,
                 pathWithQuery = PATH,
@@ -27,31 +29,27 @@ internal class HttpChainTransport(
                 contentType = "application/json",
                 timeoutMs = FileApexClient.PEER_REQUEST_TIMEOUT_MS
             )
-            http.requireSuccess(response, "Chain push failed (${response.statusCode})")
-            http.json.decodeFromString(ChainAnswer.serializer(), response.body)
-        }.getOrNull()
+        }) { http.json.decodeFromString(ChainAnswer.serializer(), it) }
     }
 
     override suspend fun pull(peerId: String): ChainAnswer? = pull(peerId, "")
 
     override suspend fun pull(peerId: String, since: String): ChainAnswer? {
         val peer = repository.getDevice(peerId)?.takeUnless { it.isRemoved } ?: return null
-        return cancellableCatching {
-            val response = http.boundGet(
+        return peers.answer(peerId, "chain pull", okOnly = true, call = {
+            http.boundGet(
                 host = peer.lastKnownIp,
                 port = peer.port,
                 pathWithQuery = if (since.isEmpty()) PATH else "$PATH?since=$since",
                 timeoutMs = FileApexClient.PEER_REQUEST_TIMEOUT_MS
             )
-            http.requireSuccess(response, "Chain pull failed (${response.statusCode})")
-            http.json.decodeFromString(ChainAnswer.serializer(), response.body)
-        }.getOrNull()
+        }) { http.json.decodeFromString(ChainAnswer.serializer(), it) }
     }
 
     override suspend fun join(peerId: String, key: String, tlsPin: String, profile: com.fileapex.domain.peer.PeerNodeState?): ChainAnswer? {
         val peer = repository.getDevice(peerId)?.takeUnless { it.isRemoved } ?: return null
-        return cancellableCatching {
-            val response = http.boundPost(
+        return peers.answer(peerId, "chain join", okOnly = true, call = {
+            http.boundPost(
                 host = peer.lastKnownIp,
                 port = peer.port,
                 pathWithQuery = JOIN_PATH,
@@ -59,9 +57,7 @@ internal class HttpChainTransport(
                 contentType = "application/json",
                 timeoutMs = FileApexClient.PEER_REQUEST_TIMEOUT_MS
             )
-            http.requireSuccess(response, "Chain join failed (${response.statusCode})")
-            http.json.decodeFromString(ChainAnswer.serializer(), response.body)
-        }.getOrNull()
+        }) { http.json.decodeFromString(ChainAnswer.serializer(), it) }
     }
 
     private companion object {

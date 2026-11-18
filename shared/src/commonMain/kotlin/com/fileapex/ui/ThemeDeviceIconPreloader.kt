@@ -76,7 +76,7 @@ object ThemeDeviceIconPreloader {
         val deferred = CompletableDeferred<Unit>()
         ready = deferred
         scope.launch {
-            cancellableCatching { preload(style) }
+            cancellableCatching("ThemeDeviceIconPreloader startFor") { preload(style) }
             deferred.complete(Unit)
         }
     }
@@ -101,7 +101,7 @@ object ThemeDeviceIconPreloader {
             resources.map { resource ->
                 async(Dispatchers.Default) {
                     if (cache.containsKey(resource)) return@async
-                    runCatching {
+                    cancellableCatching("ThemeDeviceIconPreloader preload") {
                         val bytes = getDrawableResourceBytes(environment, resource)
                         val bitmap = decodeImageBytes(bytes) ?: return@async
                         cache.putIfAbsent(resource, bitmap)

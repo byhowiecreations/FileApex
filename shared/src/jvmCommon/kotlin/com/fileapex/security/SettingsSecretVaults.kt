@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import com.fileapex.util.cancellableCatching
 
 /** Lets any platform vault seal settings secrets. */
 class VaultSealer(private val vault: TlsSecretVault) : SecretSealer {
@@ -48,11 +49,11 @@ class FileKeyVault(private val directory: File) : TlsSecretVault {
         if (existing != null && existing.size == KEY_BYTES) return existing.also { cached = it }
         check(existing == null) { "wrapping key file has an unexpected size" }
         directory.mkdirs()
-        runCatching { Files.setPosixFilePermissions(directory.toPath(), PosixFilePermissions.fromString("rwx------")) }
+        cancellableCatching("SettingsSecretVaults: Files.setPosixFilePermissions") { Files.setPosixFilePermissions(directory.toPath(), PosixFilePermissions.fromString("rwx------")) }
         val fresh = ByteArray(KEY_BYTES).also { SecureRandom().nextBytes(it) }
         val temp = File(directory, "$KEY_FILE.tmp")
         temp.writeBytes(fresh)
-        runCatching { Files.setPosixFilePermissions(temp.toPath(), PosixFilePermissions.fromString("rw-------")) }
+        cancellableCatching("SettingsSecretVaults: Files.setPosixFilePermissions") { Files.setPosixFilePermissions(temp.toPath(), PosixFilePermissions.fromString("rw-------")) }
         Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         cached = fresh
         return fresh
@@ -111,7 +112,7 @@ class LinuxSecretVault(
     @Synchronized
     private fun keyringKeyOrThrow(): ByteArray {
         keyringKey?.let { return it }
-        val found = runCatching { lookup() }.getOrNull()
+        val found = cancellableCatching("reading a sealed setting") { lookup() }.getOrNull()
             ?: throw SecretUnavailableException("the desktop keyring key cannot be read")
         return found.also { keyringKey = it }
     }

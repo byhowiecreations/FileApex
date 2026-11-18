@@ -53,7 +53,7 @@ class BulletinBoardSyncEngine(
     @Synchronized fun ensureStarted() {
         if (drainWatcherStarted) return
         drainWatcherStarted = true
-        scope.launch { cancellableCatching { latestChange() } }
+        scope.launch { cancellableCatching("BulletinBoardSyncEngine ensureStarted") { latestChange() } }
         scope.launch {
             FileApexServices.presenceMonitor.reachabilityEpochMs.collect { requestDrain() }
         }
@@ -533,7 +533,7 @@ class BulletinBoardSyncEngine(
     }
 
     private suspend fun runMaintenance() {
-        cancellableCatching {
+        cancellableCatching("BulletinBoardSyncEngine runMaintenance") {
             repository.pruneStaleOutbox()
             repository.pruneOldMessages()
         }

@@ -3,6 +3,7 @@ package com.fileapex.data.db.seal
 import androidx.room3.RoomDatabase
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
+import com.fileapex.util.cancellableCatching
 
 /** Seals rows written before sealing existed, or while no key was available. Safe to run on every start. */
 object SealingPass {
@@ -16,7 +17,7 @@ object SealingPass {
             for ((table, names) in columns) changed += sealTable(connection, sealer, table, names.sorted(), sealsItself)
             if (ownTransaction) connection.execSQL("COMMIT")
         } catch (e: Throwable) {
-            if (ownTransaction) runCatching { connection.execSQL("ROLLBACK") }
+            if (ownTransaction) cancellableCatching("SealingPass run") { connection.execSQL("ROLLBACK") }
             throw e
         }
         return changed

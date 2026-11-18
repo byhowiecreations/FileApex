@@ -4,7 +4,9 @@ import com.fileapex.util.cancellableCatching
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import com.fileapex.cloud.diagnostics.DiagnosticsRelaySession
@@ -103,13 +105,7 @@ actual object CloudAuthBackend {
             "membershipProtocol" to presence.membershipProtocol
         ) + presence.sealed
         val ref = deviceDoc(uid, presence.deviceId)
-        cancellableCatching {
-            ref.update(fields).await()
-        }.onFailure {
-            // Document missing (first heartbeat before register completed), create without clobbering name
-            // if another client already wrote one: merge omits deviceName so existing name is preserved.
-            ref.set(fields, SetOptions.merge()).await()
-        }
+        updateOrCreate(ref, fields)
     }
 
     actual suspend fun patchDeviceName(
@@ -124,11 +120,7 @@ actual object CloudAuthBackend {
             "updatedAtEpochMs" to updatedAtEpochMs
         ) + sealed
         val ref = deviceDoc(uid, deviceId)
-        cancellableCatching {
-            ref.update(fields).await()
-        }.onFailure {
-            ref.set(fields, SetOptions.merge()).await()
-        }
+        updateOrCreate(ref, fields)
     }
 
     actual suspend fun deleteDevice(uid: String, deviceId: String) {
@@ -138,21 +130,13 @@ actual object CloudAuthBackend {
     actual suspend fun patchDeviceFcmToken(uid: String, deviceId: String, fcmToken: String) {
         val fields = mapOf("fcmToken" to fcmToken.trim())
         val ref = deviceDoc(uid, deviceId)
-        cancellableCatching {
-            ref.update(fields).await()
-        }.onFailure {
-            ref.set(fields, SetOptions.merge()).await()
-        }
+        updateOrCreate(ref, fields)
     }
 
     actual suspend fun patchDeviceClipboardPublicKey(uid: String, deviceId: String, clipboardPublicKey: String) {
         val fields = mapOf("clipboardPublicKey" to clipboardPublicKey.trim())
         val ref = deviceDoc(uid, deviceId)
-        cancellableCatching {
-            ref.update(fields).await()
-        }.onFailure {
-            ref.set(fields, SetOptions.merge()).await()
-        }
+        updateOrCreate(ref, fields)
     }
 
     actual suspend fun patchDeviceDiagnosticsCloud(
@@ -166,11 +150,7 @@ actual object CloudAuthBackend {
             "deviceDetailsCloudEnabled" to deviceDetailsCloudEnabled
         )
         val ref = deviceDoc(uid, deviceId)
-        cancellableCatching {
-            ref.update(fields).await()
-        }.onFailure {
-            ref.set(fields, SetOptions.merge()).await()
-        }
+        updateOrCreate(ref, fields)
     }
 
     actual suspend fun upsertDiagnosticsRelaySession(uid: String, session: DiagnosticsRelaySession) {
@@ -274,13 +254,27 @@ actual object CloudAuthBackend {
         override fun stop() {
             if (state.stopped) return
             state.stopped = true
-            cancellableCatching { registration.remove() }
+            cancellableCatching("removing a Firestore listener") { registration.remove() }
             if (!idle.isCompleted) idle.complete(Unit)
         }
 
         override suspend fun awaitIdle() {
             idle.await()
             delay(LISTENER_DRAIN_MS)
+        }
+    }
+
+    /**
+     * Updates the fields of an existing document; a document that does not exist yet (a first heartbeat before the
+     * registration finished) is created with a merge, which leaves a name another client already wrote alone. Any other
+     * failure is the caller's to handle.
+     */
+    private suspend fun updateOrCreate(ref: DocumentReference, fields: Map<String, Any?>) {
+        try {
+            ref.update(fields).await()
+        } catch (error: FirebaseFirestoreException) {
+            if (error.code != FirebaseFirestoreException.Code.NOT_FOUND) throw error
+            ref.set(fields, SetOptions.merge()).await()
         }
     }
 

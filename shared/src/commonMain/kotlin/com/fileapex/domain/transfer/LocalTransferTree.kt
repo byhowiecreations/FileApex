@@ -2,6 +2,7 @@ package com.fileapex.domain.transfer
 
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import com.fileapex.util.cancellableCatching
 
 /**
  * Expand local drop/send roots into a flat file list that keeps relative folders
@@ -56,10 +57,10 @@ object LocalTransferTree {
         visitedPaths: MutableSet<String>,
         out: MutableList<MultiCopySource.Local>
     ) {
-        val canonical = runCatching { java.io.File(dir.toString()).canonicalPath }.getOrDefault(dir.toString())
+        val canonical = cancellableCatching("LocalTransferTree: java.io.File") { java.io.File(dir.toString()).canonicalPath }.getOrDefault(dir.toString())
         if (!visitedPaths.add(canonical)) return
 
-        val children = runCatching { SystemFileSystem.list(dir).toList() }.getOrDefault(emptyList())
+        val children = cancellableCatching("LocalTransferTree: SystemFileSystem.list") { SystemFileSystem.list(dir).toList() }.getOrDefault(emptyList())
         for (child in children) {
             if (isIgnoredTransferFile(child.name)) continue
             val metadata = SystemFileSystem.metadataOrNull(child) ?: continue

@@ -38,6 +38,7 @@ import com.fileapex.data.bulletin.BulletinMediaHelper
 import com.fileapex.domain.preview.FilePreviewManager
 import com.fileapex.platform.decodeBase64Bytes
 import com.fileapex.platform.decodeImageBytes
+import com.fileapex.util.cancellableCatching
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -79,10 +80,10 @@ fun notesAttachmentIsImage(name: String?): Boolean {
 suspend fun loadNotesAttachmentBitmap(path: String?, fileName: String?): ImageBitmap? {
     if (path.isNullOrBlank() || !notesAttachmentIsImage(fileName)) return null
     return withContext(Dispatchers.IO) {
-        runCatching {
+        cancellableCatching("NotesAttachmentTransport loadNotesAttachmentBitmap") {
             val bytes = FilePreviewManager.readLocalBytesCapped(path, NOTES_THUMB_MAX_BYTES)
             decodeImageBytes(bytes, maxEdge = NOTES_THUMB_MAX_EDGE)
-        }.getOrNull() ?: runCatching {
+        }.getOrNull() ?: cancellableCatching("NotesAttachmentTransport loadNotesAttachmentBitmap 2") {
             // Over the read cap: the preview helper samples the file instead of reading it whole.
             BulletinMediaHelper.buildImagePreviewBase64(path)
                 ?.let { decodeBase64Bytes(it) }
@@ -98,7 +99,7 @@ suspend fun loadNotesBubbleThumbnail(path: String?, fileName: String?, previewBa
 suspend fun loadNotesInlinePreviewBitmap(previewBase64: String?): ImageBitmap? {
     if (previewBase64.isNullOrBlank()) return null
     return withContext(Dispatchers.IO) {
-        runCatching {
+        cancellableCatching("NotesAttachmentTransport loadNotesInlinePreviewBitmap") {
             val bytes = decodeBase64Bytes(previewBase64) ?: return@withContext null
             decodeImageBytes(bytes, maxEdge = NOTES_THUMB_MAX_EDGE)
         }.getOrNull()

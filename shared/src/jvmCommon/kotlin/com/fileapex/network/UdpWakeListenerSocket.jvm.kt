@@ -29,7 +29,7 @@ private fun MulticastSocket.joinDiscoveryGroups(onLog: (String) -> Unit) {
         .forEach { networkInterface ->
             val hasIpv4 = networkInterface.inetAddresses.toList().any { it is Inet4Address }
             if (!hasIpv4) return@forEach
-            runCatching {
+            cancellableCatching {
                 joinGroup(InetSocketAddress(groupAddress, WakeProtocol.PORT), networkInterface)
                 joinedAny = true
             }.onFailure { error ->

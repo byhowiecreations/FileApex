@@ -47,6 +47,7 @@ import com.fileapex.ui.ExplorerEntryIcons
 import com.fileapex.ui.ExplorerIcon
 import com.fileapex.ui.RingUsed
 import com.fileapex.ui.explorerIcon
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -69,7 +70,7 @@ internal fun TrashPage(
     fun run(ids: List<String>, action: (List<String>) -> Boolean) {
         scope.launch {
             working = true
-            val outcome = withContext(Dispatchers.IO) { runCatching { action(ids) } }
+            val outcome = withContext(Dispatchers.IO) { cancellableCatching("StorageToolsTrash run") { action(ids) } }
             outcome.onSuccess { finished ->
                 onError(null)
                 if (finished) reload()

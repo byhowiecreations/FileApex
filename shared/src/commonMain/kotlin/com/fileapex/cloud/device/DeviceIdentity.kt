@@ -79,7 +79,7 @@ object DeviceIdentity {
 
     /** Sends the relay the records of this device's chain it lacks; the relay switches removed members off from them. */
     internal suspend fun uploadChain() {
-        val outcome = cancellableCatching { service.uploadChain() }.getOrNull()
+        val outcome = cancellableCatching("DeviceIdentity: service.uploadChain") { service.uploadChain() }.getOrNull()
         com.fileapex.platform.Diagnostics.log("DeviceIdentity: chain upload ${outcome ?: SyncOutcome.FAILED}")
         if (outcome == SyncOutcome.OTHER_SETUP) olderSetup.value = true
         if (outcome == SyncOutcome.SENT) olderSetup.value = false
@@ -90,7 +90,7 @@ object DeviceIdentity {
      * account with this device's chain and switches every older device off.
      */
     internal suspend fun startOver(): SyncOutcome {
-        val outcome = cancellableCatching { service.startOver() }.getOrElse { SyncOutcome.FAILED }
+        val outcome = cancellableCatching("starting over the device identity") { service.startOver() }.getOrElse { SyncOutcome.FAILED }
         com.fileapex.platform.Diagnostics.log("DeviceIdentity: start over $outcome")
         startOverWaits = outcome == SyncOutcome.SETUP_IN_USE
         if (outcome == SyncOutcome.SENT) olderSetup.value = false
@@ -155,11 +155,11 @@ object DeviceIdentity {
      * announcement is a nudge, not proof: Firebase's answer that the user is disabled is what signs this device out.
      */
     fun onKicked() {
-        scope.launch { cancellableCatching { kickWatch.run() } }
+        scope.launch { cancellableCatching("watching for a device kick") { kickWatch.run() } }
     }
 
     /** A peer was removed: the relay disables its Firebase user, then the peer is pushed. Call before its cloud record is deleted. */
     suspend fun announceRemoval(cloudId: String) {
-        cancellableCatching { withTimeoutOrNull(ANNOUNCE_TIMEOUT_MS) { announcer.announce(cloudId) } }
+        cancellableCatching("DeviceIdentity: withTimeoutOrNull") { withTimeoutOrNull(ANNOUNCE_TIMEOUT_MS) { announcer.announce(cloudId) } }
     }
 }

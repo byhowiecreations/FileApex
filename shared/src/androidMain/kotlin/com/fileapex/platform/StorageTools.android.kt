@@ -40,7 +40,7 @@ actual fun scanStorage(): StorageScan {
     val usage = queryStorageUsage()
     val everything = ArrayList<StorageFileEntry>()
     val context = trashContext
-    val indexed = context != null && runCatching { scanMediaStore(context, everything) }.isSuccess
+    val indexed = context != null && cancellableCatching("StorageTools scanStorage") { scanMediaStore(context, everything) }.isSuccess
     if (!indexed || everything.isEmpty()) {
         everything.clear()
         walkStorage(File(defaultStorageRoot()), everything)
@@ -112,7 +112,7 @@ actual fun listTrashed(): List<TrashedEntry> {
     val context = trashContext ?: return emptyList()
     val entries = ArrayList<TrashedEntry>()
     if (Build.VERSION.SDK_INT >= 30) {
-        cancellableCatching {
+        cancellableCatching("StorageTools listTrashed") {
             val args = Bundle().apply {
                 putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
                 putString(ContentResolver.QUERY_ARG_SQL_SELECTION, MediaStore.MediaColumns.SIZE + ">=0")
@@ -240,14 +240,14 @@ private fun readTrashIndex(root: File): Map<String, Pair<String, Long>> {
 }
 
 internal fun recordTrashOrigin(root: File, trashedName: String, originalPath: String) {
-    runCatching {
+    cancellableCatching("StorageTools recordTrashOrigin") {
         val file = indexFile(root)
         SealedText.writeFile(file, TRASH_PURPOSE, SealedText.readFile(file, TRASH_PURPOSE) + "$trashedName\t$originalPath\t${System.currentTimeMillis()}\n")
     }
 }
 
 private fun removeTrashOrigin(root: File, trashedName: String) {
-    runCatching {
+    cancellableCatching("StorageTools removeTrashOrigin") {
         val file = indexFile(root)
         if (!file.isFile) return
         val kept = SealedText.readFile(file, TRASH_PURPOSE).lines().filter { it.isNotEmpty() && it.substringBefore('\t') != trashedName }
@@ -260,7 +260,7 @@ actual fun localPathInfo(path: String): LocalPathInfo? {
     return if (file.exists()) LocalPathInfo(file.isDirectory, if (file.isFile) file.length() else 0L) else null
 }
 
-actual fun fileDigest(path: String, maxBytes: Long): String? = runCatching {
+actual fun fileDigest(path: String, maxBytes: Long): String? = cancellableCatching("StorageTools fileDigest") {
     val md = java.security.MessageDigest.getInstance("SHA-256")
     java.io.File(path).inputStream().use { input ->
         val buffer = ByteArray(64 * 1024)

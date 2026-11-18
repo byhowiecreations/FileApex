@@ -2,6 +2,7 @@ package com.fileapex.iroh
 
 import com.fileapex.domain.peer.PeerNodeProtocols
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 object IrohWakePolicy {
     const val IDLE_GRACE_MS = 3 * 60_000L
@@ -66,7 +67,7 @@ object IrohCapability {
     fun advertised(protocolsJson: String): Boolean? {
         val raw = protocolsJson.trim()
         if (raw.isEmpty() || raw == "[]") return null
-        val protocols = runCatching { Json.decodeFromString<List<String>>(raw) }.getOrNull() ?: return null
+        val protocols = cancellableCatching("reading the Iroh protocol list") { Json.decodeFromString<List<String>>(raw) }.getOrNull() ?: return null
         return when {
             ON in protocols -> true
             OFF in protocols -> false

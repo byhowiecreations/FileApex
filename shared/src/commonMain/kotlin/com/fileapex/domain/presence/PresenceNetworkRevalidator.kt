@@ -55,7 +55,7 @@ object PresenceNetworkRevalidator {
             if (!isActiveLanConnectivity()) {
                 continue
             }
-            cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
+            cancellableCatching("PresenceNetworkRevalidator: GoogleLinkCoordinator.publishSelfPresenceI") { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
             GoogleLinkCoordinator.refreshCloudRegistry()
             FileApexServices.presenceMonitor.runSingleShotRevalidation()
             cancellableCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->

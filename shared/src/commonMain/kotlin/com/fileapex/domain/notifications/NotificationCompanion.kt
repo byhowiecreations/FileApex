@@ -62,7 +62,7 @@ object NotificationCompanion {
             NotificationDebugLog.log("grant skipped for ${NotificationDebugLog.short(deviceId)}: no endpoint")
             return
         }
-        val reached = cancellableCatching {
+        val reached = cancellableCatching("NotificationCompanion: FileApexServices.client.pingHealth") {
             FileApexServices.client.pingHealth(endpoint.host, endpoint.port, signal = companionSignal(isCompanion(deviceId), deviceId))
         }.getOrNull()
         NotificationDebugLog.log("grant poll to ${NotificationDebugLog.short(deviceId)} value=${isCompanion(deviceId)} reached=$reached")

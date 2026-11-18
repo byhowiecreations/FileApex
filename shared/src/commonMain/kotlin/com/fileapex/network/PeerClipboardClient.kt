@@ -2,6 +2,7 @@ package com.fileapex.network
 
 import com.fileapex.i18n.AppI18n
 import com.fileapex.network.FileApexClient.Companion.PEER_REQUEST_TIMEOUT_MS
+import com.fileapex.util.cancellableCatching
 
 class PeerClipboardClient internal constructor(private val http: FileApexClient) {
     suspend fun sendClipboard(
@@ -112,9 +113,9 @@ class PeerClipboardClient internal constructor(private val http: FileApexClient)
             }
         }
         http.requireSuccess(response, "Clipboard pull failed (${response.statusCode})")
-        val root = runCatching { http.json.parseToJsonElement(response.body) }.getOrNull() as? kotlinx.serialization.json.JsonObject
+        val root = cancellableCatching("PeerClipboardClient: http.json.parseToJsonElement") { http.json.parseToJsonElement(response.body) }.getOrNull() as? kotlinx.serialization.json.JsonObject
             ?: return null
-        val sealed = runCatching {
+        val sealed = cancellableCatching("PeerClipboardClient: http.json.decodeFromString") {
             http.json.decodeFromString(com.fileapex.domain.clipboard.ClipboardSendRequest.serializer(), response.body)
         }.getOrNull()
         if (sealed != null && sealed.ciphertext.isNotBlank()) {

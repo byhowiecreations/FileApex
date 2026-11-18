@@ -3,12 +3,13 @@ package com.fileapex.data.bulletin
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.note.NoteRecord
+import com.fileapex.util.cancellableCatching
 
 fun PairedDeviceEntity.supportsBulletinSync(): Boolean =
     clientVersionCode >= BulletinBoardPolicy.BULLETIN_SYNC_MIN_VERSION_CODE
 
 fun MessageEntity.toNoteRecord(): NoteRecord {
-    val selfId = runCatching { loadLocalIdentity().deviceId }.getOrDefault("")
+    val selfId = cancellableCatching("BulletinBoardCompat toNoteRecord") { loadLocalIdentity().deviceId }.getOrDefault("")
     val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     var contentText = content
     var attachmentFileName: String? = null
@@ -20,7 +21,7 @@ fun MessageEntity.toNoteRecord(): NoteRecord {
     val pinned = isPinned
 
     if (contentType == BulletinContentType.FILE_METADATA || contentType == BulletinContentType.IMAGE_PREVIEW) {
-        val meta = runCatching {
+        val meta = cancellableCatching("BulletinBoardCompat toNoteRecord 2") {
             val marker = "\n{"
             val idx = content.indexOf(marker)
             val jsonBody = if (idx >= 0) content.substring(idx + 1) else content

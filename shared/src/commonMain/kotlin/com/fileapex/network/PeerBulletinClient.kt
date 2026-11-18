@@ -5,6 +5,8 @@ import kotlinx.io.write
 import com.fileapex.network.FileApexClient.Companion.PEER_CONNECT_TIMEOUT_MS
 import com.fileapex.network.FileApexClient.Companion.PEER_REQUEST_TIMEOUT_MS
 import com.fileapex.network.FileApexClient.Companion.TRANSFER_IDLE_TIMEOUT_MS
+import com.fileapex.util.cancellableCatching
+import com.fileapex.util.deleteLogged
 
 class PeerBulletinClient internal constructor(private val http: FileApexClient) {
     suspend fun fetchBulletinDelta(
@@ -84,12 +86,18 @@ class PeerBulletinClient internal constructor(private val http: FileApexClient) 
             require(result.statusCode in 200..299) {
                 "Bulletin file pull failed (${result.statusCode})"
             }
-            runCatching { appender?.close() }
+            try {
+                appender?.close()
+            } catch (_: java.io.IOException) {
+            }
             appender = null
             return finishDownload(partPath, preferredFinal, expectedSizeBytes, expectedSha256).also { finished = true }
         } finally {
-            runCatching { appender?.close() }
-            if (!finished) runCatching { java.io.File(partPath).delete() }
+            try {
+                appender?.close()
+            } catch (_: java.io.IOException) {
+            }
+            if (!finished) java.io.File(partPath).deleteLogged("removing a partial Bulletin download")
         }
     }
 

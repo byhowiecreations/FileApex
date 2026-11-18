@@ -4,6 +4,7 @@ import com.fileapex.domain.clipboard.ClipboardE2ee
 import com.fileapex.util.DeviceIdentityMarkers
 import java.security.MessageDigest
 import java.util.Base64
+import com.fileapex.util.cancellableCatching
 
 /**
  * New installs derive their device id from the SHA-256 of their identity public key, so an id can only
@@ -43,7 +44,7 @@ object IdentityBinding {
         }
 
     fun localHash(deviceId: String): String =
-        hashFor(deviceId, runCatching { ClipboardE2ee.publicKeyBase64() }.getOrDefault(""))
+        hashFor(deviceId, cancellableCatching("IdentityBinding: ClipboardE2ee.publicKeyBase64") { ClipboardE2ee.publicKeyBase64() }.getOrDefault(""))
 
     private fun digestHex(publicKeyBase64: String): String {
         val raw = Base64.getDecoder().decode(publicKeyBase64.trim())
@@ -62,11 +63,11 @@ object LocalIdentityBinding {
         fallbackId: () -> String,
         persist: (String) -> Unit,
         remember: (previousId: String) -> Unit = {},
-        publicKey: () -> String? = { runCatching { ClipboardE2ee.publicKeyBase64() }.getOrNull() }
+        publicKey: () -> String? = { cancellableCatching("IdentityBinding: ClipboardE2ee.publicKeyBase64") { ClipboardE2ee.publicKeyBase64() }.getOrNull() }
     ): String {
         val stored = storedId?.trim().orEmpty()
         if (stored.isNotEmpty() && !IdentityBinding.isDerived(stored)) return stored
-        val derived = publicKey()?.let { runCatching { IdentityBinding.deriveDeviceId(it) }.getOrNull() }
+        val derived = publicKey()?.let { cancellableCatching("IdentityBinding: IdentityBinding.deriveDeviceId") { IdentityBinding.deriveDeviceId(it) }.getOrNull() }
         val resolved = derived ?: stored.ifEmpty { fallbackId() }
         if (resolved != stored) {
             if (stored.isNotEmpty() && derived != null) remember(stored)

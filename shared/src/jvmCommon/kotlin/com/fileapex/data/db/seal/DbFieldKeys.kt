@@ -5,6 +5,7 @@ import com.fileapex.data.settings.BaseAppSettings
 import com.fileapex.data.settings.SecretAvailability
 import com.fileapex.data.settings.SecretUnavailableException
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -35,7 +36,7 @@ object DbFieldKeys {
 
     private fun load(): FieldSealer? {
         val settings = FileApexServices.settings
-        val stored = runCatching { Base64.getDecoder().decode(settings.dbFieldKeyBase64()) }.getOrNull()
+        val stored = cancellableCatching("DbFieldKeys load") { Base64.getDecoder().decode(settings.dbFieldKeyBase64()) }.getOrNull()
         if (stored != null && stored.size == FieldSealer.KEY_BYTES) return FieldSealer(stored).also { stored.wipe() }
         try {
             SecretAvailability.requireAvailable(BaseAppSettings.KEY_DB_FIELD_KEY)

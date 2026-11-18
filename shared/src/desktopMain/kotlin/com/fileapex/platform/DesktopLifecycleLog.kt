@@ -16,7 +16,7 @@ object DesktopLifecycleLog {
     }
 
     fun log(message: String) {
-        cancellableCatching {
+        cancellableCatching("DesktopLifecycleLog log") {
             val file = DesktopPlatformPaths.applicationSupportDirectory().resolve(LOG_NAME)
             if (file.isFile && file.length() > MAX_BYTES) {
                 val tail = file.readLines().takeLast(200).joinToString("\n")

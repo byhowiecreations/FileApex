@@ -28,7 +28,7 @@ object DeviceNameCoordinator {
         val trimmed = name.trim()
         validate(trimmed)?.let { error(it) }
         LocalDeviceNameStore.apply(trimmed)
-        cancellableCatching {
+        cancellableCatching("DeviceNameCoordinator: GoogleLinkCoordinator.publishUserRenamedDevice") {
             GoogleLinkCoordinator.publishUserRenamedDevice(LocalIdentity.LOCAL_DEVICE_ID, trimmed)
         }
         FileApexServices.pairingCoordinator.broadcastSelfIdentity(FileApexServices.presenceMonitor.onlineDeviceIds.value)
@@ -51,7 +51,7 @@ object DeviceNameCoordinator {
                 updatedAtEpochMs = TimeUtils.now()
             )
         }
-        cancellableCatching {
+        cancellableCatching("DeviceNameCoordinator: GoogleLinkCoordinator.publishUserRenamedDevice") {
             GoogleLinkCoordinator.publishUserRenamedDevice(LocalIdentity.LOCAL_DEVICE_ID, trimmed)
         }
         FileApexServices.pairingCoordinator.broadcastSelfIdentity(FileApexServices.presenceMonitor.onlineDeviceIds.value)
@@ -65,7 +65,7 @@ object DeviceNameCoordinator {
         val self = loadLocalIdentity()
         val selfLabel = LocalDeviceNameStore.current().ifBlank { self.deviceName }
         // Sent by whichever route reaches the peer (LAN, Tailscale, Iroh), not its stored address; an offline peer is not tried.
-        val outcome = cancellableCatching {
+        val outcome = cancellableCatching("DeviceNameCoordinator: FileApexServices.presenceMonitor.endpointIfOnli") {
             val route = FileApexServices.presenceMonitor.endpointIfOnline(peer)
             if (route == null) {
                 RenameOutcome.NotDelivered
@@ -82,7 +82,7 @@ object DeviceNameCoordinator {
         // The device owns its name: the label changes only after the device took the rename.
         val label = PeerRenamePolicy.labelToStore(outcome, trimmed) ?: return outcome
         FileApexServices.deviceRepository.rename(deviceId, label)
-        cancellableCatching {
+        cancellableCatching("DeviceNameCoordinator: GoogleLinkCoordinator.publishUserRenamedDevice") {
             GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, label)
         }
         FileApexServices.presenceMonitor.refreshOnlineSnapshot()

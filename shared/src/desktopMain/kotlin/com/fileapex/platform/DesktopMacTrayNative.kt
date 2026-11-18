@@ -88,6 +88,7 @@ internal interface FileApexTrayNative : Library {
     fun fileapex_clipboard_stop_watch()
     fun fileapex_clipboard_note_applied()
     fun fileapex_clipboard_read_text(outText: PointerByReference): Int
+    fun fileapex_clipboard_read_types(outText: PointerByReference): Int
 }
 
 internal fun interface UploadProgressCallback : Callback {

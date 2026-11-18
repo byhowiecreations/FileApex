@@ -70,7 +70,7 @@ actual object FileApexMdnsBrowser {
         resolvedThisWindow.clear()
         val listener = createDiscoveryListener()
         discoveryListener = listener
-        runCatching {
+        cancellableCatching {
             manager.discoverServices(FileApexMdns.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
             println("FileApexMdnsBrowser: discoverServices failed - ${error.message}")
@@ -91,7 +91,7 @@ actual object FileApexMdnsBrowser {
         val listener = discoveryListener
         discoveryListener = null
         if (manager != null && listener != null) {
-            runCatching { manager.stopServiceDiscovery(listener) }
+            cancellableCatching { manager.stopServiceDiscovery(listener) }
                 .onFailure { println("FileApexMdnsBrowser: stopServiceDiscovery failed - ${it.message}") }
         }
     }
@@ -102,14 +102,14 @@ actual object FileApexMdnsBrowser {
         pendingLockReleaseRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingLockReleaseRunnable = null
         if (multicastLock == null) {
-            cancellableCatching {
+            cancellableCatching("creating the multicast lock for discovery") {
                 val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
                 multicastLock = wifi?.createMulticastLock("fileapex:mdns_browser")?.apply {
                     setReferenceCounted(false)
                 }
             }
         }
-        cancellableCatching {
+        cancellableCatching("taking the multicast lock for discovery") {
             multicastLock?.let { lock ->
                 if (!lock.isHeld) {
                     lock.acquire()
@@ -124,7 +124,7 @@ actual object FileApexMdnsBrowser {
     private fun releaseMulticastLock() {
         pendingLockReleaseRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingLockReleaseRunnable = null
-        runCatching {
+        cancellableCatching("releasing the multicast lock") {
             multicastLock?.let {
                 if (it.isHeld) it.release()
             }
@@ -189,7 +189,7 @@ actual object FileApexMdnsBrowser {
 
     // Pre-API 34 resolve path on devices below Android 14.
     private fun resolveLegacy(manager: NsdManager, serviceInfo: NsdServiceInfo) {
-        runCatching {
+        cancellableCatching("resolving an mDNS service through the legacy API") {
             val listenerClass = Class.forName("android.net.nsd.NsdManager\$ResolveListener")
             val proxy = java.lang.reflect.Proxy.newProxyInstance(
                 listenerClass.classLoader,
@@ -214,11 +214,17 @@ actual object FileApexMdnsBrowser {
 
             override fun onServiceUpdated(info: NsdServiceInfo) {
                 deliverResolved(info)
-                runCatching { manager.unregisterServiceInfoCallback(this) }
+                try {
+                    manager.unregisterServiceInfoCallback(this)
+                } catch (_: IllegalArgumentException) {
+                }
             }
 
             override fun onServiceLost() {
-                runCatching { manager.unregisterServiceInfoCallback(this) }
+                try {
+                    manager.unregisterServiceInfoCallback(this)
+                } catch (_: IllegalArgumentException) {
+                }
             }
 
             override fun onServiceInfoCallbackUnregistered() = Unit
@@ -249,7 +255,7 @@ actual object FileApexMdnsBrowser {
     }
 
     private fun hostFromServiceInfoLegacy(info: NsdServiceInfo): String {
-        val hostObj = runCatching {
+        val hostObj = cancellableCatching("FileApexMdnsBrowser.android: info.javaClass.getMethod") {
             info.javaClass.getMethod("getHost").invoke(info) as? java.net.InetAddress
         }.getOrNull()
         return hostObj?.hostAddress?.trim().orEmpty()

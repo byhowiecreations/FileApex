@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import com.fileapex.platform.log.Log
 import com.fileapex.platform.androidApplicationContextOrNull
+import com.fileapex.util.cancellableCatching
 
 private const val TAG = "FileApexPairing"
 
@@ -40,7 +41,7 @@ internal actual fun releasePairingMulticastLock() {
         if (refs == 0) return
         refs--
         if (refs == 0) {
-            runCatching { multicastLock?.release() }
+            cancellableCatching("releasing the pairing multicast lock") { multicastLock?.release() }
             multicastLock = null
         }
     }

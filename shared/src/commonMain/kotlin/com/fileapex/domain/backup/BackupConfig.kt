@@ -2,6 +2,7 @@ package com.fileapex.domain.backup
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** One-way folder backup to a single paired device. Nothing is ever deleted on either side. */
 @Serializable
@@ -34,7 +35,7 @@ data class BackupConfig(
         private val json = Json { ignoreUnknownKeys = true }
 
         fun decode(raw: String): BackupConfig =
-            if (raw.isBlank()) BackupConfig() else runCatching { json.decodeFromString(serializer(), raw) }.getOrDefault(BackupConfig())
+            if (raw.isBlank()) BackupConfig() else cancellableCatching("BackupConfig: json.decodeFromString") { json.decodeFromString(serializer(), raw) }.getOrDefault(BackupConfig())
     }
 }
 

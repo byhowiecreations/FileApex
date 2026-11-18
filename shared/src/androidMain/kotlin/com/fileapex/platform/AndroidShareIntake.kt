@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import java.io.IOException
 import java.util.UUID
@@ -148,7 +149,7 @@ object AndroidShareIntake {
 
         if (DocumentsContract.isDocumentUri(context, uri)) {
             val authority = uri.authority
-            val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            val docId = cancellableCatching("AndroidShareIntake resolveDirectFilePath") { DocumentsContract.getDocumentId(uri) }.getOrNull()
             if (authority == "com.android.externalstorage.documents" && docId != null) {
                 val parts = docId.split(":")
                 if (parts.size >= 2) {
@@ -210,11 +211,11 @@ object AndroidShareIntake {
      * source file when the provider is file-backed, so the send can read it in place.
      */
     private fun resolvePathFromOpenDescriptor(context: Context, uri: Uri): String? {
-        val descriptor = runCatching {
+        val descriptor = cancellableCatching("AndroidShareIntake resolvePathFromOpenDescriptor") {
             context.contentResolver.openFileDescriptor(uri, "r")
         }.getOrNull() ?: return null
         descriptor.use { opened ->
-            val link = runCatching {
+            val link = cancellableCatching("AndroidShareIntake resolvePathFromOpenDescriptor 2") {
                 android.system.Os.readlink("/proc/self/fd/${opened.fd}")
             }.getOrNull()?.trim().orEmpty()
             if (link.isEmpty() || link.startsWith("/proc/") || ":" in link) return null
@@ -229,7 +230,7 @@ object AndroidShareIntake {
         uri: Uri,
         selection: String?,
         selectionArgs: Array<String>?
-    ): String? = runCatching {
+    ): String? = cancellableCatching("AndroidShareIntake queryDataColumn") {
         resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), selection, selectionArgs, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
                 val idx = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
@@ -276,7 +277,7 @@ object AndroidShareIntake {
         if (uri.scheme == ContentResolver.SCHEME_FILE) {
             return uri.lastPathSegment
         }
-        return runCatching {
+        return cancellableCatching("AndroidShareIntake queryDisplayName") {
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                 ?.use { cursor ->
                     if (cursor.moveToFirst()) {

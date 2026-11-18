@@ -13,6 +13,7 @@ import kotlinx.io.Buffer
 import kotlinx.io.files.Path
 import kotlinx.io.readByteArray
 import kotlinx.io.write
+import com.fileapex.util.cancellableCatching
 
 /**
  * Pulls files from paired peers: single resumable streams and parallel ranges. Request plumbing stays in [FileApexClient].
@@ -116,11 +117,17 @@ class PeerDownloadClient internal constructor(private val http: FileApexClient, 
                         "(got $bytesWritten bytes, expected $expectedSizeBytes)"
                 )
             }
-            runCatching { appender?.close() }
+            try {
+                appender?.close()
+            } catch (_: java.io.IOException) {
+            }
             appender = null
             SocketFileStreamer.finalizePart(partPath, localTargetPath)
         } finally {
-            runCatching { appender?.close() }
+            try {
+                appender?.close()
+            } catch (_: java.io.IOException) {
+            }
         }
     }
 
@@ -241,7 +248,7 @@ class PeerDownloadClient internal constructor(private val http: FileApexClient, 
                 }
             } finally {
                 if (position > recorded) {
-                    runCatching {
+                    cancellableCatching("PeerDownloadClient: raf.channel.force") {
                         raf.channel.force(false)
                         RangeLedger.record(partPath, totalSize, ByteSpan(from, position))
                     }

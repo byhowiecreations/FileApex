@@ -209,7 +209,7 @@ class FileTransferService(
             isDirectory = true,
             relativeDestPath = relativePrefix
         )
-        val children = transferCatching { client.listFiles(host, port, baseRemotePath) }.getOrDefault(emptyList())
+        val children = transferCatching("FileTransferService: client.listFiles") { client.listFiles(host, port, baseRemotePath) }.getOrDefault(emptyList())
         for (child in children) {
             if (LocalTransferTree.isIgnoredTransferFile(child.name)) continue
             val relative = "$relativePrefix/${child.name}"

@@ -4,6 +4,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlinx.serialization.Serializable
+import com.fileapex.util.cancellableCatching
+import com.fileapex.util.deleteLogged
 
 @Serializable
 data class ByteSpan(val start: Long, val endExclusive: Long) {
@@ -116,8 +118,8 @@ object RangeLedger {
         ) {
             return@synchronized stored.second
         }
-        runCatching { part.delete() }
-        runCatching { ledger.delete() }
+        part.deleteLogged("removing a part file with a bad ledger")
+        ledger.deleteLogged("removing a bad range ledger")
         emptyList()
     }
 
@@ -140,29 +142,29 @@ object RangeLedger {
             }
             val temp = File("${ledger.path}.tmp")
             temp.writeText(text)
-            runCatching {
+            try {
                 Files.move(
                     temp.toPath(),
                     ledger.toPath(),
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE
                 )
-            }.recoverCatching {
+            } catch (_: java.io.IOException) {
                 Files.move(temp.toPath(), ledger.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            }.getOrThrow()
+            }
         }
     }
 
     fun delete(partPath: String) {
         synchronized(lock) {
-            runCatching { File(ledgerPathFor(partPath)).delete() }
-            runCatching { File("${ledgerPathFor(partPath)}.tmp").delete() }
+            File(ledgerPathFor(partPath)).deleteLogged("removing a range ledger")
+            File("${ledgerPathFor(partPath)}.tmp").deleteLogged("removing a range ledger temp file")
         }
     }
 
     private fun readLocked(ledger: File): Pair<Long, List<ByteSpan>>? {
         if (!ledger.isFile) return null
-        val lines = runCatching { ledger.readLines() }.getOrNull() ?: return null
+        val lines = cancellableCatching("TransferRanges: ledger.readLines") { ledger.readLines() }.getOrNull() ?: return null
         val total = lines.firstOrNull()
             ?.takeIf { it.startsWith(TOTAL_PREFIX) }
             ?.removePrefix(TOTAL_PREFIX)

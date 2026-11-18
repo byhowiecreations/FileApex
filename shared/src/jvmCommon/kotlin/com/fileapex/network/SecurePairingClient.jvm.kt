@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /**
  * Joiner side of pairing. Every request is a TLS connection that shows this device's key to the host and the host's
@@ -73,7 +74,7 @@ internal object SecurePairingClient {
                     encode(SecurePairRequest.serializer(), SecurePairRequest(nonceA, macA, scanner, request.devicePin))
                 )
                 if (reply.status != 201) return@guarded rejected(reply)
-                val answer = runCatching { json.decodeFromString(SecurePairResponse.serializer(), reply.body) }.getOrNull()
+                val answer = cancellableCatching("SecurePairingClient.jvm: json.decodeFromString") { json.decodeFromString(SecurePairResponse.serializer(), reply.body) }.getOrNull()
                     ?: return@guarded SecurePairingOutcome.NotVerified("host reply was not understood")
                 val expected = SecurePairingProof.macB(password, nonceA, answer.nonceB, hostPin, localPin, request.hostDeviceId, scanner.deviceId)
                 if (!SecurePairingProof.equal(expected, answer.macB)) {
@@ -98,7 +99,7 @@ internal object SecurePairingClient {
             val (first, hostPin) = TlsExchange.connect(request.host, request.tlsPort, request.timeoutMs, "", bindIps)
             val offer = post(first, request, SECURE_PAIRING_OFFER_PATH, encode(SasOfferRequest.serializer(), SasOfferRequest(commit, scanner, request.devicePin)))
             if (offer.status != 200) return@withContext rejected(offer)
-            val answer = runCatching { json.decodeFromString(SasOfferResponse.serializer(), offer.body) }.getOrNull()
+            val answer = cancellableCatching("SecurePairingClient.jvm: json.decodeFromString") { json.decodeFromString(SasOfferResponse.serializer(), offer.body) }.getOrNull()
                 ?: return@withContext SecurePairingOutcome.NotVerified("host reply was not understood")
 
             // The host key must be the same on every connection of this pairing.

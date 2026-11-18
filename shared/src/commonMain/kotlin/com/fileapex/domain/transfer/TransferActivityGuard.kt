@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.fileapex.util.cancellableCatching
 
 data class LiveTransferStats(
     val isActive: Boolean = false,
@@ -24,6 +25,8 @@ data class LiveTransferStats(
     val etaFormatted: String = "",
     /** True while a user-cancelable outbound batch is running. */
     val cancelable: Boolean = false,
+    /** True when a cancel only pauses: a queue row owns the send and keeps it for a retry. A receive has no owner and is really cancelled. */
+    val parksOnCancel: Boolean = false,
     /** True while the active transfer goes through the Google Drive relay (Cancel then asks what to do with Drive). */
     val driveRelay: Boolean = false
 )
@@ -231,7 +234,7 @@ object TransferActivityGuard {
         streams.clear()
         anonymousActive.set(0)
         cancelableJobs.clear()
-        transferSockets.keys.forEach { socket -> runCatching { socket.close() } }
+        transferSockets.keys.forEach { socket -> cancellableCatching("TransferActivityGuard: socket.close") { socket.close() } }
         transferSockets.clear()
         cancelledOwners.clear()
         cancelRequested = false
@@ -255,7 +258,7 @@ object TransferActivityGuard {
     fun trackTransferSocket(socket: Socket, owner: String = "") {
         transferSockets[socket] = owner
         if (cancelRequested || (owner.isNotEmpty() && owner in cancelledOwners)) {
-            runCatching { socket.close() }
+            cancellableCatching("TransferActivityGuard: socket.close") { socket.close() }
         }
     }
 
@@ -277,7 +280,7 @@ object TransferActivityGuard {
         if (jobs.isEmpty() && sockets.isEmpty()) return false
         removeFromDriveRequested = removeFromDrive
         cancelRequested = true
-        sockets.forEach { socket -> runCatching { socket.close() } }
+        sockets.forEach { socket -> cancellableCatching("TransferActivityGuard: socket.close") { socket.close() } }
         abortInFlightPlatformTransfers()
         jobs.forEach { job -> job.cancel() }
         return true
@@ -291,7 +294,7 @@ object TransferActivityGuard {
         if (jobs.isEmpty() && sockets.isEmpty()) return false
         removeFromDriveRequested = removeFromDrive
         cancelledOwners += owner
-        sockets.forEach { socket -> runCatching { socket.close() } }
+        sockets.forEach { socket -> cancellableCatching("TransferActivityGuard: socket.close") { socket.close() } }
         jobs.forEach { job -> job.cancel() }
         return true
     }
@@ -352,6 +355,7 @@ object TransferActivityGuard {
         _statsFlow.value = LiveTransferStats(
             isActive = false,
             cancelable = cancelableJobs.isNotEmpty(),
+            parksOnCancel = cancelableJobs.values.any { it.isNotEmpty() },
             driveRelay = driveRelayActive.get() > 0
         )
     }
@@ -390,6 +394,7 @@ object TransferActivityGuard {
             speedFormatted = formatSpeed(speed),
             etaFormatted = formatEta(sent, total, speed),
             cancelable = cancelableJobs.isNotEmpty(),
+            parksOnCancel = cancelableJobs.values.any { it.isNotEmpty() },
             driveRelay = driveRelayActive.get() > 0
         )
     }

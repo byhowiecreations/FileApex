@@ -13,10 +13,10 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_PNG = ROOT / "icon" / "icon.png"
 COMPOSE_ICONS = ROOT / "composeApp" / "icons"
-ANDROID_LAUNCHER = ROOT / "composeApp" / "src" / "androidMain" / "res" / "drawable" / "ic_launcher.png"
+ANDROID_LAUNCHER = ROOT / "composeApp" / "src" / "androidMain" / "res" / "drawable" / "ic_launcher.webp"
 ANDROID_NOTIFICATION = ROOT / "composeApp" / "src" / "androidMain" / "res" / "drawable" / "ic_notification.png"
 SHARED_NOTIFICATION = ROOT / "shared" / "src" / "androidMain" / "res" / "drawable" / "ic_fileapex_notification.png"
-SHARED_NOTIFICATION_LARGE = ROOT / "shared" / "src" / "androidMain" / "res" / "drawable" / "ic_fileapex_large.png"
+SHARED_NOTIFICATION_LARGE = ROOT / "shared" / "src" / "androidMain" / "res" / "drawable" / "ic_fileapex_large.webp"
 TRAY_PNG = ROOT / "shared" / "src" / "desktopMain" / "resources" / "icons" / "fileapex-tray.png"
 BROWSER_EXTENSION_ICONS = ROOT / "browser-extension" / "icons"
 PNG_1024 = COMPOSE_ICONS / "FileApex-1024.png"
@@ -47,6 +47,13 @@ def save_square_png(image: Image.Image, size: int, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     resized = image.resize((size, size), Image.Resampling.LANCZOS)
     resized.save(path, format="PNG", optimize=True)
+
+
+def save_square_webp(image: Image.Image, size: int, path: Path) -> None:
+    """Lossless WebP: the same pixels as the PNG at a smaller size (ImageFormatGuardTest)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    resized = image.resize((size, size), Image.Resampling.LANCZOS)
+    resized.save(path, format="WEBP", lossless=True, quality=100, method=6, exact=True)
 
 
 def write_notification_icon(source: Image.Image, path: Path, size: int = 96) -> None:
@@ -114,10 +121,10 @@ def main() -> int:
     source = load_source()
     COMPOSE_ICONS.mkdir(parents=True, exist_ok=True)
     save_square_png(source, 1024, PNG_1024)
-    save_square_png(source, 512, ANDROID_LAUNCHER)
+    save_square_webp(source, 512, ANDROID_LAUNCHER)
     write_notification_icon(source, ANDROID_NOTIFICATION)
     write_notification_icon(source, SHARED_NOTIFICATION)
-    save_square_png(source, 256, SHARED_NOTIFICATION_LARGE)
+    save_square_webp(source, 256, SHARED_NOTIFICATION_LARGE)
     save_square_png(source, 256, TRAY_PNG)
     write_ico(ICO, source)
     for size in (16, 32, 48, 96, 128):

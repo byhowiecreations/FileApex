@@ -10,7 +10,7 @@ import com.fileapex.util.cancellableCatching
 
 actual fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap? {
     val edge = maxEdge.coerceAtLeast(16)
-    val head = runCatching {
+    val head = cancellableCatching("ImageDecoder decodeLocalImageFile") {
         java.io.File(absolutePath).inputStream().use { input ->
             val buf = ByteArray(65_536)
             val read = input.read(buf)
@@ -18,7 +18,7 @@ actual fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap
         }
     }.getOrDefault(ByteArray(0))
     val orientation = jpegOrientation(head)
-    return cancellableCatching {
+    return cancellableCatching("ImageDecoder decodeLocalImageFile 2") {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -32,7 +32,7 @@ actual fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap
 actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
     if (bytes.isEmpty()) return null
     val edge = maxEdge.coerceAtLeast(16)
-    return cancellableCatching {
+    return cancellableCatching("ImageDecoder decodeImageBytes") {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null

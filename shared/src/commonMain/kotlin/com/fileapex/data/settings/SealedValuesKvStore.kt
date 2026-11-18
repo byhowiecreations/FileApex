@@ -1,6 +1,7 @@
 package com.fileapex.data.settings
 
 import com.fileapex.data.db.seal.FieldSealer
+import com.fileapex.util.cancellableCatching
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -40,7 +41,7 @@ class SettingsMasterKey(
         val stored = inner.getString(KEY, "")
         var replacing = false
         if (stored.startsWith(PREFIX)) {
-            val opened = runCatching { wrapper.open(Base64.getDecoder().decode(stored.removePrefix(PREFIX))) }
+            val opened = cancellableCatching("SealedValuesKvStore openOrCreate") { wrapper.open(Base64.getDecoder().decode(stored.removePrefix(PREFIX))) }
             opened.getOrNull()?.takeIf { it.size == KEY_BYTES }?.let {
                 outcome = Outcome.Opened
                 return FieldSealer(it).also { s -> cached = s }
@@ -55,7 +56,7 @@ class SettingsMasterKey(
             replacing = true
         }
         val bytes = ByteArray(KEY_BYTES).also { SecureRandom().nextBytes(it) }
-        val wrapped = runCatching { wrapper.seal(bytes) }.getOrElse {
+        val wrapped = cancellableCatching("SealedValuesKvStore openOrCreate 2") { wrapper.seal(bytes) }.getOrElse {
             log("SettingsMasterKey: a settings key could not be made now (${it.javaClass.simpleName}); tried again later")
             outcome = Outcome.Unavailable
             return null
@@ -192,9 +193,9 @@ class SealedValuesKvStore(
     private fun readLegacy(key: String): Legacy? {
         val text = rawString(key)
         if (text != null) return if (inner.contains(key)) Legacy('s', text) else null
-        runCatching { return Legacy('b', inner.getBoolean(key, false).toString()) }
-        runCatching { return Legacy('i', inner.getInt(key, 0).toString()) }
-        runCatching { return Legacy('l', inner.getLong(key, 0L).toString()) }
+        cancellableCatching("SealedValuesKvStore readLegacy") { return Legacy('b', inner.getBoolean(key, false).toString()) }
+        cancellableCatching("SealedValuesKvStore readLegacy 2") { return Legacy('i', inner.getInt(key, 0).toString()) }
+        cancellableCatching("SealedValuesKvStore readLegacy 3") { return Legacy('l', inner.getLong(key, 0L).toString()) }
         return null
     }
 
@@ -248,8 +249,8 @@ class SealedValuesKvStore(
             }
             if (wrapper != null && cur.startsWith(PREFIX_SEALED)) {
                 val b64 = cur.removePrefix(PREFIX_SEALED)
-                val blob = runCatching { Base64.getDecoder().decode(b64) }.getOrNull()
-                val opened = if (blob != null) runCatching { String(wrapper.open(blob), Charsets.UTF_8) }.getOrNull() else null
+                val blob = cancellableCatching("SealedValuesKvStore unwrapLegacyNested") { Base64.getDecoder().decode(b64) }.getOrNull()
+                val opened = if (blob != null) cancellableCatching("SealedValuesKvStore unwrapLegacyNested 2") { String(wrapper.open(blob), Charsets.UTF_8) }.getOrNull() else null
                 if (opened != null) {
                     cur = opened
                     continue

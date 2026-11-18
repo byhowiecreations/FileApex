@@ -11,12 +11,12 @@ import kotlinx.coroutines.withContext
 object PeerBatteryFetch {
     suspend fun fetch(device: PairedDeviceEntity): BatteryDiagnostics? = withContext(Dispatchers.IO) {
         FileApexServices.presenceMonitor.probeNow(device)?.let { direct ->
-            val directResult = cancellableCatching {
+            val directResult = cancellableCatching("PeerBatteryFetch fetch") {
                 FileApexServices.client.fetchFastBattery(direct.host, direct.port)
             }.getOrNull()
             if (directResult != null) return@withContext directResult
         }
-        cancellableCatching {
+        cancellableCatching("PeerBatteryFetch fetch 2") {
             DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId).battery
         }.getOrNull()
     }

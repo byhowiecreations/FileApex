@@ -32,8 +32,8 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
         // clears the update-install records kept for it.
         val peerId = server.authenticatedPeerId(call)
         if (peerId != null) {
-            runCatching { TransferTransactionJournal.purgeInstalledForSender(peerId) }
-            runCatching { com.fileapex.di.FileApexServices.bulletinSyncEngine.latestChange() }.getOrNull()?.let { version ->
+            cancellableCatching("purging installed transfer journal entries") { TransferTransactionJournal.purgeInstalledForSender(peerId) }
+            cancellableCatching("reading the Bulletin sync state for diagnostics") { com.fileapex.di.FileApexServices.bulletinSyncEngine.latestChange() }.getOrNull()?.let { version ->
                 call.response.headers.append(com.fileapex.network.PeerHttpHeaders.BULLETIN_VERSION, version.toString())
             }
             com.fileapex.domain.link.PairLinkState.partnerId().takeIf { it.isNotEmpty() }?.let {
@@ -43,7 +43,7 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
                 .onFailure { server.onLog("chain state unavailable for a health answer", it) }
                 .getOrNull()?.let { call.response.headers.append(com.fileapex.membership.ChainStateField.HEADER, it.encode()) }
             com.fileapex.membership.ChainStateField.parse(call.request.queryParameters[com.fileapex.membership.ChainStateField.QUERY])?.let { shown ->
-                server.serverScope.launch { cancellableCatching { server.onChainState(peerId, shown) } }
+                server.serverScope.launch { cancellableCatching("ServerDiagnosticRoutes: server.onChainState") { server.onChainState(peerId, shown) } }
             }
         }
         call.respondText("ok:${server.identityProvider().deviceId}", ContentType.Text.Plain)
@@ -57,13 +57,13 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
         val summaryOnly = call.request.queryParameters["detail"] == "summary"
         val groups = com.fileapex.domain.diagnostics.DiagnosticGroups.decode(call.request.queryParameters["groups"])
         val snapshot = withContext(Dispatchers.IO) {
-            runCatching { if (summaryOnly) collectDeviceSummary() else collectDeviceDiagnostics(groups) }
+            cancellableCatching { if (summaryOnly) collectDeviceSummary() else collectDeviceDiagnostics(groups) }
                 .getOrElse { error ->
                     server.onLog("GET /api/v1/diagnostics collector failed - returning partial snapshot", error)
                     collectDeviceDiagnosticsFallback()
                 }
         }
-        runCatching {
+        cancellableCatching {
             call.respondText(
                 text = server.json.encodeToString(PeerDeviceDiagnostics.serializer(), snapshot),
                 contentType = ContentType.Application.Json
@@ -80,12 +80,12 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
             return@get
         }
         val snapshot = withContext(Dispatchers.IO) {
-            runCatching { collectFastBatteryDiagnostics() }
+            cancellableCatching("collecting battery diagnostics") { collectFastBatteryDiagnostics() }
                 .getOrElse {
                     BatteryDiagnostics(chargingState = "Not available")
                 }
         }
-        runCatching {
+        cancellableCatching {
             call.respondText(
                 text = server.json.encodeToString(BatteryDiagnostics.serializer(), snapshot),
                 contentType = ContentType.Application.Json
@@ -106,7 +106,7 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
                 return@post
             }
         }
-        runCatching {
+        cancellableCatching {
             com.fileapex.platform.triggerLocalLocatorSound(continuous)
             call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
         }.onFailure { error ->
@@ -138,13 +138,13 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
     post("/api/v1/device/alert") {
         cancellableCatching {
             val body = call.receiveBoundedText()
-            val title = runCatching {
+            val title = cancellableCatching("ServerDiagnosticRoutes: server.json.parseToJsonElement") {
                 server.json.parseToJsonElement(body)
             }.getOrNull()?.let { elem ->
                 (elem as? kotlinx.serialization.json.JsonObject)?.get("title")
                     ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
             } ?: "FileApex Alert"
-            val content = runCatching {
+            val content = cancellableCatching("ServerDiagnosticRoutes: server.json.parseToJsonElement") {
                 server.json.parseToJsonElement(body)
             }.getOrNull()?.let { elem ->
                 (elem as? kotlinx.serialization.json.JsonObject)?.get("text")

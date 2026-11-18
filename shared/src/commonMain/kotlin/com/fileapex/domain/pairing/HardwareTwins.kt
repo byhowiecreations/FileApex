@@ -30,7 +30,7 @@ object HardwareTwins {
     suspend fun answersAs(row: PairedDeviceEntity): Boolean {
         val host = row.lastKnownIp.trim()
         if (!NetworkUtils.isUsableLanIpv4(host) || row.port <= 0) return false
-        val seen = cancellableCatching { FileApexServices.client.fetchPeerNodeState(host, row.port) }.getOrNull() ?: return false
+        val seen = cancellableCatching("HardwareTwins: FileApexServices.client.fetchPeerNodeState") { FileApexServices.client.fetchPeerNodeState(host, row.port) }.getOrNull() ?: return false
         return seen.deviceId.trim() == row.deviceId
     }
 }

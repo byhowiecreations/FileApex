@@ -14,6 +14,7 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.tasks.await
+import com.fileapex.util.cancellableCatching
 
 internal fun googleIdTokenFromAuthorization(
     result: AuthorizationResult
@@ -44,7 +45,7 @@ suspend fun reinstallGoogleAccountPicker(activity: Activity): Pair<String, Strin
     val clientId = googleWebClientId()
     if (clientId.isBlank()) return null
     val option = GetSignInWithGoogleOption.Builder(clientId).build()
-    val response = runCatching {
+    val response = cancellableCatching {
         CredentialManager.create(activity).getCredential(
             activity,
             GetCredentialRequest.Builder().addCredentialOption(option).build()
@@ -53,7 +54,7 @@ suspend fun reinstallGoogleAccountPicker(activity: Activity): Pair<String, Strin
         println("RestoreCredentials: reinstall account picker cancelled or failed - ${error.message}")
         return null
     }
-    return runCatching {
+    return cancellableCatching("GoogleIdentityTokens.android: googleIdTokenFromCredential") {
         googleIdTokenFromCredential(response.credential.data)
     }.getOrNull()
 }
@@ -84,7 +85,7 @@ private suspend fun googleIdAutoSelect(
         .setFilterByAuthorizedAccounts(authorizedOnly)
         .setAutoSelectEnabled(true)
         .build()
-    val response = runCatching {
+    val response = cancellableCatching {
         CredentialManager.create(context).getCredential(
             context,
             GetCredentialRequest.Builder().addCredentialOption(option).build()
@@ -96,7 +97,7 @@ private suspend fun googleIdAutoSelect(
         )
         return null
     }
-    return runCatching {
+    return cancellableCatching {
         googleIdTokenFromCredential(response.credential.data)
     }.getOrElse { error ->
         println("RestoreCredentials: Google ID parse failed - ${error.message}")
@@ -133,7 +134,7 @@ internal suspend fun silentGoogleIdToken(
         println("RestoreCredentials: silent Google auth needs UI - skipping")
         return null
     }
-    return runCatching { googleIdTokenFromAuthorization(result) }.getOrNull()
+    return cancellableCatching("GoogleIdentityTokens.android: googleIdTokenFromAuthorization") { googleIdTokenFromAuthorization(result) }.getOrNull()
 }
 
 private const val GOOGLE_ACCOUNT_TYPE = "com.google"

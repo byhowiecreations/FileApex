@@ -33,7 +33,7 @@ internal class DesktopSettingsKvStore(
     }
 
     override fun clear() {
-        cancellableCatching { prefs.clear() }
+        cancellableCatching("AppSettings clear") { prefs.clear() }
     }
 }
 

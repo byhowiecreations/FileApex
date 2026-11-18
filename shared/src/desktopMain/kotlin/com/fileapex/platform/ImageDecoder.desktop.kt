@@ -19,21 +19,22 @@ import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import javax.imageio.stream.ImageInputStream
+import com.fileapex.util.cancellableCatching
 
 actual fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap? {
     val edge = maxEdge.coerceAtLeast(16)
     val file = File(absolutePath)
     if (!file.isFile) return null
-    val orientation = runCatching {
+    val orientation = cancellableCatching("ImageDecoder decodeLocalImageFile") {
         file.inputStream().use { input ->
             val buf = ByteArray(65_536)
             val read = input.read(buf)
             if (read <= 0) 1 else jpegOrientation(buf.copyOf(read))
         }
     }.getOrDefault(1)
-    val sampled = runCatching { readSubsampled(file, edge, orientation) }.getOrNull()
+    val sampled = cancellableCatching("ImageDecoder decodeLocalImageFile 2") { readSubsampled(file, edge, orientation) }.getOrNull()
     if (sampled != null) return sampled
-    return runCatching { decodeImageBytes(file.readBytes(), edge) }.getOrNull()
+    return cancellableCatching("ImageDecoder decodeLocalImageFile 3") { decodeImageBytes(file.readBytes(), edge) }.getOrNull()
 }
 
 private fun readSubsampled(file: File, maxEdge: Int, orientation: Int): ImageBitmap? {
@@ -96,7 +97,7 @@ private fun orientBuffered(image: BufferedImage, orientation: Int): BufferedImag
 actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
     if (bytes.isEmpty()) return null
     val edge = maxEdge.coerceAtLeast(16)
-    return runCatching {
+    return cancellableCatching("ImageDecoder decodeImageBytes") {
         val codec = Codec.makeFromData(Data.makeFromBytes(bytes))
         val srcWidth = codec.width
         val srcHeight = codec.height
@@ -132,7 +133,7 @@ actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
 }
 
 actual fun previewMaxEdgePx(): Int {
-    val edge = runCatching {
+    val edge = cancellableCatching("ImageDecoder previewMaxEdgePx") {
         val config = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration
         val bounds = config.bounds
         val scale = config.defaultTransform.scaleX.coerceAtLeast(1.0)
@@ -197,7 +198,7 @@ actual fun encodeLocalMediaThumbnailJpeg(absolutePath: String, mimeType: String,
     } else {
         decodeLocalImageFile(absolutePath, edge)
     } ?: return null
-    return runCatching {
+    return cancellableCatching("ImageDecoder encodeLocalMediaThumbnailJpeg") {
         Image.makeFromBitmap(bitmap.asSkiaBitmap())
             .encodeToData(EncodedImageFormat.JPEG, 78)
             ?.bytes

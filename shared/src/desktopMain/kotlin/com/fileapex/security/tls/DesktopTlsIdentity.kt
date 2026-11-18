@@ -12,6 +12,7 @@ import java.io.File
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 import javax.crypto.spec.SecretKeySpec
+import com.fileapex.util.cancellableCatching
 
 /**
  * Random AES key kept in the login Keychain through the `security` tool, which is also the only reader,
@@ -32,7 +33,7 @@ class MacKeychainTlsVault(private val service: String = SERVICE) : TlsSecretVaul
     @Synchronized
     private fun key(): SecretKeySpec {
         cachedKey?.let { return it }
-        val (code, out) = runCatching { run("find-generic-password", "-s", service, "-a", ACCOUNT, "-w") }
+        val (code, out) = cancellableCatching { run("find-generic-password", "-s", service, "-a", ACCOUNT, "-w") }
             .getOrElse { throw SecretUnavailableException("the keychain could not be asked", it) }
         if (code == 0) {
             val hex = out.trim()
@@ -44,7 +45,7 @@ class MacKeychainTlsVault(private val service: String = SERVICE) : TlsSecretVaul
         val fresh = ByteArray(32).also { SecureRandom().nextBytes(it) }
         val hex = fresh.joinToString("") { "%02x".format(it) }
         // Passed on stdin to `security -i`, so the key never appears in a process list.
-        runCatching { addViaStdin(hex) }.getOrElse { throw SecretUnavailableException("the keychain could not be written", it) }
+        cancellableCatching { addViaStdin(hex) }.getOrElse { throw SecretUnavailableException("the keychain could not be written", it) }
         val (readBack, stored) = run("find-generic-password", "-s", service, "-a", ACCOUNT, "-w")
         if (readBack != 0 || stored.trim() != hex) throw SecretUnavailableException("the keychain did not keep the new key")
         return SecretKeySpec(fresh, "AES").also { cachedKey = it }

@@ -10,7 +10,6 @@ import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.presentation.ExplorerActionCopy
 import com.fileapex.presentation.ExplorerUiState
-import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +32,7 @@ internal class ExplorerCopyActions(
 
     fun copySelected() {
         val items = selectedItems()
-        runCatching {
+        cancellableCatching("ExplorerCopyActions copySelected") {
             val message = transfers.copySelected(items)
             _uiState.update {
                 it.copy(
@@ -56,7 +55,7 @@ internal class ExplorerCopyActions(
         } else {
             listOf(item)
         }
-        runCatching {
+        cancellableCatching("ExplorerCopyActions copyItem") {
             val message = transfers.copySelected(items)
             _uiState.update {
                 it.copy(
@@ -151,7 +150,7 @@ internal class ExplorerCopyActions(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isMultiCopying = true, errorMessage = null) }
-            cancellableCatching {
+            cancellableCatching("ExplorerCopyActions confirmMultiCopy") {
                 val sources = transfers.sourcesFrom(items)
                 transfers.sendOrQueue(sources, selectedDevices)
             }.fold(
@@ -233,7 +232,7 @@ internal class ExplorerCopyActions(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            cancellableCatching {
+            cancellableCatching("ExplorerCopyActions downloadItem") {
                 transfers.downloadRemote(items)
             }.fold(
                 onSuccess = { paths ->
@@ -269,7 +268,7 @@ internal class ExplorerCopyActions(
         val items = selectedItems()
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            cancellableCatching {
+            cancellableCatching("ExplorerCopyActions downloadSelected") {
                 transfers.downloadRemote(items)
             }.fold(
                 onSuccess = { paths ->
@@ -303,7 +302,7 @@ internal class ExplorerCopyActions(
 
     fun pasteHere() {
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("ExplorerCopyActions pasteHere") {
                 val paths = transfers.pasteInto(_uiState.value.currentPath)
                 _uiState.update {
                     it.copy(

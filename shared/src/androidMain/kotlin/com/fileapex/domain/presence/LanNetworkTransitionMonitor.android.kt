@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import com.fileapex.platform.androidApplicationContextOrNull
 import java.net.Inet4Address
+import com.fileapex.util.cancellableCatching
 
 /** Observes Wi‑Fi/Ethernet transitions and triggers one-shot LAN revalidation. */
 internal object LanNetworkTransitionMonitor {
@@ -52,7 +53,7 @@ internal object LanNetworkTransitionMonitor {
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
             .build()
-        runCatching {
+        cancellableCatching {
             connectivity.registerNetworkCallback(request, callback)
             registered = true
         }.onFailure { error ->

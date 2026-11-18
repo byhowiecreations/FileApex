@@ -4,6 +4,7 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.network.FileApexClient
 import com.fileapex.network.PeerUnreachableException
 import com.fileapex.network.SocketFileStreamer
+import com.fileapex.network.TransferCancelledException
 import com.fileapex.network.TransferRuntime
 import com.fileapex.network.transferCatching
 import com.fileapex.platform.UniqueFileNames
@@ -18,6 +19,8 @@ import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.fileapex.util.cancellableCatching
+import com.fileapex.util.logFailureOnce
 
 /**
  * Coordinates Multi Copy for one source file across its destinations.
@@ -56,7 +59,7 @@ class MultiCopyBroadcastEngine(
         val distinct = destinations.distinctBy { it.deviceId }
         if (verifiedSource.isDirectory) {
             val outcomes = distinct.map { destination ->
-                val failure = transferCatching {
+                val failure = transferCatching("copying to a multi-copy destination") {
                     when (destination) {
                         is MultiCopyDestination.LocalDevice -> {
                             java.io.File(destination.absolutePath).mkdirs()
@@ -66,7 +69,7 @@ class MultiCopyBroadcastEngine(
                         }
                     }
                 }.exceptionOrNull()
-                outcomeOf(destination, failure)
+                writerOutcomeFor(destination, failure)
             }
             return@coroutineScope resultOf(verifiedSource.fileName, outcomes)
         }
@@ -126,7 +129,7 @@ class MultiCopyBroadcastEngine(
             val onProgress: (Long, Long) -> Unit = { sent, total ->
                 TransferActivityGuard.updateProgress(sent, total, destination.deviceId, streamKey)
             }
-            val failure = transferCatching {
+            val failure = transferCatching("copying to a multi-copy destination") {
                 when (destination) {
                     is MultiCopyDestination.LocalDevice -> when (source) {
                         is MultiCopySource.Local -> copyLocalWithResume(source, destination.absolutePath, onProgress)
@@ -164,7 +167,7 @@ class MultiCopyBroadcastEngine(
                     }
                 }
             }.exceptionOrNull()
-            return outcomeOf(destination, failure)
+            return writerOutcomeFor(destination, failure)
         } finally {
             TransferActivityGuard.endTransfer(destination.deviceId, streamKey)
         }
@@ -184,7 +187,7 @@ class MultiCopyBroadcastEngine(
 
         val writers = destinations.mapIndexed { index, destination ->
             async(TransferRuntime.outbound) {
-                val failure = transferCatching {
+                val failure = transferCatching("copying to a multi-copy destination") {
                     when (destination) {
                         is MultiCopyDestination.LocalDevice -> {
                             writeLocalFromChannel(
@@ -210,9 +213,9 @@ class MultiCopyBroadcastEngine(
                 }.exceptionOrNull()
                 if (failure != null) {
                     // Closing lets the producer skip this channel instead of parking on it.
-                    runCatching { chunkChannels[index].close() }
+                    cancellableCatching("MultiCopyBroadcastEngine: close") { chunkChannels[index].close() }
                 }
-                outcomeOf(destination, failure)
+                writerOutcomeFor(destination, failure)
             }
         }
 
@@ -242,12 +245,13 @@ class MultiCopyBroadcastEngine(
                     }
                 }
                 chunkChannels.forEach { channel ->
-                    runCatching { channel.close() }
+                    cancellableCatching("MultiCopyBroadcastEngine: channel.close") { channel.close() }
                 }
             } catch (cancelled: CancellationException) {
                 chunkChannels.forEach { channel -> channel.cancel(cancelled) }
                 throw cancelled
             } catch (error: Throwable) {
+                logFailureOnce("MultiCopyBroadcastEngine: reading the source", error)
                 producerError = error
                 chunkChannels.forEach { channel -> channel.close(error) }
             }
@@ -335,32 +339,35 @@ class MultiCopyBroadcastEngine(
         SocketFileStreamer.finalizePart(partPath, resolved)
     }
 
-    private fun outcomeOf(destination: MultiCopyDestination, failure: Throwable?): WriterOutcome =
-        if (failure == null) {
-            WriterOutcome(destination.deviceId, errorMessage = null)
-        } else {
-            WriterOutcome(
-                deviceId = destination.deviceId,
-                errorMessage = failure.message ?: AppI18n.t("transfer_failed_on", destination.deviceName),
-                unreachable = failure is PeerUnreachableException
-            )
-        }
-
     private fun resultOf(fileName: String, outcomes: List<WriterOutcome>): MultiCopyResult =
         MultiCopyResult(
             fileName = fileName,
             succeededDeviceIds = outcomes.filter { it.errorMessage == null }.map { it.deviceId }.toSet(),
             failures = outcomes.mapNotNull { outcome -> outcome.errorMessage?.let { outcome.deviceId to it } }.toMap(),
-            unreachableDeviceIds = outcomes.filter { it.unreachable }.map { it.deviceId }.toSet()
+            unreachableDeviceIds = outcomes.filter { it.unreachable }.map { it.deviceId }.toSet(),
+            cancelledByReceiverDeviceIds = outcomes.filter { it.cancelledByReceiver }.map { it.deviceId }.toSet()
         )
-
-    private data class WriterOutcome(
-        val deviceId: String,
-        val errorMessage: String?,
-        val unreachable: Boolean = false
-    )
 
     companion object {
         private const val CHANNEL_CAPACITY = 2
     }
 }
+
+internal data class WriterOutcome(
+    val deviceId: String,
+    val errorMessage: String?,
+    val unreachable: Boolean = false,
+    val cancelledByReceiver: Boolean = false
+)
+
+internal fun writerOutcomeFor(destination: MultiCopyDestination, failure: Throwable?): WriterOutcome =
+    if (failure == null) {
+        WriterOutcome(destination.deviceId, errorMessage = null)
+    } else {
+        WriterOutcome(
+            deviceId = destination.deviceId,
+            errorMessage = failure.message ?: AppI18n.t("transfer_failed_on", destination.deviceName),
+            unreachable = failure is PeerUnreachableException,
+            cancelledByReceiver = failure is TransferCancelledException
+        )
+    }

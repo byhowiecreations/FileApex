@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
+import com.fileapex.util.cancellableCatching
 
 /** Adds the menu entry (AppImage only; packages register their own) and a desktop shortcut on first launch. */
 object LinuxDesktopIntegration {
@@ -13,7 +14,7 @@ object LinuxDesktopIntegration {
 
     fun ensureInstalled() {
         if (!DesktopPlatformPaths.isLinux()) return
-        runCatching { install() }
+        cancellableCatching("LinuxDesktopIntegration ensureInstalled") { install() }
             .onFailure { println("LinuxDesktopIntegration: skipped (${it::class.simpleName})") }
     }
 
@@ -55,7 +56,7 @@ object LinuxDesktopIntegration {
         if (desktop != null && desktop.isDirectory) {
             val shortcut = File(desktop, "FileApex.desktop")
             shortcut.writeText(entry)
-            runCatching {
+            cancellableCatching("LinuxDesktopIntegration install") {
                 Files.setPosixFilePermissions(shortcut.toPath(), PosixFilePermissions.fromString("rwxr-xr-x"))
             }
             // GNOME shows an untrusted launcher as a text file.
@@ -91,7 +92,7 @@ object LinuxDesktopIntegration {
     private fun userDesktopDir(home: File): File = DesktopPlatformPaths.xdgUserDirectory("DESKTOP") ?: File(home, "Desktop")
 
     private fun runQuietly(vararg command: String) {
-        runCatching {
+        cancellableCatching("LinuxDesktopIntegration runQuietly") {
             ProcessBuilder(*command)
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)

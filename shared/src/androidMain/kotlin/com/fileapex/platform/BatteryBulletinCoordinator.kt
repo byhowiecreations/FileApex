@@ -199,7 +199,7 @@ object BatteryBulletinCoordinator {
      */
     private suspend fun retractIfNeeded(context: Context, reason: String, force: Boolean = false) {
         if (!force && !isRetractPending(context)) return
-        val selfId = runCatching { loadLocalIdentity().deviceId }.getOrDefault("")
+        val selfId = cancellableCatching("BatteryBulletinCoordinator retractIfNeeded") { loadLocalIdentity().deviceId }.getOrDefault("")
         if (selfId.isEmpty()) return
         FileApexServices.noteRepository.retractBulletinsByKind(selfId, BulletinContentType.BATTERY_LOW)
         setRetractPending(context, false)

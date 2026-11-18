@@ -905,6 +905,8 @@ Toca el hub central (+) para emparejar</string>
     <string name="sent_named_to">Se envió %1$s a %2$s</string>
     <string name="sent_n_files_to">Se enviaron %1$s archivos a %2$s</string>
     <string name="send_failed_all_destinations">El envío falló en todos los destinos</string>
+    <string name="send_cancelled_by_receiver">Cancelado por el receptor</string>
+    <string name="transfer_pause">Pausar</string>
     <string name="waiting_drive_grant">Esperando autorización de Google Drive</string>
     <string name="drive_relay_did_not_finish">El relevo de Drive no terminó</string>
     <string name="confirm_cellular_send">Confirma el envío por datos móviles para entregar por Google Drive Relay</string>
@@ -1149,6 +1151,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="cancel_keep_going">Continuar</string>
     <string name="queued_sending_background">Enviando a %1$s</string>
     <string name="queued_source_changed">%1$s cambió después de ponerse en cola, así que no se envió. Reintenta para enviar la versión actual.</string>
+    <string name="queued_source_missing">No se encontró %1$s, así que no se envió. Reintenta cuando el archivo vuelva o quítalo de la cola.</string>
     <string name="drive_encrypt">Cifrar archivos</string>
     <string name="drive_encrypt_off">Desactivado. Los archivos llegan a Drive tal cual, así que también puedes descargarlos allí.</string>
     <string name="drive_encrypt_on">Activado. Los archivos se cifran antes de subirse y solo tus dispositivos vinculados pueden abrirlos. Los nombres siguen visibles.</string>

@@ -17,7 +17,6 @@ import com.fileapex.platform.unzipLocalEntry
 import com.fileapex.platform.zipLocalEntry
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
-import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +39,7 @@ internal class ExplorerMutationActions(
         if (target !is BrowseTarget.Local) return
         viewModelScope.launch {
             val renamed = withContext(Dispatchers.IO) {
-                runCatching { renameLocalEntry(item.absolutePath, newName) }
+                cancellableCatching("ExplorerMutationActions renameItem") { renameLocalEntry(item.absolutePath, newName) }
             }
             renamed.onSuccess { afterMutation() }
                 .onFailure { error ->
@@ -53,7 +52,7 @@ internal class ExplorerMutationActions(
         if (target !is BrowseTarget.Local) return
         viewModelScope.launch {
             val zipped = withContext(Dispatchers.IO) {
-                runCatching { zipLocalEntry(item.absolutePath) }
+                cancellableCatching("ExplorerMutationActions compressItem") { zipLocalEntry(item.absolutePath) }
             }
             zipped.onSuccess { afterMutation() }
                 .onFailure { error ->
@@ -66,7 +65,7 @@ internal class ExplorerMutationActions(
         if (target !is BrowseTarget.Local) return
         viewModelScope.launch {
             val unpacked = withContext(Dispatchers.IO) {
-                runCatching { unzipLocalEntry(item.absolutePath) }
+                cancellableCatching("ExplorerMutationActions uncompressItem") { unzipLocalEntry(item.absolutePath) }
             }
             unpacked.onSuccess { afterMutation() }
                 .onFailure { error ->
@@ -90,7 +89,7 @@ internal class ExplorerMutationActions(
         }
         viewModelScope.launch {
             val outcome = withContext(Dispatchers.IO) {
-                runCatching { items.forEach { com.fileapex.platform.moveLocalEntryInto(it.absolutePath, destination) } }
+                cancellableCatching("ExplorerMutationActions moveItem") { items.forEach { com.fileapex.platform.moveLocalEntryInto(it.absolutePath, destination) } }
             }
             outcome.onSuccess {
                 _uiState.update {
@@ -116,7 +115,7 @@ internal class ExplorerMutationActions(
         }
         viewModelScope.launch {
             val outcome = withContext(Dispatchers.IO) {
-                cancellableCatching {
+                cancellableCatching("ExplorerMutationActions deleteRemoteItems") {
                     browser.ensureBrowseAccess()
                     items.forEach { FileApexServices.client.deleteRemote(remote.host, remote.port, it.absolutePath) }
                 }
@@ -149,7 +148,7 @@ internal class ExplorerMutationActions(
         }
         viewModelScope.launch {
             val outcome = withContext(Dispatchers.IO) {
-                runCatching { trashLocalEntries(items.map { it.absolutePath }) }
+                cancellableCatching("ExplorerMutationActions deleteItem") { trashLocalEntries(items.map { it.absolutePath }) }
             }
             outcome.onSuccess { finished ->
                 TransferClipboard.dropPaths(items.map { it.absolutePath }.toSet())
@@ -181,12 +180,12 @@ internal class ExplorerMutationActions(
             val failed = withContext(Dispatchers.IO) {
                 when (val browseTarget = target) {
                     is BrowseTarget.Local -> paths.mapNotNull { payload ->
-                        cancellableCatching { dropOntoLocal(payload, destination) }.exceptionOrNull()
+                        cancellableCatching("ExplorerMutationActions importDropped") { dropOntoLocal(payload, destination) }.exceptionOrNull()
                     }
                     is BrowseTarget.Remote -> {
                         val localPaths = paths.mapNotNull { localPathOfDrop(it) }
                         if (localPaths.isEmpty()) emptyList()
-                        else cancellableCatching {
+                        else cancellableCatching("ExplorerMutationActions importDropped 2") {
                             val sources = com.fileapex.domain.transfer.LocalTransferTree.expandAbsolutePaths(localPaths)
                             FileApexServices.transferService.multiCopyToDevices(
                                 sources,

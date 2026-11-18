@@ -89,7 +89,7 @@ internal class DevicesDetailsActions(
             val groups = DiagnosticGroups.toRequest(
                 FileApexServices.settings.deviceDetailsDisplayPreferences.first().visibleFieldIds()
             )
-            cancellableCatching {
+            cancellableCatching("DevicesDetailsActions requestDeviceDetails") {
                 withContext(Dispatchers.IO) {
                     DeviceDetailsCache.remember(device.deviceId, fetchDeviceDetailsSnapshot(device, summaryOnly, groups), groups)
                 }
@@ -136,7 +136,7 @@ internal class DevicesDetailsActions(
         groups: Set<DiagnosticGroup>?
     ): PeerDeviceDiagnostics {
         presence.probeNow(device)?.let { direct ->
-            cancellableCatching {
+            cancellableCatching("DevicesDetailsActions fetchDeviceDetailsSnapshot") {
                 FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port, summaryOnly, groups)
             }.onSuccess { return it }
         }
@@ -166,9 +166,9 @@ internal class DevicesDetailsActions(
             // Only devices that look offline need a wake. Online ones are queried directly below.
             val sleeping = deviceRows.value.filter { !it.online }
             if (sleeping.isNotEmpty()) {
-                runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
+                cancellableCatching("DevicesDetailsActions checkBatteries") { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
                 sleeping.forEach { row ->
-                    runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToDevice(row.deviceId) }
+                    cancellableCatching("DevicesDetailsActions checkBatteries 2") { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToDevice(row.deviceId) }
                 }
             }
             val initialLogs = listOf(
@@ -197,7 +197,7 @@ internal class DevicesDetailsActions(
             val nameColumnWidth = (allNames.maxOfOrNull { it.length } ?: 10) + 1
 
             val localDiag = withContext(Dispatchers.IO) {
-                runCatching {
+                cancellableCatching("DevicesDetailsActions checkBatteries 3") {
                     com.fileapex.platform.collectFastBatteryDiagnostics()
                 }.getOrNull()
             }

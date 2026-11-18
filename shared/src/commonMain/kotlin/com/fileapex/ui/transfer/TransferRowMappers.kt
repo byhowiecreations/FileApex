@@ -38,7 +38,8 @@ object TransferRowMappers {
             canCancel = stats.cancelable,
             canRetry = false,
             canRemove = false,
-            isSend = true
+            isSend = true,
+            cancelPauses = stats.parksOnCancel
         )
     }
 
@@ -72,7 +73,8 @@ object TransferRowMappers {
             canCancel = item.isSending,
             canRetry = item.isPaused || item.lastError != null,
             canRemove = true,
-            isSend = true
+            isSend = true,
+            cancelPauses = item.isSending
         )
     }
 

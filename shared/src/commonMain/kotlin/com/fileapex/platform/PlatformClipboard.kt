@@ -1,9 +1,13 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
+
 expect object PlatformClipboard {
     fun getSystemClipboardText(): String?
     fun getSystemClipboardImageBytes(): ByteArray?
     fun getSystemClipboardTimestamp(): Long?
+    /** True when the OS or a password manager marked the current clip sensitive (see SensitiveClipPolicy). */
+    fun isSystemClipboardSensitive(): Boolean
     fun setSystemClipboardText(text: String)
     fun applyRemoteText(text: String, sourceDeviceName: String = "")
     fun applyRemoteImage(bytes: ByteArray, mimeType: String, sourceDeviceName: String = "")
@@ -18,7 +22,7 @@ fun isWebUrl(text: String): Boolean {
     if (trimmed.isEmpty()) return false
     val lower = trimmed.lowercase()
     if (!lower.startsWith("http://") && !lower.startsWith("https://")) return false
-    return runCatching {
+    return cancellableCatching("PlatformClipboard isWebUrl") {
         val noQuery = trimmed.substringBefore('?').substringBefore('#')
         val hostPart = noQuery.substringAfter("://").substringBefore('/')
         hostPart.isNotBlank() && (hostPart.contains('.') || hostPart.lowercase() == "localhost")

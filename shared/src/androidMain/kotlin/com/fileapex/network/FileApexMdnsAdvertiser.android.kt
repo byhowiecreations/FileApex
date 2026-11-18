@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import com.fileapex.platform.androidApplicationContextOrNull
+import com.fileapex.util.cancellableCatching
 
 actual object FileApexMdnsAdvertiser {
     private var nsdManager: NsdManager? = null
@@ -42,7 +43,7 @@ actual object FileApexMdnsAdvertiser {
         registrationListener = listener
         registeredPort = port
         registeredDeviceId = deviceId
-        runCatching {
+        cancellableCatching {
             manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
             println("FileApexMdnsAdvertiser: registerService failed - ${error.message}")
@@ -57,7 +58,10 @@ actual object FileApexMdnsAdvertiser {
         val manager = nsdManager
         val listener = registrationListener
         if (manager != null && listener != null) {
-            runCatching { manager.unregisterService(listener) }
+            try {
+                manager.unregisterService(listener)
+            } catch (_: IllegalArgumentException) {
+            }
         }
         nsdManager = null
         registrationListener = null

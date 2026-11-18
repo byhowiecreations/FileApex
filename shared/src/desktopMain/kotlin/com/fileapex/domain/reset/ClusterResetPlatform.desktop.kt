@@ -9,14 +9,14 @@ actual object ClusterResetPlatform {
     actual val keepsAppRunning: Boolean = true
 
     actual fun eraseKeystoreAndSecureStorage() {
-        runCatching {
+        cancellableCatching("ClusterResetPlatform.desktop: DesktopPlatformPaths.identityPropertiesF") {
             DesktopPlatformPaths.identityPropertiesFile().delete()
             DesktopPlatformPaths.legacyIdentityPropertiesCandidates().forEach { it.delete() }
         }
     }
 
     actual fun stateResetAndRestart() {
-        cancellableCatching {
+        cancellableCatching("ClusterResetPlatform.desktop: Preferences.userRoot") {
             val node = Preferences.userRoot().node("com.fileapex.settings")
             val welcomeTutorialShown = node.getBoolean(
                 com.fileapex.data.settings.BaseAppSettings.KEY_WELCOME_TUTORIAL_SHOWN,
@@ -32,9 +32,9 @@ actual object ClusterResetPlatform {
         }
         // Sign-in tokens are not settings, so clearing the settings node alone would leave them behind.
         listOf("com.fileapex.firebase", "com.fileapex.drive").forEach { name ->
-            cancellableCatching { Preferences.userRoot().node(name).also { it.clear(); it.flush() } }
+            cancellableCatching("ClusterResetPlatform.desktop: Preferences.userRoot") { Preferences.userRoot().node(name).also { it.clear(); it.flush() } }
         }
-        runCatching {
+        cancellableCatching("ClusterResetPlatform.desktop: DesktopPlatformPaths.databasePreV3Backup") {
             LegacyHandoffCleanup.run()
             // The roster backup would be read back into an empty roster at the next start.
             val backup = DesktopPlatformPaths.databasePreV3BackupFile()

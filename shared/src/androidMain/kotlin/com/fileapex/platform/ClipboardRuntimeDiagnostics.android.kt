@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import com.fileapex.data.settings.androidAppContextOrNull
+import com.fileapex.util.cancellableCatching
 
 actual object ClipboardRuntimeDiagnostics {
     actual fun snapshot(): ClipboardRuntimeSnapshot {
@@ -48,7 +49,7 @@ actual object ClipboardRuntimeDiagnostics {
             putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        runCatching { context.startActivity(intent) }
+        cancellableCatching("ClipboardRuntimeDiagnostics openNotificationSettings") { context.startActivity(intent) }
     }
 
     private fun isBatteryWhitelisted(context: Context): Boolean {

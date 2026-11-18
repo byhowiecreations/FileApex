@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import java.awt.Desktop
 import java.io.File
+import com.fileapex.util.cancellableCatching
 
 actual fun openLocalFile(absolutePath: String, displayName: String) {
     val file = File(absolutePath)
@@ -9,6 +10,6 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
     if (!Desktop.isDesktopSupported()) return
     val desktop = Desktop.getDesktop()
     if (!desktop.isSupported(Desktop.Action.OPEN)) return
-    runCatching { desktop.open(file) }
+    cancellableCatching("OpenLocalFile openLocalFile") { desktop.open(file) }
 }
 

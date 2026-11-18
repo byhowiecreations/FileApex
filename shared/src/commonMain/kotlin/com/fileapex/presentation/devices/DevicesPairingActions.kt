@@ -19,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -35,7 +34,7 @@ internal class DevicesPairingActions(
 
     fun pairFromQrPayload(payload: PairingPayload) {
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("DevicesPairingActions pairFromQrPayload") {
                 if (payload.deviceId == identity.deviceId) {
                     error(AppI18n.t("pairing_scan_own_qr"))
                 }
@@ -84,7 +83,7 @@ internal class DevicesPairingActions(
     fun confirmPinPairing(pin: String) {
         val payload = _uiState.value.pendingPinPairing ?: return
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("DevicesPairingActions confirmPinPairing") {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 completePairing(payload, pin = pin.trim())
                 _uiState.update { it.copy(pendingPinPairing = null) }
@@ -178,7 +177,7 @@ internal class DevicesPairingActions(
 
         // Only now, after the handshake, is this device a pinned peer of the host: its identity is read once, introductions
         // can only be sealed for a peer whose key we hold.
-        cancellableCatching { FileApexServices.client.fetchPeerNodeState(payload.host, payload.port) }
+        cancellableCatching("DevicesPairingActions completePairing") { FileApexServices.client.fetchPeerNodeState(payload.host, payload.port) }
             .getOrNull()
             ?.let { state ->
                 repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)

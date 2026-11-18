@@ -6,6 +6,7 @@ import com.fileapex.platform.generateDeviceId
 import com.fileapex.platform.platformDeviceName
 import java.io.File
 import java.util.Properties
+import com.fileapex.util.cancellableCatching
 
 actual fun loadLocalIdentity(): LocalIdentity {
     val props = loadProps()
@@ -71,7 +72,7 @@ private fun identityLoadCandidates(): List<File> {
 private fun migrateIdentityIfNeeded(loadedFrom: File) {
     val target = identityFile()
     if (loadedFrom.canonicalPath == target.canonicalPath) return
-    runCatching {
+    cancellableCatching("LocalIdentity.desktop: DesktopPlatformPaths.applicationSupportDirector") {
         DesktopPlatformPaths.applicationSupportDirectory()
         loadedFrom.copyTo(target, overwrite = true)
     }

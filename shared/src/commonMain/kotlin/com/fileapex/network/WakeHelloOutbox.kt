@@ -7,6 +7,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.security.SecureRandom
+import com.fileapex.util.cancellableCatching
 
 /** What goes out on UDP 8888: one signed hello per paired peer. There is no unsigned wake any more. */
 object WakeHelloOutbox {
@@ -22,7 +23,7 @@ object WakeHelloOutbox {
 
     fun recipientCount(): Int = recipients.size
 
-    fun payloads(): List<ByteArray> = runCatching {
+    fun payloads(): List<ByteArray> = cancellableCatching("WakeHelloOutbox: loadLocalIdentity") {
         val identity = loadLocalIdentity()
         WakeHello.build(
             identity.deviceId,

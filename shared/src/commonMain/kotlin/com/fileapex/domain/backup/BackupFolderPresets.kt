@@ -3,6 +3,7 @@ package com.fileapex.domain.backup
 import com.fileapex.util.PathUtils
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import com.fileapex.util.cancellableCatching
 
 /** Presets and structured destination path helpers for device backups. */
 object BackupFolderPresets {
@@ -71,7 +72,7 @@ object BackupFolderPresets {
     fun detectAndroidMediaPresets(
         storageRoot: String,
         directoryExists: (String) -> Boolean = { candidate ->
-            runCatching {
+            cancellableCatching("BackupFolderPresets: SystemFileSystem.metadataOrNull") {
                 SystemFileSystem.metadataOrNull(Path(candidate))?.isDirectory == true
             }.getOrDefault(false)
         }

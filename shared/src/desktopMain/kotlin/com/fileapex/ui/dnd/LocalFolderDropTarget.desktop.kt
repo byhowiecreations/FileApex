@@ -24,6 +24,7 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DropTargetDragEvent
 import java.awt.dnd.DropTargetDropEvent
 import java.io.File
+import com.fileapex.util.cancellableCatching
 
 @OptIn(ExperimentalFoundationApi::class)
 actual fun Modifier.localFolderDropTarget(
@@ -85,15 +86,15 @@ private fun DragAndDropEvent.rootOffset(density: Density): Offset {
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("UNCHECKED_CAST")
 private fun droppedPayloads(event: DragAndDropEvent): List<String> {
-    val transferable = runCatching { event.awtTransferable }.getOrNull()
+    val transferable = cancellableCatching("LocalFolderDropTarget droppedPayloads") { event.awtTransferable }.getOrNull()
     if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-        val text = runCatching { transferable.getTransferData(DataFlavor.stringFlavor) as? String }.getOrNull()
+        val text = cancellableCatching("LocalFolderDropTarget droppedPayloads 2") { transferable.getTransferData(DataFlavor.stringFlavor) as? String }.getOrNull()
         if (!text.isNullOrBlank() && text.startsWith("fileapex-transfer://")) {
             return listOf(text)
         }
     }
     if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-        val files = runCatching {
+        val files = cancellableCatching("LocalFolderDropTarget droppedPayloads 3") {
             transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>
         }.getOrNull().orEmpty()
         val paths = files.mapNotNull { entry ->

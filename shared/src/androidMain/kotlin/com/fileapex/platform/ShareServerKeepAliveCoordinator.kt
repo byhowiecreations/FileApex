@@ -144,7 +144,7 @@ object ShareServerKeepAliveCoordinator {
             .setPersisted(true)
             .setMinimumLatency(intervalMs)
             .setOverrideDeadline(intervalMs + intervalMs / 2)
-        runCatching {
+        cancellableCatching("ShareServerKeepAliveCoordinator scheduleJobIfNeeded") {
             scheduler.schedule(builder.build())
             Log.i(
                 TAG,
@@ -163,7 +163,7 @@ object ShareServerKeepAliveCoordinator {
 
     private fun cancelJob(context: Context) {
         val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
-        runCatching {
+        cancellableCatching("ShareServerKeepAliveCoordinator cancelJob") {
             scheduler.cancel(JOB_ID)
             Log.i(TAG, "Cancelled battery backstop job (above 25% or already alerted)")
         }.onFailure { error ->
@@ -174,7 +174,7 @@ object ShareServerKeepAliveCoordinator {
     private fun registerFreezeGuard(context: Context) {
         if (freezeGuardRegistered) return
         val receiver = ShareServerFreezeGuardReceiver()
-        runCatching {
+        cancellableCatching("ShareServerKeepAliveCoordinator registerFreezeGuard") {
             ContextCompat.registerReceiver(
                 context,
                 receiver,
@@ -191,7 +191,7 @@ object ShareServerKeepAliveCoordinator {
 
     private fun unregisterFreezeGuard(context: Context) {
         val receiver = freezeGuardReceiver ?: return
-        runCatching {
+        cancellableCatching("ShareServerKeepAliveCoordinator unregisterFreezeGuard") {
             context.unregisterReceiver(receiver)
             Log.i(TAG, "Unregistered freeze-guard receiver")
         }.onFailure { error ->
@@ -224,7 +224,7 @@ object ShareServerKeepAliveCoordinator {
         val request = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
-        runCatching {
+        cancellableCatching("ShareServerKeepAliveCoordinator onCapabilitiesChanged") {
             connectivity.registerNetworkCallback(request, callback)
             networkCallback = callback
             Log.i(TAG, "Registered keep-alive network callback")
@@ -237,7 +237,7 @@ object ShareServerKeepAliveCoordinator {
         val callback = networkCallback ?: return
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return
-        runCatching {
+        cancellableCatching("ShareServerKeepAliveCoordinator unregisterNetworkCallback") {
             connectivity.unregisterNetworkCallback(callback)
             Log.i(TAG, "Unregistered keep-alive network callback")
         }.onFailure { error ->

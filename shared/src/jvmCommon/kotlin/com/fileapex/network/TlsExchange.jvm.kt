@@ -16,6 +16,7 @@ import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509ExtendedTrustManager
+import com.fileapex.util.cancellableCatching
 
 /**
  * A TLS connection to a peer whose key is not looked up in the pin store: it shows this device's key and takes the
@@ -62,10 +63,16 @@ internal object TlsExchange {
                 ssl.startHandshake()
                 return ssl to (observed.get() ?: throw CertificateException("no host key seen"))
             } catch (e: CertificateException) {
-                runCatching { plain.close() }
+                try {
+                    plain.close()
+                } catch (_: java.io.IOException) {
+                }
                 throw e
             } catch (e: IOException) {
-                runCatching { plain.close() }
+                try {
+                    plain.close()
+                } catch (_: java.io.IOException) {
+                }
                 if (generateSequence<Throwable>(e) { it.cause }.any { it is CertificateException }) {
                     throw CertificateException(e.message, e)
                 }

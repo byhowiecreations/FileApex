@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.fileapex.update.AppUpdateCoordinator
+import com.fileapex.util.cancellableCatching
 
 /**
  * Handles update-notification Skip action.
@@ -34,6 +35,6 @@ class UpdateNotificationReceiver : BroadcastReceiver() {
         } else {
             launch.putExtra(EXTRA_SHOW_UPDATE_SHEET, true)
         }
-        runCatching { context.startActivity(launch) }
+        cancellableCatching("UpdateNotificationReceiver launchMainActivity") { context.startActivity(launch) }
     }
 }

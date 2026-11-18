@@ -155,7 +155,7 @@ fun GroupsSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack: () -> Unit)
             onDismissRequest = { removeOf = null },
             title = { Text(stringRes("friends_remove") + " " + f.label + "?") },
             text = { Text(stringRes(if (failed) "friends_remove_failed" else "groups_remove_confirm")) },
-            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.remove(f.friendKey) }.onSuccess { removeOf = null }.onFailure { failed = true } } }) { Text(stringRes("friends_remove")) } },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching("removing a friend") { FriendsHub.remove(f.friendKey) }.onSuccess { removeOf = null }.onFailure { failed = true } } }) { Text(stringRes("friends_remove")) } },
             dismissButton = { TextButton(onClick = { removeOf = null }) { Text(stringRes("cancel")) } }
         )
     }

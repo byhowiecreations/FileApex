@@ -7,6 +7,7 @@ import com.fileapex.domain.clipboard.ClipboardShareCoordinator
 import com.fileapex.domain.clipboard.PeerE2eeVersions
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** The parts of a Bulletin Board push that name or contain the user's content. */
 @Serializable
@@ -92,7 +93,7 @@ object NotePushCrypto {
         val senderId = data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID].orEmpty().trim()
         val noteId = data[FcmWakeProtocol.KEY_NOTE_ID].orEmpty()
         if (senderId.isEmpty() || noteId.isEmpty()) return null
-        return runCatching {
+        return cancellableCatching {
             val key = ClipboardShareCoordinator.verifiedSenderKey(senderId, data[FcmWakeProtocol.KEY_SENDER_PUBLIC_KEY].orEmpty())
             val selfId = loadLocalIdentity().deviceId
             val fields = openFields(ciphertext) { sealed ->

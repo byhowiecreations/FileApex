@@ -67,7 +67,7 @@ internal class DevicesConnectActions(
             )
         }
         val startedAt = TimeUtils.now()
-        val outcome = cancellableCatching {
+        val outcome = cancellableCatching("DevicesConnectActions openDeviceOrExplainInternal") {
             withContext(Dispatchers.IO) {
                 performDeviceConnectHandshake(device)
             }
@@ -127,9 +127,9 @@ internal class DevicesConnectActions(
                 browseTargetFor(refreshed, endpoint.host, endpoint.port, pinRequired = false)
             )
         }
-        runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
-        runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
-        var remote = cancellableCatching {
+        cancellableCatching("DevicesConnectActions performDeviceConnectHandshake") { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
+        cancellableCatching("DevicesConnectActions performDeviceConnectHandshake 2") { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
+        var remote = cancellableCatching("DevicesConnectActions performDeviceConnectHandshake 3") {
             FileApexServices.client.fetchPeerNodeState(
                 endpoint.host,
                 endpoint.port,
@@ -151,7 +151,7 @@ internal class DevicesConnectActions(
                 ?: return DeviceConnectOutcome.Unreachable(
                     detail = PeerReachabilityMessages.peerOffline()
                 )
-            remote = cancellableCatching {
+            remote = cancellableCatching("DevicesConnectActions performDeviceConnectHandshake 4") {
                 FileApexServices.client.fetchPeerNodeState(
                     endpoint.host,
                     endpoint.port,
@@ -187,7 +187,7 @@ internal class DevicesConnectActions(
     fun confirmPinUnlock(pin: String) {
         val pending = _uiState.value.pendingPinUnlock ?: return
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("DevicesConnectActions confirmPinUnlock") {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 val endpoint = presence.probeNow(pending.device)
                 val host = endpoint?.host ?: pending.device.lastKnownIp

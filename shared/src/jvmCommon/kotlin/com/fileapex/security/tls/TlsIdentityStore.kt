@@ -9,6 +9,8 @@ import java.security.KeyFactory
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.security.spec.PKCS8EncodedKeySpec
+import com.fileapex.util.cancellableCatching
+import com.fileapex.util.deleteLogged
 
 class TlsIdentityUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -30,7 +32,9 @@ class TlsIdentityStore(
     /** The proof written by the last [regenerate] while it is younger than [TlsRotation.MAX_AGE_MS] and names the current key. */
     @Synchronized
     fun currentRotationProof(identity: TlsIdentity): TlsRotationProof? {
-        val proof = runCatching { TlsRotation.decode(File(directory, ROTATION_FILE).readText()) }.getOrNull() ?: return null
+        val file = File(directory, ROTATION_FILE)
+        if (!file.isFile) return null
+        val proof = cancellableCatching("reading the TLS rotation proof file") { TlsRotation.decode(file.readText()) }.getOrNull() ?: return null
         val fresh = clock() - proof.issuedAtEpochMs <= TlsRotation.MAX_AGE_MS
         return proof.takeIf { fresh && it.newPin.equals(identity.pin, ignoreCase = true) }
     }
@@ -53,13 +57,13 @@ class TlsIdentityStore(
     /** Explicit recovery for a lost key. The pin changes; peers must re-confirm. */
     @Synchronized
     fun regenerate(): TlsIdentity {
-        val previous = cached ?: runCatching { if (vaultFile.exists()) load() else null }.getOrNull()
+        val previous = cached ?: cancellableCatching("TlsIdentityStore: vaultFile.exists") { if (vaultFile.exists()) load() else null }.getOrNull()
         val identity = TlsIdentityFactory.generate(clock())
         save(identity)
         // Peers that pinned the old key accept the new one when it is signed by the old key; kept for 90 days.
         previous?.let { old ->
             val proof = TlsRotation.sign(old.privateKey, old.certificate.publicKey, identity.pin, clock())
-            runCatching { File(directory, ROTATION_FILE).writeText(TlsRotation.encode(proof)) }
+            cancellableCatching { File(directory, ROTATION_FILE).writeText(TlsRotation.encode(proof)) }
                 .onFailure { println("TlsIdentity: rotation proof not saved - ${it::class.simpleName}") }
         }
         cached = identity
@@ -78,13 +82,13 @@ class TlsIdentityStore(
         val identity = TlsIdentityFactory.generate(clock())
         check(isUsable(identity)) { "generated TLS identity failed its self-check" }
         save(identity)
-        runCatching { File(directory, ROTATION_FILE).delete() }
+        File(directory, ROTATION_FILE).deleteLogged("removing the TLS rotation marker")
         cached = identity
         println("TlsIdentity: replaced after removal, pin ${TlsPin.forLog(identity.pin)}")
         return identity
     }
 
-    private fun isUsable(identity: TlsIdentity): Boolean = runCatching {
+    private fun isUsable(identity: TlsIdentity): Boolean = cancellableCatching("TlsIdentityStore: java.security.MessageDigest.getInstance") {
         val spki = java.security.MessageDigest.getInstance("SHA-256").digest(identity.certificate.publicKey.encoded)
         if (!spki.joinToString("") { "%02x".format(it) }.equals(identity.pin, ignoreCase = true)) return false
         val probe = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }

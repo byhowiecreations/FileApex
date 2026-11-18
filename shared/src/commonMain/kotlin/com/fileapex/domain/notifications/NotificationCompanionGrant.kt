@@ -6,6 +6,7 @@ import com.fileapex.domain.link.PairLink
 import com.fileapex.util.TimeUtils
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /**
  * Phone side of the notification companion handshake. A paired computer says over the health poll whether
@@ -88,6 +89,6 @@ object NotificationCompanionGrant {
 
     internal fun decode(stored: String): CompanionGrantRecord? {
         if (stored.isBlank()) return null
-        return runCatching { json.decodeFromString(CompanionGrantRecord.serializer(), stored) }.getOrNull()
+        return cancellableCatching("NotificationCompanionGrant: json.decodeFromString") { json.decodeFromString(CompanionGrantRecord.serializer(), stored) }.getOrNull()
     }
 }

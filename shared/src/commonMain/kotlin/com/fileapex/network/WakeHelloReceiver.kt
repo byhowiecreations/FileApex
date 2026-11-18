@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import com.fileapex.util.cancellableCatching
 
 /**
  * Handles signed wake packets. A packet only proves the sender holds the pair key; the address it came from
@@ -63,7 +64,7 @@ object WakeHelloReceiver {
         )
         FileApexServices.presenceMonitor.onVerifiedHello(parsed.senderId, host, parsed.port)
         if (!parsed.isAck) {
-            runCatching { WakeHelloOutbox.sendAck(sender, host) }
+            cancellableCatching { WakeHelloOutbox.sendAck(sender, host) }
                 .onFailure { println("WakeHelloReceiver: ack failed - ${it.message}") }
         }
     }

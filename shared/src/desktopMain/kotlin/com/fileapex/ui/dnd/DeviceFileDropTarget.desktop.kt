@@ -17,6 +17,7 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DropTargetDragEvent
 import java.awt.dnd.DropTargetDropEvent
 import java.io.File
+import com.fileapex.util.cancellableCatching
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -59,7 +60,7 @@ actual fun Modifier.deviceFileDropTarget(
 
     return this.dragAndDropTarget(
         shouldStartDragAndDrop = { event ->
-            runCatching {
+            cancellableCatching("DeviceFileDropTarget onDrop") {
                 event.awtTransferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor) ||
                 event.awtTransferable.isDataFlavorSupported(DataFlavor.stringFlavor)
             }.getOrDefault(true)
@@ -81,10 +82,10 @@ private fun DragAndDropEvent.dropOffsetInRoot(): Offset {
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("UNCHECKED_CAST")
 private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
-    val transferable = runCatching { event.awtTransferable }.getOrNull() ?: return emptyList()
+    val transferable = cancellableCatching("DeviceFileDropTarget extractAbsoluteFilePaths") { event.awtTransferable }.getOrNull() ?: return emptyList()
 
     if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-        val text = runCatching {
+        val text = cancellableCatching("DeviceFileDropTarget extractAbsoluteFilePaths 2") {
             transferable.getTransferData(DataFlavor.stringFlavor) as? String
         }.getOrNull()
         if (!text.isNullOrBlank() && text.startsWith("fileapex-transfer://")) {
@@ -93,7 +94,7 @@ private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
     }
 
     if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-        val files = runCatching {
+        val files = cancellableCatching("DeviceFileDropTarget extractAbsoluteFilePaths 3") {
             transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>
         }.getOrNull().orEmpty()
         val resolved = files.mapNotNull { entry ->

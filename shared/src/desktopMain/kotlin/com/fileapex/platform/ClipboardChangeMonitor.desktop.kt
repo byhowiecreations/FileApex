@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import com.fileapex.domain.clipboard.ClipboardSharePolicy
+import com.fileapex.util.cancellableCatching
 import java.awt.Toolkit
 import java.awt.datatransfer.FlavorListener
 import java.util.concurrent.Executors
@@ -39,7 +40,7 @@ actual object ClipboardChangeMonitor {
             emitCurrentIfChanged()
         }
         listener.set(next)
-        runCatching {
+        cancellableCatching("ClipboardChangeMonitor start") {
             Toolkit.getDefaultToolkit().systemClipboard.addFlavorListener(next)
         }
         pollTask.set(
@@ -61,7 +62,7 @@ actual object ClipboardChangeMonitor {
         pollTask.getAndSet(null)?.cancel(false)
         val previous = listener.getAndSet(null)
         if (previous != null) {
-            runCatching {
+            cancellableCatching("ClipboardChangeMonitor stop") {
                 Toolkit.getDefaultToolkit().systemClipboard.removeFlavorListener(previous)
             }
         }

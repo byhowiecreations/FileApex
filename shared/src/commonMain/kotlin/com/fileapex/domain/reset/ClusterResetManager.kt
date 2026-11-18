@@ -37,19 +37,19 @@ object ClusterResetManager {
     }
 
     private suspend fun runLeaveClusterAndReset(): Boolean {
-        cancellableCatching { FileApexServices.membershipHub?.chainTick?.leave() }
+        cancellableCatching("ClusterResetManager: leave") { FileApexServices.membershipHub?.chainTick?.leave() }
 
         // The Tailscale login belongs to the cluster identity being wiped.
         cancellableCatching { com.fileapex.tailscale.TailscaleNodeRuntime.clearForWipe() }
             .onFailure { println("ClusterResetManager: Tailscale was not cleared (${it::class.simpleName})") }
 
         // Step B: Cryptographic Erasure
-        runCatching { eraseCryptographicKeys() }
+        cancellableCatching("ClusterResetManager: eraseCryptographicKeys") { eraseCryptographicKeys() }
 
         // Step C: Database Purge
-        cancellableCatching { purgeDatabases() }
+        cancellableCatching("ClusterResetManager: purgeDatabases") { purgeDatabases() }
         if (ClusterResetPlatform.keepsAppRunning && !rosterIsEmpty()) {
-            cancellableCatching { purgeDatabases() }
+            cancellableCatching("ClusterResetManager: purgeDatabases") { purgeDatabases() }
             if (!rosterIsEmpty()) {
                 outcomeFlow.value = false
                 return false
@@ -59,10 +59,10 @@ object ClusterResetManager {
         renewTlsKeyAfterWipe(ClusterResetPlatform.keepsAppRunning) { com.fileapex.security.tls.TlsIdentityRenewal.renew() }
 
         // Step D: State Reset & Restart
-        runCatching { resetStateAndRestart() }
+        cancellableCatching("ClusterResetManager: resetStateAndRestart") { resetStateAndRestart() }
         if (ClusterResetPlatform.keepsAppRunning) {
             // A first launch has the share server up; the next pairing code reads its TLS key and port.
-            cancellableCatching { ServerLifecycleManager.ensureRunning() }
+            cancellableCatching("ClusterResetManager: ServerLifecycleManager.ensureRunning") { ServerLifecycleManager.ensureRunning() }
             outcomeFlow.value = true
         }
 
@@ -76,18 +76,18 @@ object ClusterResetManager {
     }
 
     private suspend fun rosterIsEmpty(): Boolean =
-        cancellableCatching { FileApexServices.deviceRepository.listDevices().isEmpty() }.getOrDefault(false)
+        cancellableCatching("ClusterResetManager: FileApexServices.deviceRepository.listDevices") { FileApexServices.deviceRepository.listDevices().isEmpty() }.getOrDefault(false)
 
     private fun eraseCryptographicKeys() {
-        runCatching { FileApexServices.settings.setClipboardPrivateKeyBase64("") }
-        runCatching { FileApexServices.settings.setDiagnosticsPrivateKeyBase64("") }
+        cancellableCatching("ClusterResetManager: FileApexServices.settings.setClipboardPrivateKeyB") { FileApexServices.settings.setClipboardPrivateKeyBase64("") }
+        cancellableCatching("ClusterResetManager: FileApexServices.settings.setDiagnosticsPrivateKe") { FileApexServices.settings.setDiagnosticsPrivateKeyBase64("") }
         ClusterResetPlatform.eraseKeystoreAndSecureStorage()
         forgetHeldKeys()
     }
 
     /** The cluster key is also cached in memory; a platform that keeps running after the wipe must not keep using it. */
     internal fun forgetHeldKeys() {
-        runCatching { com.fileapex.cloud.seal.ClusterRecordKeys.forget() }
+        cancellableCatching("ClusterResetManager: com.fileapex.cloud.seal.ClusterRecordKeys.forget") { com.fileapex.cloud.seal.ClusterRecordKeys.forget() }
     }
 
     private suspend fun purgeDatabases() {
@@ -97,9 +97,9 @@ object ClusterResetManager {
     }
 
     private fun resetStateAndRestart() {
-        runCatching { FileApexServices.settings.resetToDefaults() }
-        runCatching { FileApexServices.settings.markThemeDefaultDecided() }
-        cancellableCatching { ServerLifecycleManager.stop() }
+        cancellableCatching("ClusterResetManager: FileApexServices.settings.resetToDefaults") { FileApexServices.settings.resetToDefaults() }
+        cancellableCatching("ClusterResetManager: FileApexServices.settings.markThemeDefaultDecided") { FileApexServices.settings.markThemeDefaultDecided() }
+        cancellableCatching("ClusterResetManager: ServerLifecycleManager.stop") { ServerLifecycleManager.stop() }
         ClusterResetPlatform.stateResetAndRestart()
     }
 }

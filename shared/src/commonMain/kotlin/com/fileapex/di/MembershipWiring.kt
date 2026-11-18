@@ -151,7 +151,7 @@ internal object MembershipWiring {
         val at = TimeUtils.now()
         if (at - lastPokeAt < POKE_GAP_MS) return
         lastPokeAt = at
-        teardownScope.launch { cancellableCatching { com.fileapex.network.sendWakeBroadcast() } }
+        teardownScope.launch { cancellableCatching("MembershipWiring: com.fileapex.network.sendWakeBroadcast") { com.fileapex.network.sendWakeBroadcast() } }
     }
 
     /** Waits for the signing identity, then catches up with a peer when it comes online and every minute runs the chain tick. */
@@ -169,7 +169,7 @@ internal object MembershipWiring {
             scope.launch {
                 var known = emptySet<String>()
                 onlineIds.collect { ids ->
-                    (ids - known).forEach { cancellableCatching { running.chainReplicator.reconcile(it) } }
+                    (ids - known).forEach { cancellableCatching("MembershipWiring: running.chainReplicator.reconcile") { running.chainReplicator.reconcile(it) } }
                     known = ids
                 }
             }
@@ -193,7 +193,7 @@ internal object MembershipWiring {
                     }
                     if (!settled && (self.previousDeviceId.isNotBlank() || former != null) && due) {
                         lastIdentityAsk = com.fileapex.util.TimeUtils.now()
-                        scope.launch { cancellableCatching { running.continueUnderNewId() } }
+                        scope.launch { cancellableCatching { running.continueUnderNewId() }.onFailure { println("MembershipWiring: asking a member to continue under the new id failed - ${it::class.simpleName}") } }
                     }
                 }.onFailure { println("MembershipWiring: tick failed - ${it::class.simpleName}") }
                 if (++ticks % SUMMARY_EVERY_TICKS == 0) running.chainWatch?.let { com.fileapex.platform.Diagnostics.log(it.summary()) }

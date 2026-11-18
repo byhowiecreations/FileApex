@@ -13,6 +13,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 import com.fileapex.domain.clipboard.ClipboardShareCoordinator
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +38,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         if (FileApexServices.isPlayStoreBuild) {
-            runCatching { disableSelf() }
+            cancellableCatching("ClipboardAccessibilityService onServiceConnected") { disableSelf() }
             return
         }
         serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
@@ -72,7 +73,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
             combine(settings.clipboardSharingEnabled, settings.clipboardAccessibilityEnabled) { sharing, accessibility ->
                 sharing && accessibility
             }.distinctUntilChanged().collect { capture ->
-                runCatching {
+                cancellableCatching("ClipboardAccessibilityService followCaptureSetting") {
                     serviceInfo = serviceInfo?.apply { eventTypes = if (capture) CAPTURE_EVENT_TYPES else 0 }
                 }.onFailure { Log.w(TAG, "Could not change accessibility event types", it) }
             }
@@ -81,7 +82,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        runCatching {
+        cancellableCatching("ClipboardAccessibilityService onAccessibilityEvent") {
             if (!isCaptureEnabled()) {
                 FileApexAndroidBootstrap.ensureInitialized(this)
                 if (!isCaptureEnabled()) return
@@ -124,7 +125,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
         pendingClipRetry.set(false)
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         clipListener?.let { listener ->
-            runCatching { clipboard?.removePrimaryClipChangedListener(listener) }
+            cancellableCatching("ClipboardAccessibilityService onDestroy") { clipboard?.removePrimaryClipChangedListener(listener) }
         }
         clipListener = null
         ClipboardAccessibilityHealth.onUnbound()
@@ -191,7 +192,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
     }
 
     private fun extractSelectedTextFromActiveWindow(): String? {
-        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return null
+        val root = cancellableCatching("ClipboardAccessibilityService extractSelectedTextFromActiveWindow") { rootInActiveWindow }.getOrNull() ?: return null
         val visited = AtomicInteger(0)
         return try {
             findSelectedText(root, depth = 0, visited = visited)
@@ -307,7 +308,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
 
     private fun recycleNode(node: AccessibilityNodeInfo) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            runCatching {
+            cancellableCatching("ClipboardAccessibilityService recycleNode") {
                 val method = node.javaClass.getMethod("recycle")
                 method.invoke(node)
             }

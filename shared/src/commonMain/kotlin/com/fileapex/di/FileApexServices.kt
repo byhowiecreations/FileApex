@@ -216,7 +216,7 @@ object FileApexServices {
         transferQueue.ensureDrainWatcher()
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.ensureStarted()
         bootstrapScope.launch(Dispatchers.IO) {
-            runCatching { com.fileapex.tailscale.TailscaleNodeRuntime.attach() }
+            cancellableCatching("FileApexServices: com.fileapex.tailscale.TailscaleNodeRuntime.attach") { com.fileapex.tailscale.TailscaleNodeRuntime.attach() }
         }
         com.fileapex.iroh.IrohRuntime.attach()
         com.fileapex.friends.FriendsHub.attach(database)
@@ -269,7 +269,7 @@ object FileApexServices {
         if (bootstrapStarted) return
         bootstrapStarted = true
         bootstrapScope.launch(Dispatchers.IO) {
-            runCatching {
+            cancellableCatching {
                 init(createDatabase())
                 initBulletinBoard(legacyBulletinPath)
             }.onFailure { error ->
@@ -311,10 +311,10 @@ object FileApexServices {
 
     suspend fun purgeDatabases() {
         database?.let { db ->
-            cancellableCatching { com.fileapex.data.db.clearClusterData(db) }
+            cancellableCatching("FileApexServices: com.fileapex.data.db.clearClusterData") { com.fileapex.data.db.clearClusterData(db) }
             println("FileApexServices: every table is cleared (Leave Cluster or a wipe)")
             settings.clearBulletinDeltaCursors()
-            runCatching { db.clearAllTables() }
+            cancellableCatching("FileApexServices: db.clearAllTables") { db.clearAllTables() }
         }
         // A wipe must not leave the old Bulletin file (or its merge backup) behind to be copied in again.
         legacyBulletinPath?.let { BulletinBoardMerge.deleteLegacyFiles(it) }

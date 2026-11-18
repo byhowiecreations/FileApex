@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import com.fileapex.util.cancellableCatching
 
 actual object BulletinApkUpdateCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -79,7 +80,7 @@ actual object BulletinApkUpdateCoordinator {
                             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                             .build()
 
-                        runCatching {
+                        cancellableCatching("BulletinApkUpdateCoordinator.android: notificationManager.notify") {
                             notificationManager.notify(NOTIFICATION_ID_PROGRESS, progressNotification)
                         }
                     }
@@ -142,7 +143,7 @@ actual object BulletinApkUpdateCoordinator {
                 }
                 AppUpdateCoordinator.dismissUpdateSheet()
                 if (isAppInForeground()) {
-                    runCatching {
+                    cancellableCatching {
                         PlatformUpdateInstaller.installAndRelaunch(
                             localFilePath = localPath,
                             remoteVersion = version
@@ -211,7 +212,7 @@ actual object BulletinApkUpdateCoordinator {
                 return@launch
             }
             if (isAppInForeground()) {
-                runCatching {
+                cancellableCatching {
                     PlatformUpdateInstaller.installAndRelaunch(
                         localFilePath = localPath,
                         remoteVersion = version
@@ -227,14 +228,14 @@ actual object BulletinApkUpdateCoordinator {
         val context = androidAppContextOrNull()
         if (context != null) {
             val appProcessInfo = android.app.ActivityManager.RunningAppProcessInfo()
-            runCatching {
+            cancellableCatching("BulletinApkUpdateCoordinator.android: android.app.ActivityManager.getM") {
                 android.app.ActivityManager.getMyMemoryState(appProcessInfo)
             }
             if (appProcessInfo.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
                 return true
             }
         }
-        return runCatching {
+        return cancellableCatching("BulletinApkUpdateCoordinator.android: FileApexServices.isDatabaseReady") {
             FileApexServices.isDatabaseReady() && FileApexServices.presenceMonitor.isAppInForeground()
         }.getOrDefault(false)
     }

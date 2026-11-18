@@ -5,6 +5,7 @@ import java.security.SecureRandom
 import java.util.Base64
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /**
  * The key that seals the personal fields of this user's cloud device records (name, address, port). Every device of
@@ -29,7 +30,7 @@ class ClusterRecordKey(val epoch: Int, val id: String, private val keyBase64: St
 
     fun toJson(): String = json.encodeToString(serializer(), this)
 
-    fun isWellFormed(): Boolean = id.isNotBlank() && runCatching { bytes().size == KEY_BYTES }.getOrDefault(false)
+    fun isWellFormed(): Boolean = id.isNotBlank() && cancellableCatching("decoding the cluster record key") { bytes().size == KEY_BYTES }.getOrDefault(false)
 
     companion object {
         const val KEY_BYTES = 32
@@ -43,6 +44,6 @@ class ClusterRecordKey(val epoch: Int, val id: String, private val keyBase64: St
         }
 
         fun fromJson(text: String): ClusterRecordKey? =
-            runCatching { json.decodeFromString(serializer(), text) }.getOrNull()?.takeIf { it.isWellFormed() }
+            cancellableCatching("ClusterRecordKey: json.decodeFromString") { json.decodeFromString(serializer(), text) }.getOrNull()?.takeIf { it.isWellFormed() }
     }
 }

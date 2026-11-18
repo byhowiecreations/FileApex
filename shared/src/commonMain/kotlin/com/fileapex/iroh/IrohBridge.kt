@@ -19,6 +19,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.fileapex.util.cancellableCatching
 
 class IrohBridge(
     private val link: IrohLink,
@@ -61,7 +62,10 @@ class IrohBridge(
         val open = listenersLock.withLock { listeners.values.toList().also { listeners.clear() } }
         for (listener in open) {
             IrohBridgePorts.remove(listener.socket.localPort)
-            runCatching { listener.socket.close() }
+            try {
+                listener.socket.close()
+            } catch (_: java.io.IOException) {
+            }
             listener.job.cancel()
         }
         link.close()

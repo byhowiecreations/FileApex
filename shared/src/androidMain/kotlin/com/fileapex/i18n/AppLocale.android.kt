@@ -9,6 +9,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.platform.AndroidNotificationChannels
 import com.fileapex.platform.DirectShareShortcutCoordinator
 import com.fileapex.platform.ShareServerPendingStart
+import com.fileapex.util.cancellableCatching
 
 actual fun systemLanguageTag(): String {
     val configLocale = android.content.res.Resources.getSystem().configuration.locales[0]
@@ -27,7 +28,7 @@ actual fun applyPlatformLocale(locale: AppLocale) {
         val config = Configuration(resources.configuration)
         config.setLocales(LocaleList(javaLocale))
         context.createConfigurationContext(config)
-        runCatching {
+        cancellableCatching("AppLocale applyPlatformLocale") {
             val method = resources.javaClass.getMethod(
                 "updateConfiguration",
                 Configuration::class.java,

@@ -3,6 +3,7 @@ package com.fileapex.tailscale
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 @Serializable
 data class TailscaleObservedPeer(
@@ -22,7 +23,7 @@ private val tailnetPeerJson = Json { ignoreUnknownKeys = true }
 fun parseTailnetPeers(raw: String): List<TailscaleObservedPeer> {
     val text = raw.trim()
     if (text.isEmpty() || text == "[]") return emptyList()
-    return runCatching {
+    return cancellableCatching("TailscalePeers: tailnetPeerJson.decodeFromString") {
         tailnetPeerJson.decodeFromString(ListSerializer(TailscaleObservedPeer.serializer()), text)
     }.getOrDefault(emptyList())
 }

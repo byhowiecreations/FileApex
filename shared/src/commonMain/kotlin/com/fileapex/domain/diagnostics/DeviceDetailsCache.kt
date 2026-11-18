@@ -3,6 +3,7 @@ package com.fileapex.domain.diagnostics
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 @Serializable
 data class CachedDeviceDetails(val deviceId: String, val snapshot: PeerDeviceDiagnostics)
@@ -75,7 +76,7 @@ object DeviceDetailsCache {
 
     internal fun encode(list: List<CachedDeviceDetails>): String = json.encodeToString(ListSerializer(CachedDeviceDetails.serializer()), list)
 
-    internal fun decode(raw: String): List<CachedDeviceDetails> = runCatching {
+    internal fun decode(raw: String): List<CachedDeviceDetails> = cancellableCatching("DeviceDetailsCache: raw.isBlank") {
         if (raw.isBlank()) emptyList() else json.decodeFromString(ListSerializer(CachedDeviceDetails.serializer()), raw)
     }.getOrDefault(emptyList())
 

@@ -88,14 +88,14 @@ internal actual object RestoreCredentials {
         val context = androidAppContextOrNull()
         if (supported() && context != null) {
             val manager = CredentialManager.create(context)
-            runCatching {
+            cancellableCatching {
                 manager.clearCredentialState(
                     ClearCredentialStateRequest(ClearCredentialStateRequest.TYPE_CLEAR_RESTORE_CREDENTIAL)
                 )
             }.onFailure { error ->
                 Log.w(TAG, "Restore key clear failed: ${error.message}")
             }
-            runCatching {
+            cancellableCatching {
                 manager.clearCredentialState(ClearCredentialStateRequest())
             }.onFailure { error ->
                 Log.w(TAG, "Google credential clear failed: ${error.message}")
@@ -139,7 +139,7 @@ internal actual object RestoreCredentials {
         manager: CredentialManager,
         context: Context
     ): RestoreCredential? {
-        return runCatching {
+        return cancellableCatching {
             val option = GetRestoreCredentialOption(RestoreCredentialJson.requestOptions(randomChallenge()))
             val request = GetCredentialRequest.Builder()
                 .addCredentialOption(option)

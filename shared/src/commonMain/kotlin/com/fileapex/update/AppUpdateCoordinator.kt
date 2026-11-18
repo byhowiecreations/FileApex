@@ -195,7 +195,7 @@ object AppUpdateCoordinator {
                 PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
                 PendingUpdateStore.setLastAttemptedInstallTimestamp(TimeUtils.now())
                 if (promptForInstallPermissionIfMissing()) return
-                runCatching { PlatformUpdateInstaller.installAndRelaunch(local, offer.remoteVersion) }
+                com.fileapex.util.cancellableCatching("installing the update") { PlatformUpdateInstaller.installAndRelaunch(local, offer.remoteVersion) }
                     .onFailure { BriefToast.show(it.message ?: AppI18n.t("update_details_missing")) }
                 return
             }
@@ -262,7 +262,7 @@ object AppUpdateCoordinator {
             )
             PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
             PendingUpdateStore.setLastAttemptedInstallTimestamp(TimeUtils.now())
-            runCatching { PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion) }
+            com.fileapex.util.cancellableCatching("installing the update") { PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion) }
                 .onFailure { BriefToast.show(it.message ?: AppI18n.t("update_details_missing")) }
             _showUpdateSheet.value = false
             return
@@ -514,7 +514,7 @@ object AppUpdateCoordinator {
         offer?.localFilePath?.let { it.isNotBlank() && fileExists(it) } ?: false
 
     internal fun fileExists(pathString: String): Boolean {
-        return runCatching {
+        return com.fileapex.util.cancellableCatching("reading the downloaded update file") {
             java.io.File(pathString).exists() || SystemFileSystem.exists(Path(pathString))
         }.getOrDefault(false)
     }

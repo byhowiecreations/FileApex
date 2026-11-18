@@ -144,7 +144,7 @@ internal fun NotesScope.lockTransportTarget(dest: Rect, pending: PendingNotesTra
         }
         transport = session
         scope.launch(Dispatchers.IO) {
-            cancellableCatching {
+            cancellableCatching("NotesLogic lockTransportTarget") {
                 FileApexServices.noteRepository.sendNote(
                     content = pending.text,
                     attachmentPath = pending.path,

@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.data.note.NoteNotifyPolicy
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 
 private lateinit var noteNotifierContext: Context
 
@@ -79,7 +80,7 @@ actual fun notifyNoteReceived(
         .addExtras(extras)
         .build()
 
-    runCatching {
+    cancellableCatching("NoteReceiveNotifier notifyNoteReceived") {
         manager.notify(NOTE_NOTIFICATION_TAG, notificationIdForNote(noteId), notification)
     }.onFailure { error ->
         println("NoteReceiveNotifier: notify failed :: ${error.message}")
@@ -125,7 +126,7 @@ actual fun notifyDirectAlert(
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .build()
 
-    runCatching {
+    cancellableCatching("NoteReceiveNotifier notifyDirectAlert") {
         manager.notify("fileapex.alert", alertId, notification)
     }
 }
@@ -148,8 +149,8 @@ actual fun retractNoteNotifications(noteIds: List<String>, previewTexts: List<St
         computed += candidateNotificationIds(preview)
     }
     for (id in computed) {
-        runCatching { manager.cancel(NOTE_NOTIFICATION_TAG, id) }
-        runCatching { manager.cancel(id) }
+        cancellableCatching("NoteReceiveNotifier retractNoteNotifications") { manager.cancel(NOTE_NOTIFICATION_TAG, id) }
+        cancellableCatching("NoteReceiveNotifier retractNoteNotifications 2") { manager.cancel(id) }
     }
     val system = noteNotifierContext.getSystemService(NotificationManager::class.java) ?: return
     for (posted in system.activeNotifications.orEmpty()) {
@@ -160,9 +161,9 @@ actual fun retractNoteNotifications(noteIds: List<String>, previewTexts: List<St
         }
         if (matchesRetract(posted.notification, ids, previews) || posted.id in computed) {
             if (posted.tag.isNullOrBlank()) {
-                runCatching { system.cancel(posted.id) }
+                cancellableCatching("NoteReceiveNotifier retractNoteNotifications 3") { system.cancel(posted.id) }
             } else {
-                runCatching { system.cancel(posted.tag, posted.id) }
+                cancellableCatching("NoteReceiveNotifier retractNoteNotifications 4") { system.cancel(posted.tag, posted.id) }
             }
         }
     }

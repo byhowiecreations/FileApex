@@ -29,7 +29,7 @@ actual object DriveSyncScheduler {
 
     // Battery and unknown power sources keep the slow cadence so a laptop is never woken more often.
     private fun pollIntervalMs(): Long {
-        val state = runCatching { collectFastBatteryDiagnostics().chargingState }.getOrDefault("")
+        val state = cancellableCatching("DriveSyncScheduler.desktop: collectFastBatteryDiagnostics") { collectFastBatteryDiagnostics().chargingState }.getOrDefault("")
         return if (state == "AC" || state == "Full") {
             DriveRelayPolicy.LEDGER_POLL_INTERVAL_AC_MS
         } else {

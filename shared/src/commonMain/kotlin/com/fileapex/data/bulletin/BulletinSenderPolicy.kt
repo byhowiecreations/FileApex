@@ -10,7 +10,7 @@ object BulletinSenderPolicy {
         if (id.isEmpty()) {
             return DeviceDisplayNames.resolve(legacySenderName, null)
         }
-        return cancellableCatching {
+        return cancellableCatching("BulletinSenderPolicy displayName") {
             FileApexServices.deviceRepository.displayNameFor(id, legacySenderName)
         }.getOrDefault(DeviceDisplayNames.resolve(legacySenderName, null))
     }

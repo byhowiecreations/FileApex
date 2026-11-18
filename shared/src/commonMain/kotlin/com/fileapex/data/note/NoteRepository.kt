@@ -307,7 +307,7 @@ class NoteRepository {
             val version = com.fileapex.update.BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
             com.fileapex.update.BulletinApkUpdateCoordinator.triggerDirectApkInstall(localPath, version, fileName)
         } else if (NoteNotifyPolicy.shouldNotifyAttachmentReady(latest.isMine, alreadyHadLocalFile, fileName)) {
-            runCatching { com.fileapex.platform.notifyFilesReceived(listOf(fileName)) }
+            cancellableCatching("NoteRepository setAttachmentLocalPath") { com.fileapex.platform.notifyFilesReceived(listOf(fileName)) }
         }
     }
 
@@ -387,7 +387,7 @@ class NoteRepository {
             resolvedSnapshot?.attachmentFileName?.takeIf { it.isNotBlank() }?.let { add(it) }
             attachmentName?.takeIf { it.isNotBlank() }?.let { add(it) }
         }.distinct()
-        runCatching { com.fileapex.platform.retractNoteNotifications(listOf(noteId), previews) }
+        cancellableCatching("NoteRepository retractNotifications") { com.fileapex.platform.retractNoteNotifications(listOf(noteId), previews) }
         notifiedNoteIds.remove(noteId)
         com.fileapex.update.PendingUpdateStore.removeProcessedNote(noteId)
         val pending = com.fileapex.update.PendingUpdateStore.load()
@@ -405,7 +405,7 @@ class NoteRepository {
                 val localPath = pending.localFilePath?.takeIf { it.isNotBlank() }
                 val downloadsDir = defaultDownloadsDir()
                 if (localPath != null && com.fileapex.util.PathUtils.isWithinRoot(localPath, downloadsDir)) {
-                    runCatching {
+                    cancellableCatching("NoteRepository retractNotifications 2") {
                         val path = Path(localPath)
                         if (SystemFileSystem.exists(path)) {
                             SystemFileSystem.delete(path)
@@ -540,7 +540,7 @@ class NoteRepository {
         notifiedNoteIds += note.noteId
         val sender = resolveSenderName(note)
         val critical = NoteNotifyPolicy.isCriticalBulletin(preview, note.contentType)
-        runCatching {
+        cancellableCatching("NoteRepository maybeNotifyIncoming") {
             com.fileapex.platform.notifyNoteReceived(
                 sourceDeviceName = sender,
                 content = preview,

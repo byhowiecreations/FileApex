@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.update.PendingUpdateOffer
+import com.fileapex.util.cancellableCatching
 
 private lateinit var updateNotifierContext: Context
 
@@ -88,7 +89,7 @@ actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         .build()
 
-    runCatching {
+    cancellableCatching("UpdateAvailableNotifier notifyAppUpdateAvailable") {
         manager.notify(NOTIFICATION_ID, notification)
     }.onFailure { error ->
         println("UpdateAvailableNotifier: notify failed :: ${error.message}")

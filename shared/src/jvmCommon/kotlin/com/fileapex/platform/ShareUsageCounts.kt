@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.data.seal.SealedStrings
 import com.fileapex.data.seal.StringSlots
+import com.fileapex.util.cancellableCatching
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -27,7 +28,7 @@ class ShareUsageCounts(private val sealed: SealedStrings, private val legacy: St
     }
 
     private fun load(): Map<String, Int> {
-        sealed.get(BLOB)?.let { return runCatching { Json.decodeFromString(serializer, it) }.getOrDefault(emptyMap()) }
+        sealed.get(BLOB)?.let { return cancellableCatching("ShareUsageCounts load") { Json.decodeFromString(serializer, it) }.getOrDefault(emptyMap()) }
         return legacy.keys().filter { it.startsWith(LEGACY_PREFIX) }
             .mapNotNull { key -> legacy.get(key)?.toIntOrNull()?.let { key.removePrefix(LEGACY_PREFIX) to it } }
             .toMap()

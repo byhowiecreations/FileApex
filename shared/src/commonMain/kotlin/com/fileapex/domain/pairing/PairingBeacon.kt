@@ -2,6 +2,7 @@ package com.fileapex.domain.pairing
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /**
  * Ephemeral LAN advertisement while a host is on the pairing screen.
@@ -58,7 +59,7 @@ data class PairingBeacon(
                 text.startsWith("{") -> text
                 else -> return null
             }
-            val beacon = runCatching {
+            val beacon = cancellableCatching("PairingBeacon: json.decodeFromString") {
                 json.decodeFromString(serializer(), jsonBody)
             }.getOrNull() ?: return null
             return beacon.takeIf { it.isWellFormed() }

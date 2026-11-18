@@ -108,7 +108,7 @@ class PeerPresenceMonitor(
     val reachedVia: StateFlow<Map<String, RouteKind>> = book.via
 
     /** A peer's request arrived over Iroh, which it only uses when the LAN did not reach us. */
-    fun noteInboundIroh(deviceId: String) { scope.launch { cancellableCatching { inboundIroh.onInbound(deviceId) } } }
+    fun noteInboundIroh(deviceId: String) { scope.launch { cancellableCatching("PeerPresenceMonitor: inboundIroh.onInbound") { inboundIroh.onInbound(deviceId) } } }
 
     fun setAppInForeground(inForeground: Boolean) {
         appInForeground = inForeground
@@ -269,23 +269,23 @@ class PeerPresenceMonitor(
             val lan = isActiveLanConnectivity()
             if (lan || tailnetNodeUp()) {
                 scope.launch {
-                    cancellableCatching { awaitShareServerReady() }
+                    cancellableCatching("PeerPresenceMonitor: awaitShareServerReady") { awaitShareServerReady() }
                 }
             }
             if (peers.isEmpty()) {
                 refreshOnlineSnapshot()
                 if (mode == PresenceMode.Full) {
-                    scope.launch { cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() } }
+                    scope.launch { cancellableCatching("PeerPresenceMonitor: GoogleLinkCoordinator.publishSelfPresenceIfLinked") { GoogleLinkCoordinator.publishSelfPresenceIfLinked() } }
                 }
                 return@launch
             }
             val wantsWake = mode == PresenceMode.Full || peers.any { !hasUsableEndpoint(it) || !isDeviceOnline(it) }
             if (wantsWake && lan && wakeGate.claimSweepWake(TimeUtils.now())) {
-                scope.launch(Dispatchers.IO) { cancellableCatching { sendWakeBroadcast() } }
+                scope.launch(Dispatchers.IO) { cancellableCatching("PeerPresenceMonitor: sendWakeBroadcast") { sendWakeBroadcast() } }
             }
             digestRound = (if (mode == PresenceMode.Light) digests.startRound(peers) else null).also { println("PeerPresenceMonitor: $mode sweep, ${peers.size} peers, digest sources ${it?.sourceIds?.size ?: 0}") }
             for (peer in peers) probes.poke(peer.deviceId, mode)
-            scope.launch { cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() } }
+            scope.launch { cancellableCatching("PeerPresenceMonitor: GoogleLinkCoordinator.publishSelfPresenceIfLinked") { GoogleLinkCoordinator.publishSelfPresenceIfLinked() } }
             if (mode == PresenceMode.Full && !skipFcmDispatch) maybeDispatchFcmWake()
         }
     }
@@ -404,7 +404,7 @@ class PeerPresenceMonitor(
                 refreshOnlineSnapshot()
                 return
             }
-            if (tailnetUp) cancellableCatching { tailnetRoster.refresh(deviceId) }
+            if (tailnetUp) cancellableCatching("PeerPresenceMonitor: tailnetRoster.refresh") { tailnetRoster.refresh(deviceId) }
             awaitShareServerReady()
             val isSource = round != null && deviceId in round.sourceIds
             if (round != null && !isSource) {
@@ -456,7 +456,7 @@ class PeerPresenceMonitor(
         val last = lastSelfBroadcastEpochMs[deviceId] ?: 0L
         if (now - last < LanPresenceTiming.SELF_BROADCAST_MIN_INTERVAL_MS) return
         lastSelfBroadcastEpochMs[deviceId] = now
-        cancellableCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity(setOf(deviceId)) }
+        cancellableCatching("PeerPresenceMonitor: FileApexServices.pairingCoordinator.broadcastSelf") { FileApexServices.pairingCoordinator.broadcastSelfIdentity(setOf(deviceId)) }
     }
 
     private fun maybeDispatchFcmWake() {
@@ -502,7 +502,7 @@ class PeerPresenceMonitor(
 
     suspend fun validatePeerOnDemand(peer: PairedDeviceEntity): Boolean {
         scope.launch(Dispatchers.IO) {
-            cancellableCatching { sendWakeBroadcast() }
+            cancellableCatching("PeerPresenceMonitor: sendWakeBroadcast") { sendWakeBroadcast() }
         }
         val reached = primePeer(
             peer,
@@ -654,7 +654,7 @@ class PeerPresenceMonitor(
                     repository.touchPeerLastSeen(trimmed, dev.lastKnownIp, dev.port, epochMs)
                     if ((dev.rootPath.isBlank() || dev.rootPath == "/") && nodeStateClaims.claim(dev, null)) {
                         scope.launch(Dispatchers.IO) {
-                            cancellableCatching {
+                            cancellableCatching("PeerPresenceMonitor: client.fetchPeerNodeState") {
                                 val state = client.fetchPeerNodeState(
                                     dev.lastKnownIp,
                                     dev.port,

@@ -1,6 +1,7 @@
 package com.fileapex.data.bulletin
 
 import com.fileapex.data.note.NoteNotifyPolicy
+import com.fileapex.util.cancellableCatching
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -31,7 +32,7 @@ object BulletinMessageKind {
     @OptIn(ExperimentalEncodingApi::class)
     fun decodeRetractPayloadId(payloadId: String): Pair<String, Int>? {
         if (!payloadId.startsWith("retract-kind-")) return null
-        return runCatching {
+        return cancellableCatching("BulletinMessageKind decodeRetractPayloadId") {
             val decoded = Base64.UrlSafe.decode(payloadId.removePrefix("retract-kind-")).decodeToString()
             val splitAt = decoded.indexOf('|')
             if (splitAt <= 0) return null

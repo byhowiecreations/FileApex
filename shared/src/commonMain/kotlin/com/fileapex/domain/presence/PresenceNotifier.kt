@@ -19,7 +19,7 @@ internal class PresenceNotifier(
         if (peers.isEmpty()) return
         withTimeoutOrNull(budgetMs) {
             coroutineScope {
-                peers.map { peer -> async { cancellableCatching { send(peer) }.getOrDefault(false) } }.awaitAll()
+                peers.map { peer -> async { cancellableCatching("PresenceNotifier: send") { send(peer) }.getOrDefault(false) } }.awaitAll()
             }
         }
     }

@@ -27,7 +27,7 @@ internal class SettingsGoogleActions(
             return
         }
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("SettingsGoogleActions onGoogleIdToken") {
                 GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, emailHint, startOver)
             }.onSuccess { session ->
                 _uiState.update {
@@ -47,7 +47,7 @@ internal class SettingsGoogleActions(
 
     fun disableGoogleAccountLink() {
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("SettingsGoogleActions disableGoogleAccountLink") {
                 GoogleLinkCoordinator.unlinkAndSignOut()
             }.onSuccess {
                 _uiState.update {

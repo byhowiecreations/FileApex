@@ -3,6 +3,7 @@ package com.fileapex.cli
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.seal.SealedText
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -31,7 +32,7 @@ object CliDeviceAliasManager {
     fun load(): AliasConfig {
         val text = SealedText.readFile(aliasFile, PURPOSE)
         if (text.isEmpty()) return AliasConfig()
-        return runCatching { json.decodeFromString<AliasConfig>(text) }.getOrDefault(AliasConfig())
+        return cancellableCatching("CliDeviceAliasManager load") { json.decodeFromString<AliasConfig>(text) }.getOrDefault(AliasConfig())
     }
 
     /** False when the alias could not be stored because the vault key is not available. */

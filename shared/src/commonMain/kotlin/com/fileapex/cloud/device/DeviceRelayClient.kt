@@ -75,7 +75,7 @@ internal class DeviceRelayClient(
 
     override suspend fun chainHead(): RelayChainHead? {
         val token = idToken() ?: return null
-        return cancellableCatching {
+        return cancellableCatching("reading the relay chain head") {
             val response = httpClient().get("$base/chain") { header(HttpHeaders.Authorization, "Bearer $token") }
             if (response.status.value != 200) return@cancellableCatching null
             val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
@@ -110,7 +110,7 @@ internal class DeviceRelayClient(
                 setBody(body.toString())
             }
             val text = response.bodyAsText()
-            val parsed = cancellableCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: JsonObject(emptyMap())
+            val parsed = cancellableCatching("DeviceRelayClient: Json.parseToJsonElement") { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: JsonObject(emptyMap())
             if (response.status.value == 200) {
                 RelayAnswer.Ok(parsed)
             } else {

@@ -56,7 +56,7 @@ object FcmWakeCoordinator {
         if (!allowWakeToDevice(deviceId)) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {
-            cancellableCatching {
+            cancellableCatching("looking up push targets for a wake") {
                 val target = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(deviceId))
                     .firstOrNull() ?: return@cancellableCatching
                 FcmWakeBackend.sendPresenceWake(
@@ -196,7 +196,7 @@ object FcmWakeCoordinator {
     suspend fun canReceiveCloudMessages(targetDeviceId: String): Boolean {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
         val selfId = loadLocalIdentity().deviceId
-        val target = cancellableCatching {
+        val target = cancellableCatching("looking up push targets for a wake") {
             GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(targetDeviceId))
         }.getOrDefault(emptyList()).firstOrNull { it.deviceId == targetDeviceId } ?: return false
         return !CloudTargetFreshness.isStale(target.recordUpdatedAtEpochMs, com.fileapex.util.TimeUtils.now())

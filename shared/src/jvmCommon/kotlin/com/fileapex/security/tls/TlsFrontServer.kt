@@ -18,6 +18,7 @@ import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509ExtendedTrustManager
+import com.fileapex.util.cancellableCatching
 
 /**
  * Accepts a client certificate only when its public key pin belongs to a paired device. Dates are ignored.
@@ -102,7 +103,10 @@ class TlsFrontServer(
 
     override fun stop() {
         if (!running.compareAndSet(true, false)) return
-        runCatching { server?.close() }
+        try {
+            server?.close()
+        } catch (_: java.io.IOException) {
+        }
         sweeper?.shutdownNow()
         closeAll(open)
         open.clear()
@@ -116,7 +120,10 @@ class TlsFrontServer(
         for ((socket, last) in lastActivity) {
             if (now - last.get() > limitNanos) {
                 log("TLS connection closed after ${idleTimeoutMs / 1000} s with no traffic", null)
-                runCatching { socket.close() }
+                try {
+                    socket.close()
+                } catch (_: java.io.IOException) {
+                }
             }
         }
     }
@@ -127,7 +134,10 @@ class TlsFrontServer(
             val current = if (peer.revokedOnly) directory.revokedDeviceIdForPin(peer.pin) else directory.deviceIdForPin(peer.pin)
             if (!peer.pairingOnly && current != peer.deviceId) {
                 log("TLS connection dropped: peer ${peer.deviceId} no longer pinned", null)
-                runCatching { socket.close() }
+                try {
+                    socket.close()
+                } catch (_: java.io.IOException) {
+                }
             }
         }
     }
@@ -164,7 +174,10 @@ class TlsFrontServer(
                 return
             }
             if (!slots.tryAcquire()) {
-                runCatching { client.close() }
+                try {
+                    client.close()
+                } catch (_: java.io.IOException) {
+                }
                 continue
             }
             try {
@@ -172,7 +185,10 @@ class TlsFrontServer(
             } catch (e: Exception) {
                 log("TLS connection refused: ${e.javaClass.simpleName}", null)
                 slots.release()
-                runCatching { client.close() }
+                try {
+                    client.close()
+                } catch (_: java.io.IOException) {
+                }
             }
         }
     }
@@ -218,8 +234,14 @@ class TlsFrontServer(
             if (sourcePort > 0) TlsBridgeRegistry.unregister(sourcePort)
             sessions.remove(client)
             lastActivity.remove(client)
-            runCatching { client.close() }
-            runCatching { upstream?.close() }
+            try {
+                client.close()
+            } catch (_: java.io.IOException) {
+            }
+            try {
+                upstream?.close()
+            } catch (_: java.io.IOException) {
+            }
             open.remove(client)
             upstream?.let(open::remove)
             slots.release()
@@ -238,10 +260,16 @@ class TlsFrontServer(
                 output.write(buffer, 0, read)
                 activity.set(System.nanoTime())
             }
-            if (closeTargetOutputOnly) runCatching { to.shutdownOutput() } else runCatching { to.close() }
+            if (closeTargetOutputOnly) to.shutdownOutput() else to.close()
         } catch (_: IOException) {
-            runCatching { from.close() }
-            runCatching { to.close() }
+            try {
+                from.close()
+            } catch (_: java.io.IOException) {
+            }
+            try {
+                to.close()
+            } catch (_: java.io.IOException) {
+            }
         }
     }
 
@@ -258,7 +286,12 @@ class TlsFrontServer(
 
         /** Iterates the live set; a snapshot through size and next() fails when a handler removes its socket in between. */
         fun closeAll(sockets: Collection<Socket>) {
-            for (socket in sockets) runCatching { socket.close() }
+            for (socket in sockets) {
+                try {
+                    socket.close()
+                } catch (_: java.io.IOException) {
+                }
+            }
         }
         private val KEY_PASSWORD = "fileapex".toCharArray()
 

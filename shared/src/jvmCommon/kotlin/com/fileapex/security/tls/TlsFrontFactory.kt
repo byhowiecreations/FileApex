@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
 import java.net.ServerSocket
+import com.fileapex.util.cancellableCatching
 
 /** Builds the TLS front for the platform's identity store. */
 object TlsFrontFactory {
@@ -19,7 +20,7 @@ object TlsFrontFactory {
     fun install(storeProvider: () -> TlsIdentityStore?) {
         PeerTlsConnector.configure(storeProvider)
         com.fileapex.membership.ChainSigning.provider = {
-            runCatching { storeProvider()?.signingKeys?.signer(FileApexServices.localIdentity.deviceId) }.getOrNull()
+            cancellableCatching("reading the signing key for the TLS front") { storeProvider()?.signingKeys?.signer(FileApexServices.localIdentity.deviceId) }.getOrNull()
         }
         com.fileapex.membership.ChainSigning.renew = { storeProvider()?.signingKeys?.replaceForRejoin() }
         TlsIdentityRenewal.renew = {

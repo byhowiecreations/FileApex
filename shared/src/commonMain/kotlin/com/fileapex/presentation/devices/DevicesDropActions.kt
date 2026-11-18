@@ -10,13 +10,11 @@ import com.fileapex.domain.transfer.MultiCopySource
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.presentation.DevicesUiState
-import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,7 +57,7 @@ internal class DevicesDropActions(
 
             val roots = withContext(Dispatchers.IO) {
                 absolutePaths.filter { path ->
-                    runCatching {
+                    cancellableCatching("DevicesDropActions sendDroppedLocalFiles") {
                         val file = kotlinx.io.files.Path(path)
                         kotlinx.io.files.SystemFileSystem.exists(file)
                     }.getOrDefault(false)
@@ -84,7 +82,7 @@ internal class DevicesDropActions(
             _uiState.update {
                 it.copy(errorMessage = null)
             }
-            cancellableCatching {
+            cancellableCatching("DevicesDropActions sendDroppedLocalFiles 2") {
                 withContext(Dispatchers.IO) {
                     FileApexServices.transferQueue.sendLocalPathsOrQueue(roots, listOf(deviceId))
                 }
@@ -192,7 +190,7 @@ internal class DevicesDropActions(
             )
 
             withContext(Dispatchers.IO) {
-                cancellableCatching {
+                cancellableCatching("DevicesDropActions handleDroppedRemoteTransfer") {
                     FileApexServices.transferManager.sendToDevices(listOf(source), listOf(destination))
                 }.fold(
                     onSuccess = { res ->

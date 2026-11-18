@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.fileapex.util.logFailureOnce
 
 sealed interface BackupStatus {
     data object Idle : BackupStatus
@@ -66,18 +67,18 @@ object BackupEngine {
         if (!config.isRunnable) return BackupRunResult()
         val device = FileApexServices.deviceRepository.getDevice(config.destinationDeviceId)
             ?: return BackupRunResult(unavailable = true)
-        val direct = cancellableCatching { FileApexServices.presenceMonitor.endpointIfOnline(device) }.getOrNull()
+        val direct = cancellableCatching("BackupEngine: FileApexServices.presenceMonitor.endpointIfOnline") { FileApexServices.presenceMonitor.endpointIfOnline(device) }.getOrNull()
             ?: return BackupRunResult(unavailable = true)
         val host = direct.host
         val port = direct.port
         val client = FileApexServices.client
         // Doubles as the reachability check: an unreachable destination ends the run before any work starts.
-        val capabilities = cancellableCatching { client.transferCapabilities.of(host, port) }.getOrNull()
+        val capabilities = cancellableCatching("BackupEngine: client.transferCapabilities.of") { client.transferCapabilities.of(host, port) }.getOrNull()
             ?: return BackupRunResult(unavailable = true)
 
         // The destination decides where its own receive folder is.
         val destinationRoot = InboxTarget.ROOT
-        val sourceDeviceName = cancellableCatching { loadLocalIdentity().deviceName }.getOrDefault("")
+        val sourceDeviceName = cancellableCatching("BackupEngine: loadLocalIdentity") { loadLocalIdentity().deviceName }.getOrDefault("")
 
         val manifest = BackupManifest.load(config.destinationDeviceId)
         val candidates = config.sources.flatMap { collect(it) }
@@ -126,6 +127,7 @@ object BackupEngine {
                 manifest.save()
                 return BackupRunResult(uploaded, failed, hasMore = true, unavailable = uploaded == 0)
             } catch (error: Throwable) {
+                logFailureOnce("BackupEngine: uploading a file", error)
                 lastError = "${file.relativePath}: ${error.message ?: error::class.simpleName}"
                 failed++
                 consecutiveFailures++
@@ -147,7 +149,7 @@ object BackupEngine {
         val root = source.trimEnd('/')
         val out = ArrayList<BackupCandidate>()
         fun walk(dir: String, relative: String) {
-            val (folders, files) = runCatching { fastScanDirectory(dir) }.getOrDefault(emptyList<com.fileapex.domain.model.RemoteFileItem>() to emptyList())
+            val (folders, files) = cancellableCatching("BackupEngine: fastScanDirectory") { fastScanDirectory(dir) }.getOrDefault(emptyList<com.fileapex.domain.model.RemoteFileItem>() to emptyList())
             for (file in files) {
                 // The receiver rejects empty uploads, and half-written media files are not worth keeping.
                 if (file.sizeBytes <= 0L || skippedNamePrefixes.any { file.name.startsWith(it) }) continue

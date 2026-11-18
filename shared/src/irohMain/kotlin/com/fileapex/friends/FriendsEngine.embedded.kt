@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import com.fileapex.util.cancellableCatching
 
 actual fun embeddedFriendsEngine(): FriendsEngine? = object : FriendsEngine {
     override suspend fun start(secretKey: ByteArray, hideIp: Boolean, admit: suspend (String) -> Boolean): FriendsEndpoint =
@@ -113,7 +114,7 @@ internal class FriendsIrohEndpoint private constructor(
                     val connection = incoming.accept().connect()
                     val peer = connection.remoteId().toBytes().toHex()
                     if (!admit(peer)) {
-                        runCatching { connection.close(1L, NOT_A_FRIEND.encodeToByteArray()) }
+                        cancellableCatching("FriendsEngine.embedded: connection.close") { connection.close(1L, NOT_A_FRIEND.encodeToByteArray()) }
                         return@launch
                     }
                     connections.compute(peer) { _, old -> if (old == null || old.closeReason() != null) connection else old }
@@ -163,8 +164,8 @@ internal class FriendsIrohEndpoint private constructor(
 
         override fun abort() {
             scope.launch {
-                runCatching { send.reset(0uL) }
-                runCatching { recv.stop(0uL) }
+                cancellableCatching("FriendsEngine.embedded: send.reset") { send.reset(0uL) }
+                cancellableCatching("FriendsEngine.embedded: recv.stop") { recv.stop(0uL) }
             }
         }
     }

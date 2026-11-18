@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import com.fileapex.util.cancellableCatching
+import com.fileapex.util.logFailureOnce
 
 object TailscaleNodeRuntime {
     private const val WIPE_SIGN_OUT_MS = 6_000L
@@ -110,7 +112,7 @@ object TailscaleNodeRuntime {
             val authKey = settings.tailscaleAuthKey.value.trim()
             showLoginPage = true
             val url = tailscaleLoginUrl(current.authUrl)
-                ?: tailscaleLoginUrl(runCatching { engine.poll().authUrl }.getOrDefault(""))
+                ?: tailscaleLoginUrl(cancellableCatching("TailscaleNodeRuntime: engine.poll") { engine.poll().authUrl }.getOrDefault(""))
             val waiting = phase == TailscalePhase.NeedsLogin ||
                 phase == TailscalePhase.KeyExpired ||
                 phase == TailscalePhase.Starting
@@ -184,7 +186,7 @@ object TailscaleNodeRuntime {
         ) {
             return 0
         }
-        return runCatching { engine.activeConnections() }.getOrDefault(0)
+        return cancellableCatching("TailscaleNodeRuntime: engine.activeConnections") { engine.activeConnections() }.getOrDefault(0)
     }
 
     /** The native node forgets nothing between starts, but it may not have been loaded when the TLS front came up. */
@@ -193,7 +195,7 @@ object TailscaleNodeRuntime {
 
     /** Tailnet connections are handed to the local TLS front on [port], so a tailnet caller proves itself like a LAN one. */
     fun forwardTailnetTo(port: Int) {
-        runCatching { engine.setForwardPort(port) }
+        cancellableCatching("TailscaleNodeRuntime: engine.setForwardPort") { engine.setForwardPort(port) }
     }
 
     /**
@@ -202,7 +204,7 @@ object TailscaleNodeRuntime {
      */
     fun observedTailnetPeers(): List<TailscaleObservedPeer>? {
         if (_state.value.phase != TailscalePhase.Up) return emptyList()
-        val raw = runCatching { engine.tailnetPeersJson() }.getOrNull() ?: return null
+        val raw = cancellableCatching("TailscaleNodeRuntime: engine.tailnetPeersJson") { engine.tailnetPeersJson() }.getOrNull() ?: return null
         return parseTailnetPeers(raw)
     }
 
@@ -259,7 +261,7 @@ object TailscaleNodeRuntime {
     }
 
     private suspend fun expireNodeOnControl(): Boolean {
-        val phase = runCatching { engine.poll().phase }.getOrDefault(TailscalePhase.Down)
+        val phase = cancellableCatching("TailscaleNodeRuntime: engine.poll") { engine.poll().phase }.getOrDefault(TailscalePhase.Down)
         val running = phase == TailscalePhase.Up ||
             phase == TailscalePhase.NeedsLogin ||
             phase == TailscalePhase.KeyExpired ||
@@ -325,6 +327,7 @@ object TailscaleNodeRuntime {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                logFailureOnce("TailscaleNodeRuntime: starting the tailnet node", error)
                 tailscaleStartFailure(error.message ?: "start_failed")
             }
             val stillRequested = settings.tailscaleEnabled.value &&

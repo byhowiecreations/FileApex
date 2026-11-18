@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Process
 import androidx.core.content.ContextCompat
+import com.fileapex.util.cancellableCatching
 
 /**
  * All-files / legacy storage grant. Android 10 (MIUI 12) must not require
@@ -55,7 +56,7 @@ object AndroidStorageAccess {
             ?: return false
         val uid = Process.myUid()
         val pkg = context.packageName
-        val mode = runCatching {
+        val mode = cancellableCatching("AndroidStorageAccess isOpAllowed") {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 appOps.checkOpNoThrow(op, uid, pkg, context.attributionTag)
             } else {

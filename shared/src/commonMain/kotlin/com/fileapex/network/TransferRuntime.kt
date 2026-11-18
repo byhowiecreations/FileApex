@@ -66,7 +66,7 @@ object TransferRuntime {
     }
 }
 
-internal inline fun <T> transferCatching(block: () -> T): Result<T> = cancellableCatching(block)
+internal inline fun <T> transferCatching(what: String? = null, block: () -> T): Result<T> = cancellableCatching(what, block)
 
 /** No bind candidate could open a TCP connection to the peer endpoint. */
 class PeerUnreachableException(message: String) : IllegalStateException(message)

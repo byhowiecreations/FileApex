@@ -3,6 +3,7 @@ package com.fileapex.network
 import com.fileapex.network.FileApexClient.Companion.HEALTH_PROBE_TIMEOUT_MS
 import com.fileapex.util.TimeUtils
 import java.util.concurrent.ConcurrentHashMap
+import com.fileapex.util.cancellableCatching
 
 /**
  * What a peer's file server can do (ranged streams, segmented uploads), cached for ten minutes per endpoint.
@@ -18,7 +19,7 @@ class TransferCapabilityCache internal constructor(private val http: FileApexCli
         }
         val response = http.boundGet(host, port, "/api/v1/files/capabilities", HEALTH_PROBE_TIMEOUT_MS)
         val capabilities = if (response.statusCode in 200..299) {
-            runCatching {
+            cancellableCatching("TransferCapabilityCache: http.json.decodeFromString") {
                 http.json.decodeFromString(TransferCapabilities.serializer(), response.body)
             }.getOrDefault(TransferCapabilities())
         } else {

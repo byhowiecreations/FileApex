@@ -46,7 +46,7 @@ class TailscalePeerRoster(
             // The handshake is pinned to this device's key, so only that device's node can answer; without a pin it cannot be proven.
             val attempt = PeerTlsRoutes.tryTailnetAddress(device, match.ipv4.trim()) ?: continue
             val state = attempt.use {
-                cancellableCatching {
+                cancellableCatching("TailscalePeerRoster: client.fetchPeerNodeState") {
                     client.fetchPeerNodeState(
                         host = match.ipv4.trim(),
                         port = device.port,

@@ -62,7 +62,7 @@ internal class ExplorerPreviewActions(
             }
             return
         }
-        runCatching {
+        cancellableCatching("ExplorerPreviewActions openImagePreview") {
             preview.assertPreviewAllowed(item, FilePreviewManager.MAX_PREVIEW_BYTES)
         }.onFailure { error ->
             _uiState.update {
@@ -82,7 +82,7 @@ internal class ExplorerPreviewActions(
                     errorMessage = null
                 )
             }
-            cancellableCatching {
+            cancellableCatching("ExplorerPreviewActions openImagePreview 2") {
                 val bytes = withContext(Dispatchers.IO) {
                     preview.loadPreviewBytes(item, FilePreviewManager.MAX_PREVIEW_BYTES)
                 }
@@ -113,7 +113,7 @@ internal class ExplorerPreviewActions(
     }
 
     fun openTextPreview(item: RemoteFileItem) {
-        runCatching {
+        cancellableCatching("ExplorerPreviewActions openTextPreview") {
             preview.assertPreviewAllowed(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
         }.onFailure { error ->
             _uiState.update {
@@ -133,7 +133,7 @@ internal class ExplorerPreviewActions(
                     errorMessage = null
                 )
             }
-            cancellableCatching {
+            cancellableCatching("ExplorerPreviewActions openTextPreview 2") {
                 withContext(Dispatchers.IO) {
                     preview.loadPreviewBytes(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
                         .decodeToString()
@@ -184,7 +184,7 @@ internal class ExplorerPreviewActions(
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null, statusMessage = null) }
-            cancellableCatching {
+            cancellableCatching("ExplorerPreviewActions downloadSingleRemoteItem") {
                 transfers.downloadRemote(listOf(item))
             }.fold(
                 onSuccess = { paths ->

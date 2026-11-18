@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import java.io.File
 import java.util.concurrent.TimeUnit
+import com.fileapex.util.cancellableCatching
 
 actual fun defaultStorageRoot(): String {
     return System.getProperty("user.home") ?: "/"
@@ -23,22 +24,22 @@ actual fun platformDeviceName(): String {
 private fun desktopHostName(): String {
     val fromEnv = System.getenv("COMPUTERNAME")?.trim().orEmpty()
     if (fromEnv.isNotEmpty()) return fromEnv
-    val fromFile = runCatching { File("/etc/hostname").readText().trim() }.getOrDefault("")
+    val fromFile = cancellableCatching("StorageRoots desktopHostName") { File("/etc/hostname").readText().trim() }.getOrDefault("")
     if (fromFile.isNotEmpty()) return fromFile
     return System.getenv("HOSTNAME")?.trim().orEmpty()
 }
 
-private fun macComputerName(): String? = runCatching {
+private fun macComputerName(): String? = cancellableCatching("StorageRoots macComputerName") {
     val process = ProcessBuilder("scutil", "--get", "ComputerName").redirectErrorStream(true).start()
     if (!process.waitFor(2, TimeUnit.SECONDS)) {
         process.destroyForcibly()
-        return@runCatching null
+        return@cancellableCatching null
     }
     process.inputStream.bufferedReader().readText().trim().takeIf { it.isNotEmpty() }
 }.getOrNull()
 
 private fun linuxDistroName(): String {
-    val line = runCatching { File("/etc/os-release").readLines() }.getOrDefault(emptyList())
+    val line = cancellableCatching("StorageRoots linuxDistroName") { File("/etc/os-release").readLines() }.getOrDefault(emptyList())
         .firstOrNull { it.startsWith("NAME=") }
     val name = line?.substringAfter('=')?.trim()?.trim('"', '\'')?.takeIf { it.isNotEmpty() } ?: return "Linux"
     return name.removeSuffix(" GNU/Linux").removeSuffix(" Linux").ifBlank { name }

@@ -39,7 +39,7 @@ object DesktopDriveGrantRuntime {
         if (!force && GoogleDriveAuth.hasGrant()) return false
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
         if (!browserInFlight.compareAndSet(false, true)) return true
-        return runCatching {
+        return cancellableCatching {
             DesktopAuthCoordinator.macGoogleSignInSetupError()?.let { error(it) }
             val clientId = desktopOAuthClientId()
             if (clientId.isBlank()) error("Google OAuth client ID is missing")
@@ -78,7 +78,7 @@ object DesktopDriveGrantRuntime {
             settings.setGoogleDriveRelayEnabled(true)
             DriveRelayNotifier.onDriveEnabledAndGranted()
             DriveRelayCoordinator.applySchedulerFromSettings()
-            runCatching { FileApexServices.transferQueue.scheduleDrain() }
+            cancellableCatching("scheduling a transfer drain after the Drive grant") { FileApexServices.transferQueue.scheduleDrain() }
             driveLog("Drive grant completed - draining off-LAN queue via Relay")
             _results.emit(true to null)
         }.onFailure { error ->

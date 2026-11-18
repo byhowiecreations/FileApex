@@ -27,7 +27,7 @@ actual fun triggerLocalLocatorSound(continuous: Boolean) {
         return
     }
     CoroutineScope(Dispatchers.Default).launch {
-        cancellableCatching {
+        cancellableCatching("DeviceLocator triggerLocalLocatorSound") {
             val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, 100)
             repeat(4) {
                 toneGen.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 250)
@@ -106,7 +106,7 @@ internal object LocatorAlarm {
         timeout?.cancel()
         timeout = null
         player?.let {
-            cancellableCatching { it.stop() }
+            cancellableCatching("DeviceLocator stop") { it.stop() }
             it.release()
         }
         player = null
@@ -136,7 +136,7 @@ internal object LocatorAlarm {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(NOTIFICATION_TAG, NOTIFICATION_ID, notification) }
+        cancellableCatching("DeviceLocator postNotification") { NotificationManagerCompat.from(context).notify(NOTIFICATION_TAG, NOTIFICATION_ID, notification) }
     }
 }
 

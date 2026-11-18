@@ -26,6 +26,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.fileapex.util.cancellableCatching
 
 class IrohEndpointLink private constructor(
     private val endpoint: Endpoint,
@@ -69,7 +70,7 @@ class IrohEndpointLink private constructor(
             var last = IrohAddressKey.of(address())
             while (true) {
                 kotlinx.coroutines.withTimeoutOrNull(ADDRESS_POLL_MS) { addressNudge.receive() }
-                val now = runCatching { IrohAddressKey.of(address()) }.getOrNull() ?: continue
+                val now = cancellableCatching("IrohEndpointLink: IrohAddressKey.of") { IrohAddressKey.of(address()) }.getOrNull() ?: continue
                 if (now != last) {
                     IrohLog.add("address changed: ${IrohAddressKey.describeChange(last, now)}")
                     last = now
@@ -165,7 +166,7 @@ class IrohEndpointLink private constructor(
             try {
                 if (delayMs > 0) delay(delayMs)
                 val connection = endpoint.connect(target, ALPN)
-                if (!winner.complete(connection to label)) runCatching { connection.close(0L, ByteArray(0)) }
+                if (!winner.complete(connection to label)) cancellableCatching("closing a losing Iroh connection") { connection.close(0L, ByteArray(0)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: computer.iroh.IrohException) {
@@ -254,8 +255,8 @@ class IrohEndpointLink private constructor(
 
         override fun abort() {
             scope.launch {
-                runCatching { send.reset(0uL) }
-                runCatching { recv.stop(0uL) }
+                cancellableCatching("resetting an Iroh send stream") { send.reset(0uL) }
+                cancellableCatching("stopping an Iroh receive stream") { recv.stop(0uL) }
             }
         }
     }

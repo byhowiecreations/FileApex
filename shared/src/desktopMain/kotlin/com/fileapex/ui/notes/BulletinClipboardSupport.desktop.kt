@@ -2,6 +2,7 @@ package com.fileapex.ui.notes
 
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 import com.fileapex.platform.PlatformClipboard
+import com.fileapex.util.cancellableCatching
 import java.awt.Graphics2D
 import java.awt.Image
 import java.awt.Toolkit
@@ -20,7 +21,7 @@ internal object DesktopBulletinClipboard {
     ): BulletinPastePayload {
         if (transferable != null) {
             if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-                val paths = runCatching {
+                val paths = cancellableCatching("BulletinClipboardSupport extractPastePayload") {
                     (transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>)
                         ?.mapNotNull { entry -> (entry as? File)?.absolutePath }
                         ?.filter { File(it).isFile }
@@ -29,15 +30,15 @@ internal object DesktopBulletinClipboard {
                 if (paths.isNotEmpty()) return BulletinPastePayload.Files(paths)
             }
             if (transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
-                val pngFile = runCatching {
+                val pngFile = cancellableCatching("BulletinClipboardSupport extractPastePayload 2") {
                     val image = transferable.getTransferData(DataFlavor.imageFlavor) as? Image
-                        ?: return@runCatching null
+                        ?: return@cancellableCatching null
                     writeBufferedPng(toBufferedImage(image), cacheDir)
                 }.getOrNull()
                 if (pngFile != null) return BulletinPastePayload.Files(listOf(pngFile.absolutePath))
             }
             if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-                val text = runCatching {
+                val text = cancellableCatching("BulletinClipboardSupport extractPastePayload 3") {
                     transferable.getTransferData(DataFlavor.stringFlavor) as? String
                 }.getOrNull()
                 val bounded = ClipboardCopySignals.boundedRaw(text)
@@ -55,8 +56,8 @@ internal object DesktopBulletinClipboard {
     fun copyImageFile(path: String): Boolean {
         val file = File(path)
         if (!file.isFile) return false
-        val image = runCatching { ImageIO.read(file) }.getOrNull() ?: return false
-        return runCatching {
+        val image = cancellableCatching("BulletinClipboardSupport copyImageFile") { ImageIO.read(file) }.getOrNull() ?: return false
+        return cancellableCatching("BulletinClipboardSupport copyImageFile 2") {
             val selection = object : Transferable {
                 override fun getTransferDataFlavors(): Array<DataFlavor> = arrayOf(DataFlavor.imageFlavor)
                 override fun isDataFlavorSupported(flavor: DataFlavor): Boolean =
@@ -99,7 +100,7 @@ internal object DesktopBulletinClipboard {
 }
 
 internal actual fun readBulletinPastePayload(): BulletinPastePayload {
-    val transferable = runCatching {
+    val transferable = cancellableCatching("BulletinClipboardSupport readBulletinPastePayload") {
         Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
     }.getOrNull()
     return DesktopBulletinClipboard.extractPastePayload(transferable)

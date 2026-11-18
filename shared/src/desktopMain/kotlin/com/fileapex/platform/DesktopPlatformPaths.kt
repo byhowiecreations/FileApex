@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import java.io.File
+import com.fileapex.util.cancellableCatching
 
 /**
  * Desktop on-disk app data paths (macOS, Windows, Linux).
@@ -139,7 +140,7 @@ object DesktopPlatformPaths {
     /** `DESKTOP` or `DOWNLOAD` from `~/.config/user-dirs.dirs`; Linux lets users rename them. */
     fun xdgUserDirectory(name: String): File? {
         val home = userHomeDirectory()
-        val line = runCatching { File(home, ".config/user-dirs.dirs").readLines() }.getOrDefault(emptyList())
+        val line = cancellableCatching("DesktopPlatformPaths xdgUserDirectory") { File(home, ".config/user-dirs.dirs").readLines() }.getOrDefault(emptyList())
             .firstOrNull { it.trim().startsWith("XDG_${name}_DIR=") } ?: return null
         val value = line.substringAfter('=').trim().trim('"').replace("\$HOME", home.absolutePath)
         return value.takeIf { it.startsWith("/") }?.let(::File)

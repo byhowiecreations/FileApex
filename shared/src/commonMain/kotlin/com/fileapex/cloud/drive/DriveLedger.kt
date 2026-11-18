@@ -2,6 +2,7 @@ package com.fileapex.cloud.drive
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 @Serializable
 data class DriveLedger(
@@ -113,7 +114,7 @@ object DriveLedgerCodec {
 
     fun parse(markdown: String): DriveLedger {
         val fenced = extractJsonFence(markdown) ?: return DriveLedger()
-        return runCatching { json.decodeFromString(DriveLedger.serializer(), fenced) }
+        return cancellableCatching("DriveLedger: json.decodeFromString") { json.decodeFromString(DriveLedger.serializer(), fenced) }
             .getOrDefault(DriveLedger())
     }
 

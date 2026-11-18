@@ -4,6 +4,7 @@ import com.fileapex.data.db.seal.FieldSealer
 import com.fileapex.data.seal.SealedText
 import com.fileapex.platform.DesktopPlatformPaths
 import java.io.File
+import com.fileapex.util.cancellableCatching
 
 private const val PURPOSE = "device-details"
 
@@ -12,7 +13,7 @@ private fun cacheFile() = File(DesktopPlatformPaths.applicationSupportDirectory(
 internal actual fun readDeviceDetailsCacheRaw(): String? {
     val file = cacheFile()
     if (!file.isFile) return ""
-    val stored = runCatching { file.readText() }.getOrDefault("")
+    val stored = cancellableCatching("DeviceDetailsCache.desktop: file.readText") { file.readText() }.getOrDefault("")
     if (stored.isEmpty()) return ""
     val plain = SealedText.open(PURPOSE, stored) ?: return null
     if (!stored.startsWith(FieldSealer.PREFIX)) writeDeviceDetailsCacheRaw(plain)
@@ -20,5 +21,5 @@ internal actual fun readDeviceDetailsCacheRaw(): String? {
 }
 
 internal actual fun writeDeviceDetailsCacheRaw(raw: String) {
-    runCatching { SealedText.writeFile(cacheFile(), PURPOSE, raw) }
+    cancellableCatching("DeviceDetailsCache.desktop: SealedText.writeFile") { SealedText.writeFile(cacheFile(), PURPOSE, raw) }
 }

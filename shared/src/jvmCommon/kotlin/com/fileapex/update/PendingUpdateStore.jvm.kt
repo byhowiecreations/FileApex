@@ -4,6 +4,7 @@ import com.fileapex.network.TransferTransactionJournal
 import com.fileapex.network.TransferTransactionRecord
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 actual object PendingUpdateStore {
     private const val KEY_VERSION = "remote_version"
@@ -249,7 +250,7 @@ actual object PendingUpdateStore {
     actual fun getTransactionRecord(transactionId: String): TransferTransactionRecord? {
         if (transactionId.isBlank()) return null
         val raw = openUpdateKeyValueStore()?.trimmed(KEY_TX_RECORD_PREFIX + transactionId) ?: return null
-        return runCatching {
+        return cancellableCatching("PendingUpdateStore.jvm: Json.decodeFromString") {
             Json.decodeFromString(TransferTransactionRecord.serializer(), raw)
         }.getOrNull()
     }
@@ -296,7 +297,7 @@ actual object PendingUpdateStore {
         if (!candidatePath.isNullOrBlank() && updatePackageExtensions.any { candidatePath.endsWith(it, ignoreCase = true) }) {
             val file = java.io.File(candidatePath)
             if (file.isFile) {
-                val deleted = runCatching { file.delete() }.getOrDefault(false)
+                val deleted = file.delete()
                 println("PendingUpdateStore: deleted update package for txId=$transactionId (deleted=$deleted)")
             } else {
                 println("PendingUpdateStore: candidate update file missing or not a file")

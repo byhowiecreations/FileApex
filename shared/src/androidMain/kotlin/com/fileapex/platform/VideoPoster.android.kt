@@ -4,10 +4,11 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.fileapex.util.cancellableCatching
 
 actual fun decodeVideoPoster(absolutePath: String, maxEdge: Int): ImageBitmap? {
     val retriever = MediaMetadataRetriever()
-    return runCatching {
+    return cancellableCatching("VideoPoster decodeVideoPoster") {
         retriever.setDataSource(absolutePath)
         val frame = retriever.getFrameAtTime(0) ?: return null
         val edge = maxEdge.coerceAtLeast(16)
@@ -24,6 +25,6 @@ actual fun decodeVideoPoster(absolutePath: String, maxEdge: Int): ImageBitmap? {
         }
         scaled.asImageBitmap()
     }.getOrNull().also {
-        runCatching { retriever.release() }
+        cancellableCatching("VideoPoster decodeVideoPoster 2") { retriever.release() }
     }
 }

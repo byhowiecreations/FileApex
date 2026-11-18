@@ -35,7 +35,7 @@ internal class SettingsDeviceNameActions(
             it.copy(deviceNameSaveBusy = true, deviceNameError = null, deviceNameStatus = null)
         }
         viewModelScope.launch {
-            cancellableCatching {
+            cancellableCatching("SettingsDeviceNameActions saveDeviceName") {
                 DeviceNameCoordinator.saveLocalBroadcastName(draft)
             }.onSuccess {
                 _uiState.update {

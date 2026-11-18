@@ -110,7 +110,7 @@ class CliDashboard(
         if (force || now - lastStateFetchEpochMs >= minInterval) {
             lastStateFetchEpochMs = now
             val previousTransfersCount = clusterState.activeTransfersCount
-            val newState = cancellableCatching {
+            val newState = cancellableCatching("CliDashboard refreshClusterState") {
                 backend.fetchClusterState(highlightBattery = (currentView == DashboardView.BATTERY), force = force)
             }.getOrDefault(clusterState)
 

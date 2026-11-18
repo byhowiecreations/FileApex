@@ -177,7 +177,7 @@ class AndroidWidgetActionDispatcher(
                 WidgetDispatchResult.Message(deps.stringRes("widget_storage_permission_needed"))
             }
             LatestMediaResult.NotFound -> WidgetDispatchResult.Message(deps.stringRes("widget_no_recent_file"))
-            is LatestMediaResult.Found -> cancellableCatching {
+            is LatestMediaResult.Found -> cancellableCatching("AndroidWidgetActionDispatcher handleSendLatestMedia") {
                 val msg = deps.sendFileToDevices(media.file.absolutePath, deviceIds)
                 WidgetDispatchResult.Message(msg.ifBlank { deps.stringRes("widget_sent_file", media.file.name) })
             }.getOrElse { error ->
@@ -204,7 +204,7 @@ class AndroidWidgetActionDispatcher(
         var sentCount = 0
         var lastError: String? = null
         for (deviceId in deviceIds) {
-            cancellableCatching {
+            cancellableCatching("AndroidWidgetActionDispatcher handleSendClipboard") {
                 deps.sendClipboardToDevice(deviceId)
                 sentCount++
             }.onFailure { lastError = it.message }
@@ -233,7 +233,7 @@ class AndroidWidgetActionDispatcher(
         }
     }
 
-    private suspend fun pullClipboard(deviceId: String): WidgetDispatchResult = cancellableCatching {
+    private suspend fun pullClipboard(deviceId: String): WidgetDispatchResult = cancellableCatching("AndroidWidgetActionDispatcher pullClipboard") {
         val text = deps.pullClipboardFromDevice(deviceId)
         if (text.isNullOrEmpty()) {
             WidgetDispatchResult.Message(deps.stringRes("widget_clipboard_empty"))
@@ -253,7 +253,7 @@ class AndroidWidgetActionDispatcher(
         val results = coroutineScope {
             paired.map { (deviceId, deviceName) ->
                 async {
-                    val battery = cancellableCatching { deps.fetchBattery(deviceId) }.getOrNull()
+                    val battery = cancellableCatching("AndroidWidgetActionDispatcher pollAllPairedDevicesBattery") { deps.fetchBattery(deviceId) }.getOrNull()
                     val pct = battery?.levelPercent
                     val valid = pct != null && pct in 0..100
                     if (valid) {
@@ -281,7 +281,7 @@ class AndroidWidgetActionDispatcher(
         return results
     }
 
-    private suspend fun ringPhone(deviceId: String): WidgetDispatchResult = cancellableCatching {
+    private suspend fun ringPhone(deviceId: String): WidgetDispatchResult = cancellableCatching("AndroidWidgetActionDispatcher ringPhone") {
         val ok = deps.ringDevice(deviceId)
         val name = deps.resolveDeviceName(deviceId)
         if (ok) {
@@ -405,9 +405,9 @@ class LiveWidgetActionDeps(
                 Uri.parse("package:${appContext.packageName}")
             )
         }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { appContext.startActivity(intent) }.onFailure {
+        cancellableCatching("AndroidWidgetActionDispatcher openStoragePermissionPrompt") { appContext.startActivity(intent) }.onFailure {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                runCatching {
+                cancellableCatching("AndroidWidgetActionDispatcher openStoragePermissionPrompt 2") {
                     appContext.startActivity(
                         Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

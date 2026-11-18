@@ -10,6 +10,7 @@ import java.nio.file.attribute.AclEntryType
 import java.nio.file.attribute.AclFileAttributeView
 import java.nio.file.attribute.FileAttribute
 import java.io.IOException
+import com.fileapex.util.cancellableCatching
 
 /** Writes `local-api.json` for the macOS extensions: written new, owner-only, then moved into place. */
 object LocalApiFile {
@@ -17,7 +18,7 @@ object LocalApiFile {
 
     internal fun publish(file: File, payload: String) {
         val dir = file.absoluteFile.parentFile.also { it.mkdirs() }
-        if (runCatching { file.isFile && file.readText() == payload && ownerOnly(file) }.getOrDefault(false)) return
+        if (cancellableCatching("LocalApiFile publish") { file.isFile && file.readText() == payload && ownerOnly(file) }.getOrDefault(false)) return
         val ownerOnly = privateAttribute(dir)
         val temp = Files.createTempFile(dir.toPath(), "${file.name}.", ".tmp", ownerOnly)
         try {
@@ -57,8 +58,8 @@ object LegacyHandoffCleanup {
     private val files = listOf("ready-device-ids.json")
 
     fun run(supportDirectory: File) {
-        folders.forEach { runCatching { File(supportDirectory, it).deleteRecursively() } }
-        files.forEach { runCatching { File(supportDirectory, it).delete() } }
+        folders.forEach { cancellableCatching("LocalApiFile run") { File(supportDirectory, it).deleteRecursively() } }
+        files.forEach { cancellableCatching("LocalApiFile run 2") { File(supportDirectory, it).delete() } }
     }
 
     fun run() = run(DesktopPlatformPaths.applicationSupportDirectory())

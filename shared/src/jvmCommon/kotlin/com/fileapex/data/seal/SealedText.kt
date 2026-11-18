@@ -3,6 +3,7 @@ package com.fileapex.data.seal
 import com.fileapex.data.db.seal.DbFieldKeys
 import com.fileapex.data.db.seal.FieldSealer
 import java.io.File
+import com.fileapex.util.cancellableCatching
 
 /**
  * Text the app keeps on disk, sealed with the database field key (AES-256-GCM, the key lives in the platform vault).
@@ -41,10 +42,10 @@ object SealedText {
     /** The file's text, empty when it is missing or locked. An older plain file is sealed in place. */
     fun readFile(file: File, purpose: String): String {
         if (!file.isFile) return ""
-        val stored = runCatching { file.readText() }.getOrDefault("")
+        val stored = cancellableCatching("SealedText: file.readText") { file.readText() }.getOrDefault("")
         if (stored.isEmpty()) return ""
         val plain = open(purpose, stored) ?: return ""
-        if (!stored.startsWith(FieldSealer.PREFIX)) runCatching { writeFile(file, purpose, plain) }
+        if (!stored.startsWith(FieldSealer.PREFIX)) cancellableCatching("SealedText: writeFile") { writeFile(file, purpose, plain) }
         return plain
     }
 }

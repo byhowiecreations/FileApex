@@ -5,6 +5,7 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.note.NoteChecklistItem
 import com.fileapex.data.note.NoteRecord
+import com.fileapex.util.cancellableCatching
 import com.fileapex.util.sha256HexFile
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.Dispatchers
@@ -167,7 +168,7 @@ class BulletinBoardRepository(
         val identity = loadLocalIdentity()
         val selfName = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
         val sha256 = sha256HexFile(absolutePath)
-        val preview = runCatching {
+        val preview = cancellableCatching("BulletinBoardRepository ingestLocalFile") {
             BulletinMediaHelper.buildImagePreviewBase64(absolutePath)
         }.getOrNull()
         val contentType = if (preview != null) {
@@ -311,7 +312,7 @@ class BulletinBoardRepository(
         ) {
             return
         }
-        val meta = runCatching {
+        val meta = cancellableCatching("BulletinBoardRepository bindLocalPath") {
             json.decodeFromString<BulletinFileMetadata>(extractMetadataJson(existing.content))
         }.getOrNull() ?: return
         val updated = meta.copy(localPath = localPath)
@@ -319,7 +320,7 @@ class BulletinBoardRepository(
     }
 
     fun decodeFileMetadata(message: MessageEntity): BulletinFileMetadata? {
-        return runCatching {
+        return cancellableCatching("BulletinBoardRepository decodeFileMetadata") {
             json.decodeFromString<BulletinFileMetadata>(extractMetadataJson(message.content))
         }.getOrNull()
     }
@@ -331,7 +332,7 @@ class BulletinBoardRepository(
         ) {
             return content
         }
-        val meta = runCatching {
+        val meta = cancellableCatching("BulletinBoardRepository stripRemoteLocalPath") {
             json.decodeFromString<BulletinFileMetadata>(extractMetadataJson(content))
         }.getOrNull() ?: return content
         if (meta.localPath.isNullOrBlank()) return content
@@ -344,12 +345,12 @@ class BulletinBoardRepository(
         ) {
             return content
         }
-        val meta = runCatching {
+        val meta = cancellableCatching("BulletinBoardRepository stripMissingLocalPath") {
             json.decodeFromString<BulletinFileMetadata>(extractMetadataJson(content))
         }.getOrNull() ?: return content
         val stored = meta.localPath?.trim().orEmpty()
         if (stored.isEmpty()) return content
-        val exists = runCatching {
+        val exists = cancellableCatching("BulletinBoardRepository stripMissingLocalPath 2") {
             kotlinx.io.files.SystemFileSystem.exists(kotlinx.io.files.Path(stored))
         }.getOrDefault(false)
         if (exists) return content

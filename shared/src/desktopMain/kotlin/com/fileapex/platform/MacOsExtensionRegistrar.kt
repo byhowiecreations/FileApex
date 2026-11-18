@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import kotlin.text.Charsets
 import java.time.Instant
@@ -30,7 +31,7 @@ object MacOsExtensionRegistrar {
         if (!DesktopPlatformPaths.isMacOs()) return
         Thread(
             {
-                runCatching { registerOnLaunch() }
+                cancellableCatching("MacOsExtensionRegistrar registerOnLaunchDeferred") { registerOnLaunch() }
                     .onFailure { error -> log("deferred registration failed - ${error.message}") }
             },
             "FileApex-ExtensionRegistrar"
@@ -149,11 +150,11 @@ object MacOsExtensionRegistrar {
     private fun readStamp(): String? {
         val file = DesktopPlatformPaths.extensionRegistrarStampFile()
         if (!file.isFile) return null
-        return runCatching { file.readText(Charsets.UTF_8).trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
+        return cancellableCatching("MacOsExtensionRegistrar readStamp") { file.readText(Charsets.UTF_8).trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     private fun writeStamp(stamp: String) {
-        runCatching {
+        cancellableCatching("MacOsExtensionRegistrar writeStamp") {
             DesktopPlatformPaths.applicationSupportDirectory()
             DesktopPlatformPaths.extensionRegistrarStampFile().writeText(stamp, Charsets.UTF_8)
         }.onFailure { log("stamp write failed: ${it::class.simpleName}") }
@@ -197,6 +198,7 @@ object MacOsExtensionRegistrar {
             val code = process.waitFor()
             if (code != 0) "exit=$code ${text.take(200)}" else "ok${if (text.isEmpty()) "" else " $text"}"
         } catch (error: Exception) {
+            com.fileapex.util.logFailureOnce("MacOsExtensionRegistrar run", error)
             "failed: $error"
         }
     }

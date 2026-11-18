@@ -8,6 +8,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexMdnsAdvertiser
 import com.fileapex.network.FileApexMdnsBrowser
 import com.fileapex.network.ServerLifecycleManager
+import com.fileapex.util.cancellableCatching
 
 /**
  * Dual-path background presence bootstrap, mDNS listener, network revalidation, FCM token sync.
@@ -35,7 +36,7 @@ object BackgroundPresenceServices {
         if (FileApexServices.isDatabaseReady()) {
             FileApexServices.presenceMonitor.ensureLanPollLoop()
         }
-        runCatching { GoogleLinkCoordinator.invalidatePublishedPresenceCache() }
+        cancellableCatching("BackgroundPresenceServices: GoogleLinkCoordinator.invalidatePublishedP") { GoogleLinkCoordinator.invalidatePublishedPresenceCache() }
     }
 
     @Synchronized fun stop(fast: Boolean = false) {

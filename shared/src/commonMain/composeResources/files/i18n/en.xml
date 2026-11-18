@@ -918,6 +918,8 @@ Tap Central Hub (+) to Pair</string>
     <string name="sent_named_to">Sent %1$s to %2$s</string>
     <string name="sent_n_files_to">Sent %1$s files to %2$s</string>
     <string name="send_failed_all_destinations">Send failed for all destinations</string>
+    <string name="send_cancelled_by_receiver">Cancelled by the receiver</string>
+    <string name="transfer_pause">Pause</string>
     <string name="waiting_drive_grant">Waiting for Google Drive grant</string>
     <string name="drive_relay_did_not_finish">Drive relay did not finish</string>
     <string name="confirm_cellular_send">Confirm Cellular send to deliver via Google Drive Relay</string>
@@ -1149,6 +1151,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="cancel_keep_going">Keep going</string>
     <string name="queued_sending_background">Sending to %1$s</string>
     <string name="queued_source_changed">%1$s changed after it was queued, so it was not sent. Retry to send the current version.</string>
+    <string name="queued_source_missing">%1$s was not found, so it was not sent. Retry once the file is back, or remove it from the queue.</string>
     <string name="drive_encrypt">Encrypt files</string>
     <string name="drive_encrypt_off">Off. Files reach Drive as they are, so you can also download them there.</string>
     <string name="drive_encrypt_on">On. Files are encrypted before upload and only your paired devices can open them. Names stay visible.</string>

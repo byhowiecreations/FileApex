@@ -14,6 +14,7 @@ import java.util.prefs.Preferences
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.fileapex.util.cancellableCatching
 
 actual object GoogleDriveAuth {
     private val driveNode = Preferences.userRoot().node("com.fileapex.drive")
@@ -56,7 +57,7 @@ actual object GoogleDriveAuth {
 
     actual fun markAccessVerified() {
         prefs.putBoolean(KEY_VERIFIED, true)
-        runCatching { driveNode.flush() }
+        cancellableCatching("GoogleDriveAuth.desktop: driveNode.flush") { driveNode.flush() }
     }
 
     actual suspend fun refreshOnUnauthorized(): Boolean {
@@ -98,7 +99,7 @@ actual object GoogleDriveAuth {
         prefs.remove(KEY_EXPIRES_AT)
         prefs.remove(KEY_SCOPE)
         prefs.remove(KEY_VERIFIED)
-        runCatching { driveNode.flush() }
+        cancellableCatching("GoogleDriveAuth.desktop: driveNode.flush") { driveNode.flush() }
     }
 
     private fun enc(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)

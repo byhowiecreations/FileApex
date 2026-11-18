@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 @Serializable
 data class PeerDeviceNameLabel(
@@ -102,7 +103,7 @@ object DeviceNamePeerLabelsStore {
     internal fun encode(labels: List<PeerDeviceNameLabel>): String = json.encodeToString(labels)
 
     internal fun decode(raw: String): List<PeerDeviceNameLabel> =
-        runCatching {
+        cancellableCatching("DeviceNamePeerLabelsStore: raw.isBlank") {
             if (raw.isBlank()) emptyList()
             else json.decodeFromString<List<PeerDeviceNameLabel>>(raw)
         }.getOrDefault(emptyList())

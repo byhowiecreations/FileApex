@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.fileapex.util.logFailureOnce
 
 /** The path Iroh picked to a friend: [relay], or a direct one that is [local] (same network) or goes through the internet. */
 class FriendPathInfo(val relay: Boolean, val local: Boolean, val rttMs: Long)
@@ -50,7 +51,7 @@ class FriendPathTracker(
         internal.update { before -> friendKeys.associateWith { before[it] ?: FriendPathStatus(FriendPath.CHECKING) } }
         val failed = coroutineScope {
             friendKeys.map { key ->
-                async { key to (infoOf(key) == null && try { connect(key); false } catch (e: CancellationException) { throw e } catch (_: Exception) { true }) }
+                async { key to (infoOf(key) == null && try { connect(key); false } catch (e: CancellationException) { throw e } catch (e: Exception) { logFailureOnce("FriendPathTracker: connecting to a friend", e); true }) }
             }.awaitAll().filter { it.second }.map { it.first }.toSet()
         }
         val next = LinkedHashMap<String, FriendPathStatus>()

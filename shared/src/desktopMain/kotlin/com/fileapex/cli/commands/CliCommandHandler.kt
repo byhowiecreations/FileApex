@@ -144,14 +144,14 @@ class CliCommandHandler(
             val direct = dev.lastKnownIp.takeIf { it.isNotBlank() }
             if (direct != null && dev.port > 0) {
                 val ping = withTimeoutOrNull(800) {
-                    cancellableCatching {
+                    cancellableCatching("CliCommandHandler handleDevices") {
                         FileApexServices.client.fetchPeerNodeState(direct, dev.port, 800)
                     }.getOrNull()
                 }
                 if (ping != null) {
                     online = true
                     val bat = withTimeoutOrNull(800) {
-                        cancellableCatching {
+                        cancellableCatching("CliCommandHandler handleDevices 2") {
                             FileApexServices.client.fetchFastBattery(direct, dev.port)
                         }.getOrNull()
                     }
@@ -313,6 +313,7 @@ class CliCommandHandler(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Throwable) {
+            com.fileapex.util.logFailureOnce("CliCommandHandler send", e)
             progressJob.cancel()
             err("\nTransfer encountered an error: ${e.message}")
             out("Staging transfer to queue for offline delivery...")
@@ -325,7 +326,7 @@ class CliCommandHandler(
         out("Triggering audible locator sound on ${device.deviceName}...")
         val direct = device.lastKnownIp.takeIf { it.isNotBlank() }
         if (direct != null && device.port > 0) {
-            val success = cancellableCatching {
+            val success = cancellableCatching("CliCommandHandler triggerDeviceBeep") {
                 FileApexServices.client.alerts.triggerDeviceBeep(direct, device.port)
             }.getOrDefault(false)
 
@@ -344,7 +345,7 @@ class CliCommandHandler(
         val selfName = loadLocalIdentity().deviceName
 
         if (direct != null && device.port > 0) {
-            val sent = cancellableCatching {
+            val sent = cancellableCatching("CliCommandHandler sendPushNotification") {
                 FileApexServices.client.alerts.sendDirectAlert(direct, device.port, selfName, message)
             }.getOrDefault(false)
 
@@ -423,7 +424,7 @@ class CliCommandHandler(
                     return 1
                 }
 
-                cancellableCatching {
+                cancellableCatching("CliCommandHandler handleClip") {
                     val content = FileApexServices.client.clipboard.pullRemoteClipboard(direct, device.port)
                     if (content != null) {
                         PlatformClipboard.setSystemClipboardText(content)
@@ -459,7 +460,7 @@ class CliCommandHandler(
         }
 
         out("Pushing local clipboard to ${device.deviceName}...")
-        return cancellableCatching {
+        return cancellableCatching("CliCommandHandler sendClipboardToDevice") {
             ClipboardShareCoordinator.sendToDevice(device.deviceId)
             out("Clipboard content successfully sent to ${device.deviceName}.")
             0

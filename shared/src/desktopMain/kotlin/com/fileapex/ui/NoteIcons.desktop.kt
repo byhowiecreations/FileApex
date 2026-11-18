@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import com.fileapex.platform.decodeImageBytes
+import com.fileapex.util.cancellableCatching
 import java.io.File
 
 @Composable
@@ -38,15 +39,15 @@ private fun loadDesktopResourceBytes(relativePath: String): ByteArray? {
     val absPath = if (relativePath.startsWith("/")) relativePath else "/$relativePath"
     val relPath = relativePath.removePrefix("/")
 
-    runCatching {
+    cancellableCatching("NoteIcons loadDesktopResourceBytes") {
         NoteIconKind::class.java.getResourceAsStream(absPath)?.use { it.readBytes() }
     }.getOrNull()?.let { return it }
 
-    runCatching {
+    cancellableCatching("NoteIcons loadDesktopResourceBytes 2") {
         Thread.currentThread().contextClassLoader?.getResourceAsStream(relPath)?.use { it.readBytes() }
     }.getOrNull()?.let { return it }
 
-    runCatching {
+    cancellableCatching("NoteIcons loadDesktopResourceBytes 3") {
         ClassLoader.getSystemResourceAsStream(relPath)?.use { it.readBytes() }
     }.getOrNull()?.let { return it }
 
@@ -62,7 +63,7 @@ private fun loadDesktopResourceBytes(relativePath: String): ByteArray? {
     for (p in devPaths) {
         val file = File(p)
         if (file.exists() && file.isFile) {
-            runCatching { file.readBytes() }.getOrNull()?.let { return it }
+            cancellableCatching("NoteIcons loadDesktopResourceBytes 4") { file.readBytes() }.getOrNull()?.let { return it }
         }
     }
 

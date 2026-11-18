@@ -109,7 +109,7 @@ object FriendsHub {
         pinnedInternal.value = settingsProvider().friendsPinnedKeys().split(',').filter { it.isNotBlank() }.toSet()
         scope.launch { dao?.observeLinks()?.byLabel()?.collect { friendsInternal.value = it } }
         maintainListener(FileApexServices.presenceMonitor.onlineSnapshotEpochMs)
-        scope.launch(Dispatchers.IO) { runCatching { purgeOldParts() } }
+        scope.launch(Dispatchers.IO) { com.fileapex.util.cancellableCatching("purging old Friends part files") { purgeOldParts() } }
     }
 
     private fun db(): FriendsDao = checkNotNull(dao) { "FriendsHub.attach must run first" }
@@ -124,7 +124,7 @@ object FriendsHub {
 
     private fun friendsKey(): ByteArray {
         val settings = settingsProvider()
-        val stored = runCatching { Base64.getDecoder().decode(settings.friendsSecretKeyBase64()) }.getOrNull()
+        val stored = com.fileapex.util.cancellableCatching("reading the stored Friends key") { Base64.getDecoder().decode(settings.friendsSecretKeyBase64()) }.getOrNull()
         if (stored != null && stored.size == 32) return stored
         SecretAvailability.requireAvailable(BaseAppSettings.KEY_FRIENDS_SECRET_KEY)
         val fresh = ByteArray(32).also { SecureRandom().nextBytes(it) }
@@ -145,7 +145,7 @@ object FriendsHub {
 
     /** Called when the Hide my IP switch changes: the endpoint is rebuilt on its next use. */
     fun hideIpChanged() {
-        scope.launch { lock.withLock { endpoint?.close(); endpoint = null }; runCatching { if (links().isNotEmpty()) ensureEndpoint() } }
+        scope.launch { lock.withLock { endpoint?.close(); endpoint = null }; com.fileapex.util.cancellableCatching("restarting the Friends endpoint") { if (links().isNotEmpty()) ensureEndpoint() } }
     }
 
     /** A friend always; anyone else only while an unused invite exists, and then only for pairing. */
@@ -218,19 +218,19 @@ object FriendsHub {
     private suspend fun handlePair(peer: String, stream: IrohStream) {
         val parts = FriendsWire.readFrame(stream).decodeToString().split("\n", limit = 5)
         if (parts.size != 5 || parts[0] != "v1") {
-            com.fileapex.util.cancellableCatching { FriendsWire.writeFrame(stream, "0".encodeToByteArray()) }
+            com.fileapex.util.cancellableCatching("writing a Friends frame") { FriendsWire.writeFrame(stream, "0".encodeToByteArray()) }
             return
         }
         val friend = db().redeemInvite(parts[1], parts[2], parts[3], peer, parts[4])
         if (db().invite(parts[1])?.used == true) {
             inviteInternal.update { current -> current?.takeUnless { FriendInviteLink.parse(it.uri)?.inviteId == parts[1] } }
         }
-        com.fileapex.util.cancellableCatching { FriendsWire.writeFrame(stream, (if (friend != null) "1" else "0").encodeToByteArray()) }
+        com.fileapex.util.cancellableCatching("writing a Friends frame") { FriendsWire.writeFrame(stream, (if (friend != null) "1" else "0").encodeToByteArray()) }
         if (friend != null) joinedInternal.tryEmit(friend.label)
     }
 
     /** Joins from a pasted or tapped invite. Returns the new friend's label. */
-    suspend fun join(linkText: String, pin: String, myName: String): Result<String> = runCatching {
+    suspend fun join(linkText: String, pin: String, myName: String): Result<String> = com.fileapex.util.cancellableCatching("joining a friend by invite link") {
         val link = FriendInviteLink.parse(linkText) ?: throw IOException("That is not a friends invite")
         if (!Regex("\\d{6}").matches(pin)) throw IOException("The PIN is six digits")
         val ep = ensureEndpoint()

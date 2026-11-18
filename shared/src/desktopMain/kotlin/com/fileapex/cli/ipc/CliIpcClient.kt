@@ -8,6 +8,7 @@ import java.io.File
 import java.io.IOException
 import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.DesktopInstanceWire
+import com.fileapex.util.cancellableCatching
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -38,7 +39,7 @@ object CliIpcClient {
                 var lastWasProgress = false
                 while (true) {
                     val line = reader.readBoundedLine() ?: break
-                    val packet = runCatching {
+                    val packet = cancellableCatching("CliIpcClient forwardCommand") {
                         json.decodeFromString<CliIpcPacket>(line)
                     }.getOrNull() ?: continue
 
@@ -127,7 +128,7 @@ object CliIpcClient {
         appStatus(port, directory) == CliAppStatus.Running
 
     fun sendDashboardRequest(request: CliRequest, timeoutMs: Int = 4000, port: Int = CLI_IPC_PORT, directory: File = DesktopPlatformPaths.applicationSupportDirectory()): CliIpcPacket? {
-        return runCatching {
+        return cancellableCatching("CliIpcClient sendDashboardRequest") {
             connectAuthenticated(port, directory, 800).use { s ->
                 s.soTimeout = timeoutMs
                 val writer = PrintWriter(s.getOutputStream(), true, Charsets.UTF_8)

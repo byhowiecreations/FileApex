@@ -15,6 +15,7 @@ import com.fileapex.update.BulletinApkUpdatePolicy
 import com.fileapex.update.currentAppVersionName
 import com.fileapex.update.isInstalledVersionStrictlyNewer
 import com.fileapex.platform.UniqueFileNames
+import com.fileapex.util.cancellableCatching
 
 data class BulletinRemotePurgePrompt(
     val messageId: String,
@@ -126,7 +127,7 @@ object BulletinRemoteFilePurgeHandler {
             println("BulletinRemoteFilePurge: refused path outside downloads")
             return false
         }
-        return runCatching {
+        return cancellableCatching("BulletinRemoteFilePurgeHandler scrubLocalFile") {
             val path = Path(localPath)
             if (SystemFileSystem.exists(path)) {
                 SystemFileSystem.delete(path)
@@ -141,7 +142,7 @@ object BulletinRemoteFilePurgeHandler {
     private fun pruneMatchingAutoUpdateApks(fileName: String, downloadsDir: String) {
         val root = Path(downloadsDir)
         if (!SystemFileSystem.exists(root)) return
-        runCatching {
+        cancellableCatching("BulletinRemoteFilePurgeHandler pruneMatchingAutoUpdateApks") {
             for (child in SystemFileSystem.list(root)) {
                 val childName = child.name
                 if (UniqueFileNames.matchesOriginalOrCollision(fileName, childName) ||
@@ -149,7 +150,7 @@ object BulletinRemoteFilePurgeHandler {
                 ) {
                     val candidate = child.toString()
                     if (BulletinRemoteFilePurgeResolver.isSafeDeletePath(candidate, downloadsDir)) {
-                        runCatching { SystemFileSystem.delete(child) }
+                        cancellableCatching("BulletinRemoteFilePurgeHandler pruneMatchingAutoUpdateApks 2") { SystemFileSystem.delete(child) }
                     }
                 }
             }
@@ -160,7 +161,7 @@ object BulletinRemoteFilePurgeHandler {
         val root = Path(downloadsDir)
         if (!SystemFileSystem.exists(root)) return
         val currentVersion = currentAppVersionName()
-        runCatching {
+        cancellableCatching("BulletinRemoteFilePurgeHandler pruneStaleAutoUpdateApks") {
             for (child in SystemFileSystem.list(root)) {
                 val childName = child.name
                 if (BulletinApkUpdatePolicy.matchesAutoUpdateApk(childName)) {
@@ -182,7 +183,7 @@ object BulletinRemoteFilePurgeHandler {
                     }
                     if (shouldPrune) {
                         if (BulletinRemoteFilePurgeResolver.isSafeDeletePath(candidate, downloadsDir)) {
-                            runCatching { SystemFileSystem.delete(child) }
+                            cancellableCatching("BulletinRemoteFilePurgeHandler pruneStaleAutoUpdateApks 2") { SystemFileSystem.delete(child) }
                         }
                     }
                 }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.fileapex.util.cancellableCatching
 
 /**
  * Blocking UDP wake listener (no [DatagramSocket.available] polling).
@@ -41,7 +42,10 @@ class UdpWakeReceiver(
     fun stop() {
         listenJob?.cancel()
         listenJob = null
-        runCatching { socket?.close() }
+        try {
+            socket?.close()
+        } catch (_: java.io.IOException) {
+        }
         socket = null
         supervisor.cancel()
     }
@@ -72,7 +76,10 @@ class UdpWakeReceiver(
                 if (!currentCoroutineContext().isActive) return
                 onLog("UDP wake socket interrupted; reopening")
             } finally {
-                runCatching { activeSocket.close() }
+                try {
+                    activeSocket.close()
+                } catch (_: java.io.IOException) {
+                }
                 if (socket === activeSocket) {
                     socket = null
                 }

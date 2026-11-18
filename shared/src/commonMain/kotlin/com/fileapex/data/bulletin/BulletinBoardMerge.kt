@@ -3,6 +3,7 @@ package com.fileapex.data.bulletin
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.fileapex.data.db.FileApexDatabase
+import com.fileapex.util.cancellableCatching
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -30,7 +31,7 @@ object BulletinBoardMerge {
         val source = Path(dbPath)
         val target = Path(dbPath + PRE_MERGE_SUFFIX)
         if (!SystemFileSystem.exists(source) || SystemFileSystem.exists(target)) return
-        runCatching {
+        cancellableCatching("BulletinBoardMerge backupBeforeMerge") {
             SystemFileSystem.source(source).buffered().use { input ->
                 SystemFileSystem.sink(target).buffered().use { output -> input.transferTo(output) }
             }
@@ -41,7 +42,7 @@ object BulletinBoardMerge {
     fun deleteLegacyFiles(legacyBulletinPath: String) {
         for (base in listOf(legacyBulletinPath, legacyBulletinPath + BACKUP_SUFFIX)) {
             for (suffix in listOf("", "-wal", "-shm")) {
-                runCatching { SystemFileSystem.delete(Path(base + suffix), mustExist = false) }
+                cancellableCatching("BulletinBoardMerge deleteLegacyFiles") { SystemFileSystem.delete(Path(base + suffix), mustExist = false) }
             }
         }
     }
@@ -73,7 +74,7 @@ object BulletinBoardMerge {
         checks.firstOrNull { (_, expected, found) -> found < expected }?.let { (table, expected, found) ->
             return Result.Mismatch(table, expected, found)
         }
-        runCatching {
+        cancellableCatching("BulletinBoardMerge run") {
             val backup = Path(legacyBulletinPath + BACKUP_SUFFIX)
             SystemFileSystem.atomicMove(legacyPath, backup)
             // The WAL files belong to the old file; leaving them beside a missing database would confuse a later open.

@@ -74,7 +74,7 @@ object IrohRuntime {
         IrohLog.labeler = { id -> names[id] }
         scope.launch {
             // An earlier build could save a bridge endpoint as a peer's address; put those rows right.
-            cancellableCatching { FileApexServices.deviceRepository.clearLoopbackEndpoints() }
+            cancellableCatching("clearing stale Iroh loopback endpoints") { FileApexServices.deviceRepository.clearLoopbackEndpoints() }
         }
         scope.launch {
             val settings = FileApexServices.settings
@@ -272,12 +272,12 @@ object IrohRuntime {
         servedViaIroh.clear()
         startedRelay = null
         notNeededSince = 0L
-        if (running != null) cancellableCatching { running.stop() }
+        if (running != null) cancellableCatching("stopping the Iroh endpoint") { running.stop() }
         mutableState.value = IrohState(phase)
     }
 
     private fun loadOrCreateSecret(): ByteArray {
-        val stored = runCatching { Base64.getDecoder().decode(FileApexServices.settings.irohSecretKeyBase64()) }.getOrNull()
+        val stored = cancellableCatching("IrohRuntime: Base64.getDecoder") { Base64.getDecoder().decode(FileApexServices.settings.irohSecretKeyBase64()) }.getOrNull()
         if (stored != null && stored.size == SECRET_BYTES) return stored
         com.fileapex.data.settings.SecretAvailability.requireAvailable(com.fileapex.data.settings.BaseAppSettings.KEY_IROH_SECRET_KEY)
         val fresh = ByteArray(SECRET_BYTES).also { SecureRandom().nextBytes(it) }
@@ -290,7 +290,7 @@ object IrohRuntime {
     private fun restorePeers(started: IrohLinkHandle) {
         val book = peerBook()
         for (deviceId in book.deviceIds()) {
-            book.address(deviceId)?.let { runCatching { started.addPeer(it) } }
+            book.address(deviceId)?.let { cancellableCatching("IrohRuntime: started.addPeer") { started.addPeer(it) } }
         }
     }
 
@@ -332,9 +332,9 @@ object IrohRuntime {
     private fun remember(deviceId: String, address: String) {
         val updated = peerBook().with(deviceId, address)
         FileApexServices.settings.setIrohPeersJson(updated.toJson())
-        link?.let { runCatching { it.addPeer(address) } }
+        link?.let { cancellableCatching("IrohRuntime: it.addPeer") { it.addPeer(address) } }
         reachability.forget(deviceId)
-        scope.launch { cancellableCatching { FileApexServices.deviceRepository.getDevice(deviceId)?.let { d -> peerBook().endpointId(deviceId)?.let { names[it] = d.deviceName }; names[d.deviceId] = d.deviceName } } }
+        scope.launch { cancellableCatching("IrohRuntime: FileApexServices.deviceRepository.getDevice") { FileApexServices.deviceRepository.getDevice(deviceId)?.let { d -> peerBook().endpointId(deviceId)?.let { names[it] = d.deviceName }; names[d.deviceId] = d.deviceName } } }
     }
 
     /** Called by the server route: a paired peer sent its address and is owed ours. Null when Iroh is off. */

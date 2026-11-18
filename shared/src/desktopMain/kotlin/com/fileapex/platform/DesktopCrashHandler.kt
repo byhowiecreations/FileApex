@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.util.AddressRedaction
 import com.fileapex.update.FileApexAppVersion
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import kotlin.text.Charsets
 import java.io.PrintWriter
@@ -43,7 +44,7 @@ object DesktopCrashHandler {
         val targetLogFile = File(desktopDir, "FileApex-error.log")
 
         // Prefer a single Desktop log; remove a mistaken home-folder copy from older builds.
-        runCatching {
+        cancellableCatching("DesktopCrashHandler writeCrashLogToDesktop") {
             val homeMistaken = File(System.getProperty("user.home").orEmpty(), "FileApex-error.log")
             if (homeMistaken.isFile && homeMistaken.canonicalFile != targetLogFile.canonicalFile) {
                 homeMistaken.delete()
@@ -85,7 +86,7 @@ object DesktopCrashHandler {
             appendLine("================================================================================")
         }
 
-        runCatching {
+        cancellableCatching("DesktopCrashHandler writeCrashLogToDesktop 2") {
             targetLogFile.writeText(logContent, Charsets.UTF_8)
         }
 
@@ -109,7 +110,7 @@ object DesktopCrashHandler {
         )
         val dialogTitle = crashCopy("crash_startup_title", "FileApex Startup Error")
 
-        runCatching {
+        cancellableCatching("DesktopCrashHandler showCrashDialog") {
             JOptionPane.showMessageDialog(
                 null,
                 dialogMessage,
@@ -123,6 +124,6 @@ object DesktopCrashHandler {
     }
 
     private fun crashCopy(key: String, fallback: String, vararg args: Any): String {
-        return runCatching { com.fileapex.i18n.AppI18n.t(key, *args) }.getOrDefault(fallback)
+        return cancellableCatching("DesktopCrashHandler crashCopy") { com.fileapex.i18n.AppI18n.t(key, *args) }.getOrDefault(fallback)
     }
 }

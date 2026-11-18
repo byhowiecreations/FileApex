@@ -99,7 +99,7 @@ internal class StoredEndpointProbe(
                     host.touchLastSeen(peer.deviceId, endpoint.host, endpoint.port)
                 }
                 if (fetchNodeState && claims.claim(peer, probe.membershipVersion ?: probe.chainState?.profileVersion)) {
-                    val state = cancellableCatching {
+                    val state = cancellableCatching("StoredEndpointProbe: host.fetchNodeState") {
                         host.fetchNodeState(endpoint.host, endpoint.port, timeoutMs)
                     }.getOrNull()
                     if (state != null) {
@@ -110,7 +110,7 @@ internal class StoredEndpointProbe(
                         host.applyNodeState(state, peer.deviceId)
                         // Same hardware under another id is the same device before a reinstall: retire the outdated row.
                         if (state.hardwareHash.isNotBlank()) {
-                            cancellableCatching { host.supersedeHardwareTwins(state) }
+                            cancellableCatching("StoredEndpointProbe: host.supersedeHardwareTwins") { host.supersedeHardwareTwins(state) }
                         }
                         host.markReachable(state.deviceId.trim())
                     }

@@ -130,4 +130,17 @@ class TransferRowMappersTest {
         assertEquals(setOf(TransferRowState.Failed, TransferRowState.Refused, TransferRowState.Canceled), names(TransferStatusFilter.Failed))
         assertEquals(setOf(TransferRowState.Done), names(TransferStatusFilter.Done))
     }
+
+    @Test
+    fun `cancelling a queue backed send only pauses it so its button says pause`() {
+        assertTrue(TransferRowMappers.fromLive(live().copy(parksOnCancel = true), 0, "sending", t).cancelPauses)
+        assertTrue(TransferRowMappers.fromPending(pending(sending = true), live(), t).cancelPauses)
+    }
+
+    @Test
+    fun `cancelling a receive really cancels so its button stays a cancel`() {
+        assertFalse(TransferRowMappers.fromLive(live().copy(parksOnCancel = false), 0, "sending", t).cancelPauses)
+        assertFalse(TransferRowMappers.fromPending(pending(paused = true), live(), t).cancelPauses)
+    }
 }
+

@@ -1,5 +1,7 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
+
 // Storage tools ship on Android first; the explorer hides the Tools button here.
 actual fun storageToolsSupported(): Boolean = false
 
@@ -23,7 +25,7 @@ actual fun localPathInfo(path: String): LocalPathInfo? {
     return if (file.exists()) LocalPathInfo(file.isDirectory, if (file.isFile) file.length() else 0L) else null
 }
 
-actual fun fileDigest(path: String, maxBytes: Long): String? = runCatching {
+actual fun fileDigest(path: String, maxBytes: Long): String? = cancellableCatching("StorageTools fileDigest") {
     val md = java.security.MessageDigest.getInstance("SHA-256")
     java.io.File(path).inputStream().use { input ->
         val buffer = ByteArray(64 * 1024)

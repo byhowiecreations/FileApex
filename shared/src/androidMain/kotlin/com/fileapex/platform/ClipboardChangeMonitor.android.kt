@@ -8,6 +8,7 @@ import com.fileapex.platform.log.Log
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 import com.fileapex.domain.clipboard.ClipboardSharePolicy
+import com.fileapex.util.cancellableCatching
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -124,7 +125,7 @@ actual object ClipboardChangeMonitor {
             }
         }
         clipListener = listener
-        runCatching { clipboard.addPrimaryClipChangedListener(listener) }
+        cancellableCatching("ClipboardChangeMonitor ensureListener") { clipboard.addPrimaryClipChangedListener(listener) }
             .onFailure {
                 listening.set(false)
                 clipListener = null
@@ -150,7 +151,7 @@ actual object ClipboardChangeMonitor {
         val listener = clipListener
         clipListener = null
         if (listener != null) {
-            runCatching { clipboard?.removePrimaryClipChangedListener(listener) }
+            cancellableCatching("ClipboardChangeMonitor removeListener") { clipboard?.removePrimaryClipChangedListener(listener) }
         }
     }
 

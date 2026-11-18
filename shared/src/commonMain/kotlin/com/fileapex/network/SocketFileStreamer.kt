@@ -3,6 +3,8 @@ package com.fileapex.network
 import com.fileapex.platform.UniqueFileNames
 import java.io.File
 import java.io.RandomAccessFile
+import com.fileapex.util.cancellableCatching
+import com.fileapex.util.deleteLogged
 
 object SocketFileStreamer {
     const val BUFFER_BYTES = 256 * 1024
@@ -67,7 +69,10 @@ object SocketFileStreamer {
             raf.seek(offset)
             return raf
         } catch (error: Throwable) {
-            runCatching { raf.close() }
+            try {
+                raf.close()
+            } catch (_: java.io.IOException) {
+            }
             throw error
         }
     }
@@ -131,10 +136,5 @@ object SocketFileStreamer {
         }
     }
 
-    fun deleteQuietly(path: String) {
-        runCatching {
-            val file = File(path)
-            if (file.exists()) file.delete()
-        }
-    }
+    fun deleteQuietly(path: String) = File(path).deleteLogged("removing a part file")
 }

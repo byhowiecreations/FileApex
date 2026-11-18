@@ -2,6 +2,7 @@ package com.fileapex.presentation
 
 import com.fileapex.data.files.guessMimeType
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import java.nio.file.Files
 
@@ -37,7 +38,7 @@ object LocalRecursiveSearch {
             for (child in children) {
                 val name = child.name
                 if (name.startsWith(".")) continue
-                val isSymlink = runCatching { Files.isSymbolicLink(child.toPath()) }.getOrDefault(true)
+                val isSymlink = cancellableCatching("LocalRecursiveSearch search") { Files.isSymbolicLink(child.toPath()) }.getOrDefault(true)
                 if (isSymlink) continue
 
                 val isDir = child.isDirectory

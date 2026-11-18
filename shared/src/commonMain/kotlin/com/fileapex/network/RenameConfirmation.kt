@@ -6,6 +6,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respondText
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.fileapex.util.cancellableCatching
 
 /** What a device answers after it renamed itself: the name it actually applied. Builds before 0.19.8 answer with no body. */
 @Serializable
@@ -24,7 +25,7 @@ object RenameConfirmation {
 
     /** A successful (200) answer: the reply when it parses, otherwise [RenameOutcome.Unconfirmed]; never an error. */
     fun fromBody(body: String): RenameOutcome {
-        val name = runCatching { json.decodeFromString(RenameDeviceReply.serializer(), body).deviceName.trim() }.getOrNull()
+        val name = cancellableCatching("RenameConfirmation: json.decodeFromString") { json.decodeFromString(RenameDeviceReply.serializer(), body).deviceName.trim() }.getOrNull()
         return if (name.isNullOrEmpty()) RenameOutcome.Unconfirmed else RenameOutcome.Confirmed(name)
     }
 }

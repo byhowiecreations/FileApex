@@ -12,6 +12,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
+import com.fileapex.util.cancellableCatching
 
 /**
  * With a Browse PIN set, only the receive folder takes files without it. Writing anywhere else, replacing files
@@ -39,16 +40,16 @@ internal suspend fun FileApexServer.denyWrite(call: ApplicationCall, absolutePat
 
 internal fun Route.registerFileDeleteRoute(server: FileApexServer) {
     post("/api/v1/files/delete") {
-        runCatching {
+        cancellableCatching {
             val path = call.request.queryParameters["targetPath"]
-                ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+                ?: return@cancellableCatching call.respond(HttpStatusCode.BadRequest)
             if (!server.isDeletablePath(path)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
+                return@cancellableCatching
             }
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             com.fileapex.platform.trashLocalEntriesQuietly(listOf(path))
             server.onLog("Remote delete: 1 item", null)
