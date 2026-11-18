@@ -3,7 +3,7 @@ package com.fileapex.network
 import io.ktor.http.decodeURLQueryComponent
 
 /**
- * The session PIN is built into the request path by [FileApexClient.queryPath]; the raw request writers move it into
+ * The session PIN is built into the request path by [FileApexClient.queryPath]; the peer HTTP client moves it into
  * the `X-FileApex-Pin` header so it is never part of a URL. The server reads the header only.
  */
 internal object PeerPinHeader {
@@ -23,9 +23,4 @@ internal object PeerPinHeader {
         val base = pathWithQuery.substringBefore('?')
         return if (kept.isEmpty()) base else "$base?${kept.joinToString("&")}"
     }
-}
-
-internal fun StringBuilder.appendPinHeader(pathWithQuery: String): StringBuilder {
-    PeerPinHeader.pinOf(pathWithQuery)?.let { append(PeerPinHeader.NAME).append(": ").append(it).append("\r\n") }
-    return this
 }

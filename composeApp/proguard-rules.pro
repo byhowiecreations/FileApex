@@ -20,20 +20,12 @@
     <init>(...);
 }
 -keepclasseswithmembers class androidx.sqlite.driver.bundled.** { native <methods>; }
--keep class androidx.sqlite.driver.bundled.** { *; }
 
-# Ktor (engines are found by name)
--keep class io.ktor.serialization.** { *; }
--keep class io.ktor.serialization.kotlinx.** { *; }
--keep class io.ktor.serialization.kotlinx.json.** { *; }
+# Ktor: the engines and the JSON provider are named in code; only the service-loaded provider is kept
 -keep class * implements io.ktor.serialization.kotlinx.KotlinxSerializationExtensionProvider { *; }
 -keepclassmembers class * implements io.ktor.serialization.kotlinx.KotlinxSerializationExtensionProvider {
     public <init>(...);
 }
--keep class io.ktor.server.cio.** { *; }
--keep class io.ktor.client.cio.** { *; }
--keep class io.ktor.network.selector.** { *; }
--keep class io.ktor.network.sockets.** { *; }
 -dontwarn io.ktor.**
 
 # Kotlin coroutines main dispatcher (service loader)
@@ -44,16 +36,14 @@
     public <init>();
 }
 
-# QR code: the scanner view is inflated by name
+# QR code: BarcodeView is created in code
 -dontwarn io.github.alexzhirkevich.qrose.**
--keep class com.journeyapps.barcodescanner.** { *; }
 
 # BouncyCastle: Android calls only its Ed25519, X25519 and certificate classes directly and never asks a provider
 # for an algorithm by name (AndroidBouncyCastleGuardTest), so the provider classes are not kept.
 -dontwarn org.bouncycastle.**
 
 -dontwarn androidx.sharetarget.**
--keep class androidx.sharetarget.** { *; }
 -dontwarn androidx.credentials.**
 -dontwarn com.google.android.libraries.identity.googleid.**
 

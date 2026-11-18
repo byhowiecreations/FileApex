@@ -24,8 +24,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
-import org.junit.Assume
-import org.junit.Before
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,18 +35,12 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * What the hand-written peer HTTP client does today, pinned down through its public functions so a replacement (OkHttp,
- * plan docs/planning/3-5-ktor-bound-client-plan.md) must do exactly the same. Plain-HTTP cases use the open pairing
- * routes; the TLS case uses a real pinned front. The peer is a scripted raw socket server, so every byte is visible.
+ * What the peer HTTP client (OkHttp) does on the wire, pinned down through its public functions. Plain-HTTP cases use the
+ * open pairing routes; the TLS case uses a real pinned front. The peer is a scripted raw socket server, so every byte is visible.
  */
-abstract class PeerBoundHttpCharacterisationBase(private val okHttp: Boolean) {
+class PeerBoundHttpClientTest {
     @get:Rule
     val temp = TemporaryFolder()
-
-    @Before
-    fun chooseClient() {
-        PeerHttpClientSwitch.override = okHttp
-    }
 
     private class Req(val method: String, val target: String, val headers: Map<String, String>, val body: ByteArray)
 
@@ -112,7 +104,6 @@ abstract class PeerBoundHttpCharacterisationBase(private val okHttp: Boolean) {
 
     @After
     fun stop() {
-        PeerHttpClientSwitch.override = null
         com.fileapex.security.tls.PeerTlsStatus.prompts.value.forEach { com.fileapex.security.tls.PeerTlsStatus.dismiss(it.deviceId) }
         sinks.forEach { it.close() }
         peers.forEach { it.close() }
@@ -306,14 +297,14 @@ abstract class PeerBoundHttpCharacterisationBase(private val okHttp: Boolean) {
         assertEquals("abcdefg", seen.body.decodeToString())
     }
 
-    @Test fun anUploadFromAChannelWithoutALengthEndsTheBodyByHalfClosing() = runBlocking {
+    @Test fun anUploadFromAChannelWithoutALengthIsSentChunked() = runBlocking {
         val p = peer { _, out -> ok(out, "stored") }
         val chunks = Channel<ByteArray>(Channel.UNLIMITED).also { c -> c.trySend("abc".toByteArray()); c.trySend("defg".toByteArray()); c.close() }
         val r = peerHttpUploadFromChannel("127.0.0.1", p.port, open, "application/octet-stream", chunks, 5_000, 5_000, null)!!
         assertEquals("stored", r.body)
         val seen = p.requests.single()
         assertNull("no length is sent", seen.headers["content-length"])
-        assertNull("no chunked framing either", seen.headers["transfer-encoding"])
+        assertEquals("chunked", seen.headers["transfer-encoding"])
         assertEquals("abcdefg", seen.body.decodeToString())
     }
 
@@ -330,7 +321,6 @@ abstract class PeerBoundHttpCharacterisationBase(private val okHttp: Boolean) {
     }
 
     @Test fun cancellingTheCoroutineEndsADownloadBlockedOnASlowPeer() = runBlocking {
-        Assume.assumeTrue("OkHttp only: the hand-written client cannot interrupt a blocked read", okHttp)
         val p = peer { _, out ->
             out.write("HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\nfirst".toByteArray())
             out.flush()
@@ -376,7 +366,6 @@ abstract class PeerBoundHttpCharacterisationBase(private val okHttp: Boolean) {
     }
 
     @Test fun cancellingTheCoroutineEndsAnUploadBlockedOnASlowPeer() = runBlocking {
-        Assume.assumeTrue("OkHttp only", okHttp)
         val p = slowSink()
         val job = kotlinx.coroutines.GlobalScope.async(kotlinx.coroutines.Dispatchers.IO) {
             coroutineScope {
@@ -392,7 +381,6 @@ abstract class PeerBoundHttpCharacterisationBase(private val okHttp: Boolean) {
     }
 
     @Test fun theUsersCancelClosesAnInFlightUploadAsACancellation() = runBlocking {
-        Assume.assumeTrue("OkHttp only", okHttp)
         com.fileapex.domain.transfer.TransferActivityGuard.reset()
         val p = slowSink()
         val job = kotlinx.coroutines.GlobalScope.async(kotlinx.coroutines.Dispatchers.IO) {
@@ -465,8 +453,13 @@ abstract class PeerBoundHttpCharacterisationBase(private val okHttp: Boolean) {
     }
 }
 
-/** The hand-written client, which stays one release behind the switch. */
-class PeerBoundHttpLegacyClientTest : PeerBoundHttpCharacterisationBase(okHttp = false)
-
-/** OkHttp, which must behave exactly the same. */
-class PeerBoundHttpOkHttpClientTest : PeerBoundHttpCharacterisationBase(okHttp = true)
+/** One header or status line, without its line ending. */
+private fun InputStream.readAsciiLine(): String {
+    val builder = StringBuilder()
+    while (true) {
+        val byte = read()
+        if (byte == -1 || byte == '\n'.code) break
+        if (byte != '\r'.code) builder.append(byte.toChar())
+    }
+    return builder.toString()
+}

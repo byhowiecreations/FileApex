@@ -6,13 +6,6 @@ import com.fileapex.tailscale.tailscaleLoopbackOrNull
 import kotlinx.coroutines.channels.ReceiveChannel
 
 private object AndroidPeerHttpPlatform : PeerHttpPlatform {
-    init {
-        // `adb shell touch /sdcard/Android/data/<package>/files/legacy-peer-http` switches this device back to the old client.
-        PeerHttpClientSwitch.legacyRequested = {
-            com.fileapex.platform.androidApplicationContextOrNull()?.getExternalFilesDir(null)?.resolve("legacy-peer-http")?.exists() == true
-        }
-    }
-
     override fun bindAttemptIps(peerHost: String): List<String> =
         LanInterfaceBinding.bindCandidatesForPeer(peerHost)
 

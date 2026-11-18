@@ -27,22 +27,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okio.BufferedSink
 
-/**
- * Which peer HTTP client runs. OkHttp is the default; the hand-written client stays for one release (plan:
- * docs/planning/3-5-ktor-bound-client-plan.md). Desktop: start the JVM with `-Dfileapex.peerHttpClient=legacy`.
- * Android: create the file `legacy-peer-http` in the app's external files folder (see `AndroidPeerHttpPlatform`).
- */
-internal object PeerHttpClientSwitch {
-    /** Set by tests to force one client. */
-    @Volatile
-    var override: Boolean? = null
+/** What a peer response may cost: control replies are small JSON, so nothing larger is read into memory. */
+internal const val MAX_PEER_RESPONSE_BYTES = 32 * 1024 * 1024
+internal const val MAX_HEADER_LINE_CHARS = 16 * 1024
+internal const val MAX_HEADER_LINES = 256
 
-    /** True when the old client was asked for. The platform replaces this where the JVM flag is not available. */
-    @Volatile
-    var legacyRequested: () -> Boolean = { System.getProperty("fileapex.peerHttpClient") == "legacy" }
-
-    val useOkHttp: Boolean get() = override ?: !legacyRequested()
-}
+/** The connect step failed (as opposed to the exchange): the caller tries the next local address. */
+internal class BoundConnectFailed(cause: Throwable) : Exception(cause)
 
 /** OkHttp must not add what the hand-written client never sent: a User-Agent and a gzip offer. */
 private val plainWire = Interceptor { chain ->
@@ -116,7 +107,7 @@ private fun Call.executeOrConnectFailure(failure: ConnectFailure): Response = tr
 }
 
 /** Small GET and POST: the JSON control calls. */
-internal fun PeerHttpPlatform.okHttpSmall(
+internal fun PeerHttpPlatform.executeBoundHttpOnLocalIp(
     localIp: String,
     host: String,
     port: Int,
@@ -125,7 +116,7 @@ internal fun PeerHttpPlatform.okHttpSmall(
     body: String?,
     contentType: String?,
     timeoutMs: Long,
-    dialToken: String
+    dialToken: String = ""
 ): PeerBoundHttpResponse {
     val connectMs = bindConnectTimeoutMs(localIp, timeoutMs).toLong()
     val readMs = timeoutMs.coerceIn(250L, 60_000L)
@@ -157,7 +148,7 @@ private suspend fun <T> withCall(call: Call, block: suspend () -> T): T = corout
 }
 
 /** A download in bounded buffers; a body shorter than it promised fails the transfer. */
-internal suspend fun PeerHttpPlatform.okHttpGetStreaming(
+internal suspend fun PeerHttpPlatform.executeBoundGetStreamingOnLocalIp(
     localIp: String,
     host: String,
     port: Int,
@@ -166,7 +157,7 @@ internal suspend fun PeerHttpPlatform.okHttpGetStreaming(
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray, Int) -> Unit,
     onStatus: ((Int) -> Unit)?,
-    dialToken: String
+    dialToken: String = ""
 ): PeerBoundStreamResult {
     val connectMs = bindConnectTimeoutMs(localIp, connectTimeoutMs).toLong()
     val idleMs = readIdleTimeoutMs.coerceIn(1000L, 600_000L)
@@ -199,8 +190,8 @@ internal suspend fun PeerHttpPlatform.okHttpGetStreaming(
     }
 }
 
-/** An upload whose length is known: its body is written straight from [writeBody] with that Content-Length. */
-internal suspend fun PeerHttpPlatform.okHttpUpload(
+/** An upload written straight from [writeBody]: with that Content-Length when it is known, chunked when it is not. */
+internal suspend fun PeerHttpPlatform.executeBoundUploadOnLocalIp(
     localIp: String,
     host: String,
     port: Int,
@@ -208,8 +199,8 @@ internal suspend fun PeerHttpPlatform.okHttpUpload(
     contentType: String,
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
-    contentLength: Long,
-    dialToken: String,
+    contentLength: Long? = null,
+    dialToken: String = "",
     writeBody: suspend (java.io.OutputStream) -> Unit
 ): PeerBoundHttpResponse {
     val context = currentCoroutineContext()
@@ -227,7 +218,7 @@ internal suspend fun PeerHttpPlatform.okHttpUpload(
     val body = object : RequestBody() {
         override fun contentType() = mediaType
 
-        override fun contentLength() = contentLength
+        override fun contentLength() = contentLength ?: -1L
 
         override fun writeTo(sink: BufferedSink) {
             val output = sink.outputStream()
