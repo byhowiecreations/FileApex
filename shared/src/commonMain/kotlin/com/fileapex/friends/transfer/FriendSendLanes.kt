@@ -1,15 +1,18 @@
 package com.fileapex.friends.transfer
 
 import com.fileapex.network.TransferRuntime
+import com.fileapex.platform.isTransferLowPowerMode
 
 /**
  * How many files go to one friend at the same time: up to [maxLanes], but only one file of [largeBytes] or more at once,
  * so a big file keeps the link while small ones go alongside it (the same rule as the paired-device scheduler).
+ * While the device saves power at most [LOW_POWER_LANES] lanes start; lanes already running are left alone.
  */
 class FriendSendLanes(
     private val queue: FriendsSendQueue,
     private val maxLanes: Int = MAX_LANES,
-    private val largeBytes: Long = TransferRuntime.LARGE_FILE_THRESHOLD_BYTES
+    private val largeBytes: Long = TransferRuntime.LARGE_FILE_THRESHOLD_BYTES,
+    private val lowPower: () -> Boolean = ::isTransferLowPowerMode
 ) {
     private val lanes = HashMap<String, Int>()
     private val largeInFlight = HashSet<String>()
@@ -17,7 +20,8 @@ class FriendSendLanes(
     /** After the queue grew: how many new lanes to start for [friendKey]. */
     @Synchronized fun lanesToStart(friendKey: String): Int {
         val active = lanes[friendKey] ?: 0
-        val n = minOf(maxLanes - active, queue.idsFor(friendKey).size).coerceAtLeast(0)
+        val limit = if (lowPower()) minOf(maxLanes, LOW_POWER_LANES) else maxLanes
+        val n = minOf(limit - active, queue.idsFor(friendKey).size).coerceAtLeast(0)
         if (n > 0) lanes[friendKey] = active + n
         return n
     }
@@ -38,5 +42,8 @@ class FriendSendLanes(
         if (item.file.length() >= largeBytes) largeInFlight -= friendKey
     }
 
-    companion object { const val MAX_LANES = 4 }
+    companion object {
+        const val MAX_LANES = 4
+        const val LOW_POWER_LANES = 2
+    }
 }

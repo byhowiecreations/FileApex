@@ -74,7 +74,11 @@ class PeerDownloadClient internal constructor(private val http: FileApexClient, 
                     )
                 }
             }.exceptionOrNull() ?: return
-            if (failure is PeerUnreachableException || failure is TransferCancelledException) throw failure
+            if (failure is PeerUnreachableException || failure is TransferCancelledException ||
+                failure is RemoteFileUnavailableException
+            ) {
+                throw failure
+            }
             lastError = failure
         }
         throw lastError ?: error(AppI18n.t("download_failed"))
@@ -199,7 +203,7 @@ class PeerDownloadClient internal constructor(private val http: FileApexClient, 
                 }
             }.exceptionOrNull() ?: return
             if (failure is PeerUnreachableException || failure is SourceSizeChangedException ||
-                failure is TransferCancelledException
+                failure is TransferCancelledException || failure is RemoteFileUnavailableException
             ) {
                 throw failure
             }
@@ -295,6 +299,9 @@ class PeerDownloadClient internal constructor(private val http: FileApexClient, 
         ) ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
         if (result.statusCode == 403) {
             error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
+        }
+        if (result.statusCode == 404) {
+            throw RemoteFileUnavailableException("Peer cannot open $remotePath (404)")
         }
         require(result.statusCode in 200..299) {
             "Stream failed (${result.statusCode})"

@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.security.tls.PeerTlsConnector
 import com.fileapex.security.tls.PeerTlsRoutes
@@ -10,8 +11,6 @@ import com.fileapex.security.tls.TlsIdentityStore
 import com.fileapex.security.tls.TlsPeerDirectory
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.net.URL
 import java.nio.file.Files
 import java.security.KeyStore
@@ -31,8 +30,8 @@ internal class PinnedPeerFixture(
 ) {
     private val serverIdentity = TlsIdentityFactory.generate()
     private val clientIdentity = clientStore.getOrCreate()
-    val httpPort: Int = freePort()
-    private val bridgePort: Int = freePort()
+    val httpPort: Int = TestPorts.next()
+    private val bridgePort: Int = TestPorts.next()
     val server: FileApexServer = makeServer(httpPort, bridgePort)
     private val directory = object : TlsPeerDirectory {
         override fun deviceIdForPin(pin: String) = if (pin == clientIdentity.pin) clientDeviceId else null
@@ -80,8 +79,6 @@ internal class PinnedPeerFixture(
     /** A plain-HTTP request straight to the share port: nobody has proved who is calling. */
     fun anonymous(pathAndQuery: String): HttpURLConnection =
         URL("http://127.0.0.1:$httpPort$pathAndQuery").openConnection() as HttpURLConnection
-
-    private fun freePort() = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
 
     private companion object {
         /** One client identity for every fixture in the process, as a real device has one. */

@@ -1,5 +1,6 @@
 package com.fileapex.iroh
 
+import com.fileapex.util.TestPorts
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -210,7 +211,7 @@ class IrohBridgeTest {
     @Test
     fun deadServerClosesTheClientInsteadOfHanging() = runBlocking {
         val (a, b) = memoryLinkPair()
-        val deadPort = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        val deadPort = TestPorts.next()
         val clientSide = bridge(a, serverPort = 1, allowed = setOf("peer-b"))
         bridge(b, deadPort, allowed = setOf("peer-a"))
         val port = clientSide.portFor("peer-b")

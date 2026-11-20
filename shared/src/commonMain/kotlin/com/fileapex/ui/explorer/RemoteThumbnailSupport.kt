@@ -12,20 +12,41 @@ import com.fileapex.presentation.BrowseTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** LRU memory cache for bounded remote Explorer media thumbnails. */
-class RemoteThumbnailCache(private val maxEntries: Int = 128) {
+/** LRU memory cache for bounded remote Explorer media thumbnails, capped by entry count and by decoded bytes. */
+class RemoteThumbnailCache(
+    private val maxEntries: Int = 128,
+    private val maxBytes: Long = DEFAULT_MAX_BYTES
+) {
     private val map = LinkedHashMap<String, ImageBitmap>(16, 0.75f, true)
+    private var bytes = 0L
 
     @Synchronized
     fun get(key: String): ImageBitmap? = map[key]
 
     @Synchronized
+    fun totalBytes(): Long = bytes
+
+    @Synchronized
     fun put(key: String, bitmap: ImageBitmap) {
+        map.remove(key)?.let { bytes -= sizeOf(it) }
+        val size = sizeOf(bitmap)
+        if (size > maxBytes) return
         map[key] = bitmap
-        if (map.size > maxEntries) {
-            val eldestKey = map.entries.firstOrNull()?.key ?: return
-            map.remove(eldestKey)
+        bytes += size
+        val eldest = map.entries.iterator()
+        while ((map.size > maxEntries || bytes > maxBytes) && eldest.hasNext()) {
+            val entry = eldest.next()
+            bytes -= sizeOf(entry.value)
+            eldest.remove()
         }
+    }
+
+    private fun sizeOf(bitmap: ImageBitmap): Long = bitmap.width.toLong() * bitmap.height.toLong() * BYTES_PER_PIXEL
+
+    companion object {
+        /** About 64 decoded 256 px thumbnails: enough for a screen of rows, small next to a phone's heap. */
+        const val DEFAULT_MAX_BYTES = 16L * 1024L * 1024L
+        private const val BYTES_PER_PIXEL = 4L
     }
 }
 

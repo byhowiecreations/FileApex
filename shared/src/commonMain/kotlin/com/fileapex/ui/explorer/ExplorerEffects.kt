@@ -59,12 +59,12 @@ internal fun ExplorerScope.ExplorerEffects() {
                 viewModel.dismissMessages()
                 return@let
             }
-            viewModel.dismissMessages()
             val result = snackbarHostState.showSnackbar(
                 message = message,
                 actionLabel = if (downloaded.size == 1) openActionLabel else showInFolderLabel,
                 duration = SnackbarDuration.Long
             )
+            viewModel.dismissMessages()
             if (result == SnackbarResult.ActionPerformed) {
                 if (downloaded.size == 1) {
                     openLocalFile(downloaded.first())

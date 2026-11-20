@@ -185,7 +185,7 @@ internal fun ItemContextMenu(
                 }
             )
         }
-        if (local && item != null && !item.isDirectory) {
+        if (local && !item.isDirectory) {
             DropdownMenuItem(
                 text = { Text(stringRes("checksum_sha256")) },
                 leadingIcon = { MenuGlyph(ExplorerIcon.Info) },

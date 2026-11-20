@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.security.tls.PeerTlsConnector
 import com.fileapex.security.tls.PeerTlsRoutes
@@ -194,7 +195,7 @@ class PeerBoundHttpClientTest {
     }
 
     @Test fun aRefusedConnectionReturnsNull() = runBlocking {
-        val dead = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        val dead = TestPorts.next()
         assertNull(peerHttpGet("127.0.0.1", dead, health, 2_000))
     }
 
@@ -268,7 +269,7 @@ class PeerBoundHttpClientTest {
     }
 
     @Test fun aStreamingRefusedConnectionReturnsNull() = runBlocking {
-        val dead = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        val dead = TestPorts.next()
         assertNull(peerHttpGetStreaming("127.0.0.1", dead, open, 2_000, 2_000, { _, _ -> }, null))
     }
 
@@ -309,7 +310,7 @@ class PeerBoundHttpClientTest {
     }
 
     @Test fun anUploadRefusedConnectionReturnsNull() = runBlocking {
-        val dead = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        val dead = TestPorts.next()
         val chunks = Channel<ByteArray>(Channel.UNLIMITED).also { it.close() }
         assertNull(peerHttpUploadFromChannel("127.0.0.1", dead, open, "application/octet-stream", chunks, 2_000, 2_000, 0L))
     }

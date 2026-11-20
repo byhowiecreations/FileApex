@@ -44,12 +44,14 @@ class SettingsMasterKey(
             val opened = cancellableCatching("SealedValuesKvStore openOrCreate") { wrapper.open(Base64.getDecoder().decode(stored.removePrefix(PREFIX))) }
             opened.getOrNull()?.takeIf { it.size == KEY_BYTES }?.let {
                 outcome = Outcome.Opened
+                SecretAvailability.markAvailable(KEY)
                 return FieldSealer(it).also { s -> cached = s }
             }
             val failure = opened.exceptionOrNull()
             if (failure != null && generateSequence(failure) { it.cause }.any { it is SecretUnavailableException }) {
                 log("SettingsMasterKey: the settings key cannot be opened right now; settings read as missing until it can")
                 outcome = Outcome.Unavailable
+                SecretAvailability.markUnavailable(KEY)
                 return null
             }
             log("SettingsMasterKey: the settings key is gone; a new one is made and the sealed settings read as missing")
@@ -59,10 +61,12 @@ class SettingsMasterKey(
         val wrapped = cancellableCatching("SealedValuesKvStore openOrCreate 2") { wrapper.seal(bytes) }.getOrElse {
             log("SettingsMasterKey: a settings key could not be made now (${it.javaClass.simpleName}); tried again later")
             outcome = Outcome.Unavailable
+            SecretAvailability.markUnavailable(KEY)
             return null
         }
         inner.putString(KEY, PREFIX + Base64.getEncoder().encodeToString(wrapped))
         outcome = if (replacing) Outcome.Replaced else Outcome.Created
+        SecretAvailability.markAvailable(KEY)
         return FieldSealer(bytes).also { cached = it }
     }
 

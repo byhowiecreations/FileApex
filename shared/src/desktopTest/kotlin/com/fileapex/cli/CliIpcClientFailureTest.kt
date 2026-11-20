@@ -1,5 +1,6 @@
 package com.fileapex.cli
 
+import com.fileapex.util.TestPorts
 import com.fileapex.cli.ipc.CliIpcClient
 import com.fileapex.cli.ipc.CliIpcDaemon
 import com.fileapex.cli.ipc.CliAppStatus
@@ -25,8 +26,6 @@ class CliIpcClientFailureTest {
         val owner = checkNotNull(DesktopSingleInstance.start(temp.root, DesktopLaunchRequest(cwd = temp.root.path), DesktopLaunchInbox()::offer))
         try { body(DesktopInstanceWire.readDescriptor(temp.root).key()) } finally { owner.close() }
     }
-
-    private fun closedPort(): Int = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
 
     /** A listener standing in for the app: it authenticates with [serverKey], reads the request line, then closes. */
     private fun fakeApp(serverKey: ByteArray, body: (ServerSocket) -> Unit) {
@@ -54,14 +53,14 @@ class CliIpcClientFailureTest {
     }
 
     @Test fun nothingListeningMeansTheAppIsNotRunning() = withApp { _ ->
-        val port = closedPort()
+        val port = TestPorts.next()
         assertNull(CliIpcClient.forwardCommand(listOf("devices"), temp.root.path, port, temp.root))
         assertEquals(CliAppStatus.NotRunning, CliIpcClient.appStatus(port, temp.root))
     }
 
     @Test fun noHandoffFileMeansTheAppIsNotRunning() {
-        assertNull(CliIpcClient.forwardCommand(listOf("devices"), temp.root.path, closedPort(), temp.root))
-        assertEquals(CliAppStatus.NotRunning, CliIpcClient.appStatus(closedPort(), temp.root))
+        assertNull(CliIpcClient.forwardCommand(listOf("devices"), temp.root.path, TestPorts.next(), temp.root))
+        assertEquals(CliAppStatus.NotRunning, CliIpcClient.appStatus(TestPorts.next(), temp.root))
     }
 
     @Test fun aConnectionLostBeforeTheResultIsAFailureNotSuccess() = withApp { key ->

@@ -139,6 +139,7 @@ internal fun SimpleOverview(
                 )
             }
             if (isInitialLoadComplete && !isDemoActive) {
+                com.fileapex.ui.WindowsFirewallBanner()
                 PostPairBackgroundSetupBanner(
                     pairedCount = rows.size,
                     onboardingSteps = onboardingSteps,

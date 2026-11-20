@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.identity.LocalIdentity
 import java.net.HttpURLConnection
 import java.net.ServerSocket
@@ -16,7 +17,7 @@ class ServerDefaultDenyTest {
 
     @Before
     fun start() {
-        port = ServerSocket(0).use { it.localPort }
+        port = TestPorts.next()
         server = FileApexServer(
             port = port,
             identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = System.getProperty("java.io.tmpdir"), sharePort = port) }

@@ -181,6 +181,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="clipboard_not_text">Clipboard is not sendable text</string>
     <string name="a11y_reenable_title">Clipboard access was turned off</string>
     <string name="a11y_reenable_body">This device stopped FileApex Accessibility. Open Accessibility and turn FileApex back on so clipboard sync keeps working.</string>
+    <string name="secret_notice_title">Waiting for secure storage</string>
+    <string name="secret_notice_body">Some saved items are waiting for this device\'s secure storage, for example while the keychain is locked. FileApex keeps them as they are and carries on by itself once it answers. There is nothing to do.</string>
     <string name="clipboard_diagnostics">Clipboard diagnostics</string>
     <string name="clipboard_diagnostics_intro">Required items must show Granted for background clipboard sync. Optional items are extras.</string>
     <string name="diag_needed">Needed</string>
@@ -1128,6 +1130,12 @@ Tap Central Hub (+) to Pair</string>
     <string name="error_peer_unreachable">Could not reach the device. Check that FileApex is running on it and both devices are on the same network.</string>
     <string name="error_peer_not_trusted">This device no longer trusts you. It may have removed you from its cluster. Pair with it again to browse.</string>
     <string name="error_disk_full">Not enough storage space to finish.</string>
+    <string name="error_storage_permission">This device was not allowed to save the file. On Android, allow All Files Access for FileApex in Android settings, then try again.</string>
+    <string name="error_remote_file_unavailable">That device could not open the file. If it is an Android phone, allow All Files Access for FileApex in its settings, then try again.</string>
+    <string name="firewall_card_title">Windows Firewall is blocking FileApex</string>
+    <string name="firewall_card_body">Other devices cannot reach this PC until Windows lets FileApex through its firewall. Windows asks you to confirm once.</string>
+    <string name="firewall_card_action">Allow in Windows Firewall</string>
+    <string name="firewall_card_failed">The firewall was not changed. Try again and choose Yes when Windows asks.</string>
     <string name="error_archive_refused">This archive was not extracted because it is too large, too dense or unsafe.</string>
     <string name="error_connection_lost">The connection was interrupted. Try again.</string>
     <string name="filter_this_folder">Filter this folder</string>

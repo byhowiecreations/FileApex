@@ -1,6 +1,6 @@
-// Desktop packages only: ship the Material icons the app draws and the Iroh native library of the
-// build host, instead of the full 36 MB icon jar and Iroh natives for every platform.
-// Android is untouched (R8 shrinks icons there and the Iroh natives come from iroh-android).
+// Desktop packages only: ship the Material icons the app draws and the native libraries (Iroh, SQLite, JNA, JLine, Skia)
+// of the build host only, instead of the full 36 MB icon jar and the natives of every platform and architecture.
+// Android is untouched (R8 shrinks icons there and the natives come from the Android artifacts).
 import java.util.zip.ZipFile
 
 val slimDir = layout.buildDirectory.dir("slim-jars")
@@ -119,12 +119,113 @@ val slimSqlite = tasks.register<Jar>("slimSqliteJar") {
     }
 }
 
+val isMacHost = "mac" in hostOs || "darwin" in hostOs
+val isWindowsHost = "win" in hostOs
+val isArmHost = hostArch == "aarch64" || hostArch == "arm64"
+
+// JNA keeps one `com/sun/jna/<platform>/jnidispatch` library per platform next to its Java packages (win32, ptr, internal).
+val jnaJar = resolveJar("net.java.dev.jna:jna:${catalog.findVersion("jna").get()}")
+val jnaPlatform = when {
+    isIntelMac -> "darwin-x86-64"
+    isMacHost -> "darwin-aarch64"
+    isWindowsHost -> "win32-x86-64"
+    isArmHost -> "linux-aarch64"
+    else -> "linux-x86-64"
+}
+val jnaNative = Regex("""com/sun/jna/([a-z0-9-]+)/(lib)?jnidispatch\.[a-z]+""")
+
+val slimJna = tasks.register<Jar>("slimJnaJar") {
+    archiveFileName.set("jna-${catalog.findVersion("jna").get()}-${hostOs.take(3)}.jar")
+    destinationDirectory.set(slimDir)
+    from(provider { jnaJar.files.map { zipTree(it) } })
+    exclude { element -> jnaNative.matchEntire(element.relativePath.pathString)?.let { it.groupValues[1] != jnaPlatform } == true }
+    doLast {
+        val names = ZipFile(archiveFile.get().asFile).use { zip -> zip.entries().asSequence().map { it.name }.toList() }
+        val natives = names.filter { jnaNative.matches(it) }
+        check(natives.size == 1 && natives.single().startsWith("com/sun/jna/$jnaPlatform/")) {
+            "The JNA jar has no native for this machine ($jnaPlatform); found ${natives}."
+        }
+    }
+}
+
+// JLine ships its natives as `org/jline/nativ/<Mac|Linux|Windows|FreeBSD>/<arch>/`, in the bundle jar and again in jline-native.
+val jlineVersion = catalog.findVersion("jline").get()
+val jlineJar = resolveJar("org.jline:jline:$jlineVersion")
+val jlineNativeJar = resolveJar("org.jline:jline-native:$jlineVersion")
+val jlineNative = Regex("""org/jline/nativ/([A-Za-z]+)/([a-z0-9_]+)/.+""")
+val jlineHost = when {
+    isMacHost -> "Mac" to (if (isIntelMac) "x86_64" else "arm64")
+    isWindowsHost -> "Windows" to "x86_64"
+    else -> "Linux" to (if (isArmHost) "arm64" else "x86_64")
+}
+
+fun configureSlimJline(task: Jar, jar: Configuration, fileName: String) = task.run {
+    archiveFileName.set(fileName)
+    destinationDirectory.set(slimDir)
+    from(provider { jar.files.map { zipTree(it) } })
+    exclude { element ->
+        jlineNative.matchEntire(element.relativePath.pathString)?.let { it.groupValues[1] to it.groupValues[2] != jlineHost } == true
+    }
+    doLast {
+        val names = ZipFile(archiveFile.get().asFile).use { zip -> zip.entries().asSequence().map { it.name }.toList() }
+        val natives = names.filter { jlineNative.matches(it) }
+        check(natives.isNotEmpty() && natives.all { jlineNative.matchEntire(it)!!.let { m -> m.groupValues[1] to m.groupValues[2] == jlineHost } }) {
+            "The JLine jars have no native for this machine (${jlineHost.first}/${jlineHost.second}); found $natives."
+        }
+    }
+}
+val slimJline = tasks.register<Jar>("slimJlineJar") {
+    configureSlimJline(this, jlineJar, "jline-$jlineVersion-${hostOs.take(3)}.jar")
+}
+val slimJlineNative = tasks.register<Jar>("slimJlineNativeJar") {
+    configureSlimJline(this, jlineNativeJar, "jline-native-$jlineVersion-${hostOs.take(3)}.jar")
+}
+
+// The Skia runtime jar of every Mac carries the library of both Mac architectures; the Compose plugin unpacks the one it
+// needs next to the jars and leaves the other inside the jar, where nothing loads it. Keep only the host's library.
+val skikoRuntimeSuffix = when {
+    isMacHost -> if (isIntelMac) "macos-x64" else "macos-arm64"
+    isWindowsHost -> "windows-x64"
+    isArmHost -> "linux-arm64"
+    else -> "linux-x64"
+}
+val skikoLibrary = Regex("""(lib)?skiko-(macos|linux|windows)-[a-z0-9]+\.(dylib|so|dll)(\.sha256)?""")
+val skikoVersion = provider {
+    configurations.detachedConfiguration(dependencies.create("org.jetbrains.compose.ui:ui-desktop:${catalog.findVersion("compose-multiplatform").get()}"))
+        .resolvedConfiguration.resolvedArtifacts.first { it.name == "skiko-awt" }.moduleVersion.id.version
+}
+val skikoRuntimeJar = provider {
+    configurations.detachedConfiguration(dependencies.create("org.jetbrains.skiko:skiko-awt-runtime-$skikoRuntimeSuffix:${skikoVersion.get()}"))
+        .apply { isTransitive = false }.files
+}
+
+val slimSkikoRuntime = tasks.register<Jar>("slimSkikoRuntimeJar") {
+    archiveFileName.set(skikoVersion.map { "skiko-awt-runtime-$skikoRuntimeSuffix-$it.jar" })
+    destinationDirectory.set(slimDir)
+    from(skikoRuntimeJar.map { files -> files.map { zipTree(it) } })
+    exclude { element ->
+        val name = element.relativePath.pathString
+        skikoLibrary.matchEntire(name) != null && !name.contains("skiko-$skikoRuntimeSuffix.")
+    }
+    doLast {
+        val names = ZipFile(archiveFile.get().asFile).use { zip -> zip.entries().asSequence().map { it.name }.toList() }
+        val libraries = names.filter { it.endsWith(".dylib") || it.endsWith(".so") || it.endsWith(".dll") }
+        check(libraries.size == 1 && libraries.single().contains("skiko-$skikoRuntimeSuffix.")) {
+            "The Skia runtime jar has no library for this machine ($skikoRuntimeSuffix); found $libraries."
+        }
+    }
+}
+
 configurations.matching { it.name == "desktopRuntimeClasspath" }.configureEach {
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
     exclude(group = "androidx.sqlite", module = "sqlite-bundled-jvm")
     exclude(group = "org.jetbrains.compose.material", module = "material-icons-extended-desktop")
     exclude(group = "org.jetbrains.compose.material", module = "material-icons-extended")
     exclude(group = "computer.iroh", module = "iroh")
+    exclude(group = "net.java.dev.jna", module = "jna")
+    exclude(group = "org.jline", module = "jline")
+    exclude(group = "org.jline", module = "jline-native")
+    exclude(group = "org.jetbrains.skiko", module = "skiko-awt-runtime-$skikoRuntimeSuffix")
 }
 
 // Fails the build when compiled code reaches an extended icon the slim jar left out, for example through

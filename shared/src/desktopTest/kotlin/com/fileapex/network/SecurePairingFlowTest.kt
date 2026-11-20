@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.pairing.LanPairingDiscovery
@@ -15,8 +16,6 @@ import com.fileapex.security.tls.RosterTlsPeerDirectory
 import com.fileapex.security.tls.TlsBridgeRegistry
 import com.fileapex.security.tls.TlsFrontServer
 import com.fileapex.security.tls.TlsIdentityStore
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.nio.file.Files
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLEngine
@@ -48,8 +47,8 @@ class SecurePairingFlowTest {
     @Before
     fun start() {
         SecurePairingSessions.clear()
-        httpPort = ServerSocket(0).use { it.localPort }
-        val bridgePort = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        httpPort = TestPorts.next()
+        val bridgePort = TestPorts.next()
         val hostIdentity = hostStore.getOrCreate()
         LocalTlsInfo.pin = hostIdentity.pin
         server = FileApexServer(

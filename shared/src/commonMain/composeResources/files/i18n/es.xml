@@ -172,6 +172,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="clipboard_not_text">El portapapeles no contiene texto enviable</string>
     <string name="a11y_reenable_title">El acceso al portapapeles se desactivó</string>
     <string name="a11y_reenable_body">Este dispositivo desactivó el servicio de accesibilidad de FileApex. Abre Accesibilidad y vuelve a activar FileApex para que la sincronización del portapapeles siga funcionando.</string>
+    <string name="secret_notice_title">Esperando al almacenamiento seguro</string>
+    <string name="secret_notice_body">Algunos elementos guardados esperan al almacenamiento seguro de este dispositivo, por ejemplo mientras el llavero está bloqueado. FileApex los conserva tal cual y continúa por sí solo cuando responda. No hay nada que hacer.</string>
     <string name="clipboard_diagnostics">Diagnóstico del portapapeles</string>
     <string name="clipboard_diagnostics_intro">Los elementos necesarios deben aparecer como Concedido para la sincronización en segundo plano. Los opcionales son extras.</string>
     <string name="diag_needed">Necesario</string>
@@ -1102,6 +1104,12 @@ Toca el hub central (+) para emparejar</string>
     <string name="error_peer_unreachable">No se pudo conectar con el dispositivo. Comprueba que FileApex esté en ejecución y que ambos estén en la misma red.</string>
     <string name="error_peer_not_trusted">Este dispositivo ya no confía en ti. Puede haberte eliminado de su clúster. Vuelve a emparejarlo para explorar.</string>
     <string name="error_disk_full">No hay suficiente espacio de almacenamiento para terminar.</string>
+    <string name="error_storage_permission">Este dispositivo no pudo guardar el archivo. En Android, permite el acceso a todos los archivos para FileApex en los ajustes de Android y vuelve a intentarlo.</string>
+    <string name="error_remote_file_unavailable">Ese dispositivo no pudo abrir el archivo. Si es un teléfono Android, permite el acceso a todos los archivos para FileApex en sus ajustes y vuelve a intentarlo.</string>
+    <string name="firewall_card_title">El Firewall de Windows está bloqueando FileApex</string>
+    <string name="firewall_card_body">Los demás dispositivos no pueden conectarse a este PC hasta que Windows deje pasar a FileApex por su firewall. Windows te pide confirmar una vez.</string>
+    <string name="firewall_card_action">Permitir en el Firewall de Windows</string>
+    <string name="firewall_card_failed">No se cambió el firewall. Inténtalo de nuevo y elige Sí cuando Windows lo pida.</string>
     <string name="error_archive_refused">No se extrajo este archivo porque es demasiado grande, demasiado comprimido o inseguro.</string>
     <string name="error_connection_lost">La conexión se interrumpió. Inténtalo de nuevo.</string>
     <string name="filter_this_folder">Filtrar esta carpeta</string>

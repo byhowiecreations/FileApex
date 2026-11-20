@@ -1,5 +1,6 @@
 package com.fileapex.security.tls
 
+import com.fileapex.util.TestPorts
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
@@ -19,8 +20,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.ByteArrayOutputStream
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.net.Socket
 import java.security.KeyStore
 import javax.net.ssl.KeyManagerFactory
@@ -47,7 +46,7 @@ class TlsFrontServerTest {
 
     @Before
     fun setUp() {
-        bridgePort = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        bridgePort = TestPorts.next()
         http = embeddedServer(CIO, configure = {
             connector { port = bridgePort; host = "127.0.0.1" }
         }) {

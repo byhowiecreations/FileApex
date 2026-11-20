@@ -1,10 +1,9 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.iroh.IrohBridgePorts
 import java.io.File
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
@@ -33,8 +32,8 @@ class TransferStartIndependenceTest {
     fun start() {
         root = File(System.getProperty("java.io.tmpdir"), "fileapex-start-peer-" + System.nanoTime()).also { it.mkdirs() }
         local = File(System.getProperty("java.io.tmpdir"), "fileapex-start-local-" + System.nanoTime()).also { it.mkdirs() }
-        val port = ServerSocket(0).use { it.localPort }
-        val bridgePort = ServerSocket(0, 1, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))).use { it.localPort }
+        val port = TestPorts.next()
+        val bridgePort = TestPorts.next()
         server = FileApexServer(
             port = port,
             bridgePort = bridgePort,

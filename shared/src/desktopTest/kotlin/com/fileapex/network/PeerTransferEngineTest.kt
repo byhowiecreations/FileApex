@@ -1,9 +1,9 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.iroh.IrohBridgePorts
 import java.io.File
-import java.net.ServerSocket
 import java.security.MessageDigest
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -41,8 +41,8 @@ class PeerTransferEngineTest {
 
     private fun startPeer(): Peer {
         val root = File(System.getProperty("java.io.tmpdir"), "fileapex-engine-peer-" + System.nanoTime()).also { it.mkdirs() }
-        val port = ServerSocket(0).use { it.localPort }
-        val bridgePort = ServerSocket(0, 1, java.net.InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))).use { it.localPort }
+        val port = TestPorts.next()
+        val bridgePort = TestPorts.next()
         val server = FileApexServer(
             port = port,
             bridgePort = bridgePort,
@@ -92,6 +92,22 @@ class PeerTransferEngineTest {
         )
 
         assertArrayEquals(data, target.readBytes())
+    }
+
+    @Test
+    fun downloadOfAFileThePeerCannotOpenFailsOnceWithATypedError() = runBlocking {
+        val peer = startPeer()
+        val target = File(local, "gone.bin")
+
+        val failure = runCatching {
+            client.downloads.downloadToLocal(
+                "127.0.0.1", peer.port, File(peer.root, "gone.bin").absolutePath, target.absolutePath,
+                expectedSizeBytes = 100L
+            )
+        }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is RemoteFileUnavailableException)
+        assertFalse(target.exists())
     }
 
     @Test
@@ -233,6 +249,24 @@ class PeerTransferEngineTest {
         )
 
         assertArrayEquals(data, remote.readBytes())
+    }
+
+    @Test
+    fun relayOfUnknownSizeIsSentChunkedAndArrivesIntact() = runBlocking {
+        val source = startPeer()
+        val dest = startPeer()
+        val data = payload(6_000_000)
+        File(source.root, "unknown.bin").writeBytes(data)
+        val remote = File(dest.root, "unknown.bin")
+
+        client.uploads.relayRemoteFile(
+            "127.0.0.1", source.port, File(source.root, "unknown.bin").absolutePath, 0L,
+            "127.0.0.1", dest.port, remote.absolutePath,
+            transactionId = "tx-relay-unknown", transactionTimestampEpochMs = System.currentTimeMillis()
+        )
+
+        assertEquals(sha(data), sha(remote))
+        assertEquals(data.size.toLong(), remote.length())
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import java.net.ServerSocket
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
@@ -9,7 +10,7 @@ import org.junit.Test
 class PeerConnectRefusedTest {
     @Test
     fun aClosedPortOnAnAnsweringHostIsRefused() = runBlocking {
-        val port = ServerSocket(0).use { it.localPort }
+        val port = TestPorts.next()
         assertTrue(peerConnectRefused("127.0.0.1", port, 500L))
     }
 

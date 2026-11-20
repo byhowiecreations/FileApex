@@ -60,4 +60,44 @@ class FriendSendLanesTest {
         q.add(item("b", 10))
         assertEquals(1, l.lanesToStart("f"))
     }
+
+    private fun lowPowerLanes(power: BooleanArray, vararg items: FriendsSendQueue.Item): FriendSendLanes {
+        val q = FriendsSendQueue(); items.forEach { q.add(it) }
+        return FriendSendLanes(q, maxLanes = 4, largeBytes = 1000, lowPower = { power[0] })
+    }
+
+    @Test fun lowPowerLimitsAFriendToTwoLanes() {
+        val l = lowPowerLanes(booleanArrayOf(true), *Array(6) { item("s$it", 10) })
+        assertEquals(2, l.lanesToStart("f"))
+        assertEquals(0, l.lanesToStart("f"))
+    }
+
+    @Test fun fullPowerKeepsFourLanes() {
+        val l = lowPowerLanes(booleanArrayOf(false), *Array(6) { item("s$it", 10) })
+        assertEquals(4, l.lanesToStart("f"))
+    }
+
+    @Test fun lanesAlreadyRunningAreNotCutWhenPowerSavingStarts() {
+        val power = booleanArrayOf(false)
+        val q = FriendsSendQueue(); repeat(4) { q.add(item("a$it", 10)) }
+        val l = FriendSendLanes(q, maxLanes = 4, largeBytes = 1000, lowPower = { power[0] })
+        assertEquals(4, l.lanesToStart("f"))
+        power[0] = true
+        repeat(4) { q.add(item("b$it", 10)) }
+        assertEquals(0, l.lanesToStart("f"))
+    }
+
+    @Test fun powerSavingEndingLetsNewFilesUseAllLanesAgain() {
+        val power = booleanArrayOf(true)
+        val l = lowPowerLanes(power, *Array(6) { item("s$it", 10) })
+        assertEquals(2, l.lanesToStart("f"))
+        power[0] = false
+        assertEquals(2, l.lanesToStart("f"))
+    }
+
+    @Test fun theLowPowerLimitNeverRaisesALowerConfiguredLimit() {
+        val q = FriendsSendQueue(); repeat(6) { q.add(item("s$it", 10)) }
+        val l = FriendSendLanes(q, maxLanes = 1, largeBytes = 1000, lowPower = { true })
+        assertEquals(1, l.lanesToStart("f"))
+    }
 }

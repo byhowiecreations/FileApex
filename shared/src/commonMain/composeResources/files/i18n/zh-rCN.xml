@@ -172,6 +172,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="clipboard_not_text">剪贴板内容不是可发送的文本</string>
     <string name="a11y_reenable_title">剪贴板访问已被关闭</string>
     <string name="a11y_reenable_body">系统已停用 FileApex 无障碍服务。请打开无障碍设置并重新开启 FileApex，以便剪贴板同步继续工作。</string>
+    <string name="secret_notice_title">正在等待安全存储</string>
+    <string name="secret_notice_body">部分已保存的内容正在等待此设备的安全存储，例如钥匙串被锁定时。FileApex 会原样保留这些内容，并在安全存储响应后自动继续。无需任何操作。</string>
     <string name="clipboard_diagnostics">剪贴板诊断</string>
     <string name="clipboard_diagnostics_intro">后台剪贴板同步要求必要项显示为已授予。可选项是额外能力。</string>
     <string name="diag_needed">必要</string>
@@ -1087,6 +1089,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="error_peer_unreachable">无法连接到设备。请确认其上的 FileApex 正在运行，且两台设备位于同一网络。</string>
     <string name="error_peer_not_trusted">此设备不再信任你，可能已将你从其集群中移除。请重新与它配对后再浏览。</string>
     <string name="error_disk_full">存储空间不足，无法完成。</string>
+    <string name="error_storage_permission">此设备无法保存该文件。在 Android 上，请在系统设置中为 FileApex 允许“所有文件访问”，然后重试。</string>
+    <string name="error_remote_file_unavailable">对方设备无法打开该文件。如果是 Android 手机，请在其设置中为 FileApex 允许“所有文件访问”，然后重试。</string>
+    <string name="firewall_card_title">Windows 防火墙正在阻止 FileApex</string>
+    <string name="firewall_card_body">在 Windows 允许 FileApex 通过防火墙之前，其他设备无法连接到这台电脑。Windows 会请你确认一次。</string>
+    <string name="firewall_card_action">在 Windows 防火墙中允许</string>
+    <string name="firewall_card_failed">防火墙未更改。请重试，并在 Windows 询问时选择“是”。</string>
     <string name="error_archive_refused">未解压此压缩包，因为它过大、压缩率过高或不安全。</string>
     <string name="error_connection_lost">连接已中断，请重试。</string>
     <string name="filter_this_folder">筛选此文件夹</string>

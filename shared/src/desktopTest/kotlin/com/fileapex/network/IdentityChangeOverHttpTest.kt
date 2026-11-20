@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.device.InMemoryDeviceDao
@@ -31,7 +32,6 @@ import com.fileapex.security.tls.TlsFrontServer
 import com.fileapex.security.tls.TlsIdentityFactory
 import com.fileapex.security.tls.TlsIdentityStore
 import java.io.File
-import java.net.InetAddress
 import java.net.ServerSocket
 import java.security.KeyPairGenerator
 import java.util.Base64
@@ -91,8 +91,6 @@ class IdentityChangeOverHttpTest {
         .map { it.hostAddress }
         .firstOrNull { com.fileapex.util.NetworkUtils.isPrivateLanPeerHost(it) }
 
-    private fun freePort() = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
-
     @Before
     fun start() {
         Assume.assumeTrue("no private LAN address on this machine", lanIp != null)
@@ -131,8 +129,8 @@ class IdentityChangeOverHttpTest {
         }
         FileApexServices.installMembershipForTest(macRepo, MembershipHub(log, replicator, tick, { setOf(macId) }, identityChanges = inbox) {})
         directory.refresh(listOf(TlsPinEntry(oldId, phoneTls.pin, alt = "", port = 8081, revoked = false, signed = true)))
-        httpPort = freePort()
-        val bridgePort = freePort()
+        httpPort = TestPorts.next()
+        val bridgePort = TestPorts.next()
         server = FileApexServer(
             port = httpPort,
             bridgePort = bridgePort,

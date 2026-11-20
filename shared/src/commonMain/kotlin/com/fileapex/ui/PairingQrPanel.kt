@@ -42,6 +42,10 @@ import com.fileapex.util.NetworkUtils
 import io.github.alexzhirkevich.qrose.options.QrErrorCorrectionLevel
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 
+internal val PAIRING_QR_ERROR_CORRECTION = QrErrorCorrectionLevel.Low
+internal val PAIRING_QR_BOX_SIZE_DP = 220.dp
+internal val PAIRING_QR_QUIET_ZONE_DP = 14.dp
+
 @Composable
 fun PairingQrPanel(
     payload: PairingPayload,
@@ -66,7 +70,7 @@ fun PairingQrPanel(
     onCopyPairingLink: (String) -> Unit = { PlatformClipboard.setSystemClipboardText(it) }
 ) {
     val painter = rememberQrCodePainter(qrText) {
-        errorCorrectionLevel = QrErrorCorrectionLevel.Medium
+        errorCorrectionLevel = PAIRING_QR_ERROR_CORRECTION
     }
     var linkCopied by remember(qrText) { mutableStateOf(false) }
     var detailsExpanded by remember { mutableStateOf(false) }
@@ -95,10 +99,10 @@ fun PairingQrPanel(
             painter = painter,
             contentDescription = stringRes("fileapex_pairing_qr"),
             modifier = Modifier
-                .size(192.dp)
+                .size(PAIRING_QR_BOX_SIZE_DP)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.White)
-                .padding(10.dp)
+                .padding(PAIRING_QR_QUIET_ZONE_DP)
         )
         if (showScanHint) {
             Text(

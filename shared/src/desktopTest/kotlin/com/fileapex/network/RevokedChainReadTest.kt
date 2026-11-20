@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.device.InMemoryDeviceDao
@@ -23,7 +24,6 @@ import com.fileapex.security.tls.RosterTlsPeerDirectory
 import com.fileapex.security.tls.TlsFrontServer
 import com.fileapex.security.tls.TlsIdentityFactory
 import com.fileapex.security.tls.TlsIdentityStore
-import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.security.KeyPairGenerator
@@ -53,8 +53,6 @@ class RevokedChainReadTest {
     private var front: TlsFrontServer? = null
     private var httpPort = 0
     private var tlsPort = 0
-
-    private fun freePort() = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
 
     @Before
     fun start() {
@@ -86,8 +84,8 @@ class RevokedChainReadTest {
         runBlocking { bootstrap.createGenesisIfLowest(setOf(hostId), MembershipKeys.pin(signer.publicKey)) }
         FileApexServices.installMembershipForTest(repo, MembershipHub(log, replicator, ChainTick(hostId, log, replicator, transport, bootstrap, { signer }), { setOf(hostId) }) {})
         directory.refresh(listOf(TlsPinEntry(revokedId, clientIdentity.pin, alt = "", port = 8081, revoked = true, signed = true)))
-        httpPort = freePort()
-        val bridgePort = freePort()
+        httpPort = TestPorts.next()
+        val bridgePort = TestPorts.next()
         server = FileApexServer(
             port = httpPort,
             bridgePort = bridgePort,

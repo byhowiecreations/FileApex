@@ -1,5 +1,6 @@
 package com.fileapex.network.routes
 
+import com.fileapex.util.TestPorts
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
@@ -15,8 +16,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.net.Socket
 
 class RequestBodyLimitsTest {
@@ -25,7 +24,7 @@ class RequestBodyLimitsTest {
 
     @Before
     fun setUp() {
-        port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        port = TestPorts.next()
         server = embeddedServer(CIO, configure = { connector { this.port = this@RequestBodyLimitsTest.port; host = "127.0.0.1" } }) {
             routing {
                 post("/t") {

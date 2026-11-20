@@ -34,6 +34,22 @@ class UserFacingErrorsTest {
     }
 
     @Test
+    fun aDeniedWriteIsExplainedAsMissingStorageAccess() {
+        val expected = AppI18n.t("error_storage_permission")
+        assertTrue(expected != "error_storage_permission")
+        assertEquals(expected, UserFacingErrors.message(IOException("/storage/emulated/0/Download/FileApex/a.bin (Permission denied)"), "download_failed"))
+        assertEquals(expected, UserFacingErrors.message(IOException("open failed: EACCES (Permission denied)"), "download_failed"))
+        assertEquals(expected, UserFacingErrors.message(IllegalStateException("download failed", IOException("EPERM (Operation not permitted)")), "download_failed"))
+    }
+
+    @Test
+    fun aFileThePeerCannotOpenNamesTheLikelyCause() {
+        val expected = AppI18n.t("error_remote_file_unavailable")
+        assertTrue(expected != "error_remote_file_unavailable")
+        assertEquals(expected, UserFacingErrors.message(com.fileapex.network.RemoteFileUnavailableException("x"), "download_failed"))
+    }
+
+    @Test
     fun aPeerThatRefusesOurCertificateIsExplainedInsteadOfShowingTheTlsText() {
         val android = javax.net.ssl.SSLProtocolException(
             "Read error: ssl=0xb4000073664339d8: Failure in SSL library, usually a protocol error\n" +

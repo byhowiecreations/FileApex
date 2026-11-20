@@ -1,5 +1,6 @@
 package com.fileapex.security.tls
 
+import com.fileapex.util.TestPorts
 import com.sun.jna.Library
 import com.sun.jna.Memory
 import com.sun.jna.Native
@@ -21,8 +22,6 @@ import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
-import java.net.InetAddress
-import java.net.ServerSocket
 
 /** Drives the real Swift client (libFileApexTray.dylib) against the Kotlin TLS front. Mac only. */
 class MacNativeTlsClientTest {
@@ -51,15 +50,13 @@ class MacNativeTlsClientTest {
     private var bridgePort = 0
     private var tlsPort = 0
 
-    private fun freePort() = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
-
     @Before
     fun setUp() {
         val dylib = File("../macos/build/Tray/libFileApexTray.dylib").absoluteFile
         assumeTrue(System.getProperty("os.name").contains("Mac") && dylib.isFile)
         lib = Native.load(dylib.absolutePath, Native_::class.java)
-        httpPort = freePort()
-        bridgePort = freePort()
+        httpPort = TestPorts.next()
+        bridgePort = TestPorts.next()
         http = embeddedServer(CIO, configure = {
             connector { port = httpPort; host = "127.0.0.1" }
             connector { port = bridgePort; host = "127.0.0.1" }
@@ -132,7 +129,7 @@ class MacNativeTlsClientTest {
     @Test
     fun nativeClientNeverFallsBackToHttpWhenThePinnedTlsPortIsDown() {
         assertEquals(0, loadIdentity(clientIdentity))
-        val deadPort = freePort()
+        val deadPort = TestPorts.next()
         val dead = """[{"host":"127.0.0.1","port":$httpPort,"tlsPort":$deadPort,"pins":["${serverIdentity.pin}"]}]"""
         assertEquals(0, lib.fileapex_lan_tls_set_routes(dead))
         // The plain HTTP port is answering, yet the pinned peer must not be reached over it.

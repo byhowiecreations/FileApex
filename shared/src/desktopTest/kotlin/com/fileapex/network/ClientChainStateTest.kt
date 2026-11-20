@@ -1,10 +1,9 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.iroh.IrohBridgePorts
 import com.fileapex.membership.ChainStateField
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -28,8 +27,8 @@ class ClientChainStateTest {
 
     @Before
     fun start() {
-        val port = ServerSocket(0).use { it.localPort }
-        val bridgePort = ServerSocket(0, 1, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))).use { it.localPort }
+        val port = TestPorts.next()
+        val bridgePort = TestPorts.next()
         server = FileApexServer(
             port = port,
             bridgePort = bridgePort,

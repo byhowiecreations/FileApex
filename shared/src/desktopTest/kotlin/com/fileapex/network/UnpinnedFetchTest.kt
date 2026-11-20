@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.security.tls.PeerTlsConnector
 import com.fileapex.security.tls.PeerTlsRoutes
 import com.fileapex.security.tls.PeerTlsStatus
@@ -18,8 +19,6 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import java.io.File
-import java.net.InetAddress
-import java.net.ServerSocket
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -45,15 +44,13 @@ class UnpinnedFetchTest {
         override fun deviceIdForPin(pin: String) = if (allowClient && pin == clientIdentity.pin) "dev-client" else null
     }
 
-    private fun freePort() = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
-
     @Before
     fun setUp() {
         val clientStore = TlsIdentityStore(File(temp.root, "client"), emptyList())
         clientIdentity = clientStore.getOrCreate()
         PeerTlsConnector.configure { clientStore }
-        val httpPort = freePort()
-        val bridgePort = freePort()
+        val httpPort = TestPorts.next()
+        val bridgePort = TestPorts.next()
         http = embeddedServer(CIO, configure = {
             connector { port = httpPort; host = "127.0.0.1" }
             connector { port = bridgePort; host = "127.0.0.1" }

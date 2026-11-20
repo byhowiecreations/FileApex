@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.identity.LocalIdentity
 import java.io.File
 import java.net.HttpURLConnection
@@ -42,7 +43,7 @@ class LocalExtensionRoutesTest {
     @Before
     fun start() {
         file = File.createTempFile("local-ext", ".txt").also { it.writeText("x") }
-        port = ServerSocket(0).use { it.localPort }
+        port = TestPorts.next()
         server = FileApexServer(
             port = port,
             identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = System.getProperty("java.io.tmpdir"), sharePort = port) },
@@ -154,7 +155,7 @@ class LocalExtensionRoutesTest {
     @Test
     fun withoutAnApiTheRoutesDoNotExist() {
         server?.stop()
-        port = ServerSocket(0).use { it.localPort }
+        port = TestPorts.next()
         server = FileApexServer(
             port = port,
             identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = System.getProperty("java.io.tmpdir"), sharePort = port) }

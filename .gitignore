@@ -73,3 +73,4 @@ scripts/test_check_play_bundle.py
 !/shared/schemas/**/*.json
 /notice/notices.src.json
 scripts/hosts.local.env
+.editorconfig

@@ -380,6 +380,8 @@ internal fun DevicesScreenTopBanners(
     if (showClipboardBanner) {
         ClipboardAccessibilityBanner(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }
+    SecretStorageBanner(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    WindowsFirewallBanner(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     if (showDemoBanner) {
         DemoModeBanner(onExitDemo = onExitDemo, modifier = bannerModifier)
     }

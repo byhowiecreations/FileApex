@@ -1,5 +1,6 @@
 package com.fileapex.security.tls
 
+import com.fileapex.util.TestPorts
 import com.fileapex.data.db.PairedDeviceEntity
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
@@ -41,15 +42,13 @@ class PeerTlsConnectorTest {
         override fun deviceIdForPin(pin: String) = if (allowClient && pin == clientIdentity.pin) "dev-client" else null
     }
 
-    private fun freePort() = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
-
     @Before
     fun setUp() {
         clientStore = TlsIdentityStore(File(temp.root, "client"), emptyList())
         clientIdentity = clientStore.getOrCreate()
         PeerTlsConnector.configure { clientStore }
-        httpPort = freePort()
-        bridgePort = freePort()
+        httpPort = TestPorts.next()
+        bridgePort = TestPorts.next()
         http = embeddedServer(CIO, configure = {
             connector { port = httpPort; host = "127.0.0.1" }
             connector { port = bridgePort; host = "127.0.0.1" }

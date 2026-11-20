@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.TestPorts
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -36,7 +37,7 @@ class PinnedPeerSocketTest {
     }
 
     @Test fun aRefusedConnectIsRecordedAndRaisedAsAnIoError() {
-        val port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        val port = TestPorts.next()
         val failure = ConnectFailure()
         val socket = PinnedPeerSocket("", "", failure)
         val raised = runCatching { socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 2_000) }.exceptionOrNull()

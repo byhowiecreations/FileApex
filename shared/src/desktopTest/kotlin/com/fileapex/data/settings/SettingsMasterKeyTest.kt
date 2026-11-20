@@ -129,4 +129,17 @@ class SettingsMasterKeyTest {
         replaced.sealer()
         assertEquals(SettingsMasterKey.Outcome.Replaced, replaced.outcome)
     }
+
+    @Test
+    fun aSettingsKeyThatCannotBeOpenedIsFlaggedUntilItOpens() {
+        val inner = MapStore()
+        val sealer = FakeSealer()
+        SettingsMasterKey(inner, sealer, log = {}).sealer()
+        sealer.mode = "unavailable"
+        assertNull(SettingsMasterKey(inner, sealer, log = {}).sealer())
+        assertEquals(true, SecretAvailability.isUnavailable(SettingsMasterKey.KEY))
+        sealer.mode = "ok"
+        assertNotNull(SettingsMasterKey(inner, sealer, log = {}).sealer())
+        assertEquals(false, SecretAvailability.isUnavailable(SettingsMasterKey.KEY))
+    }
 }

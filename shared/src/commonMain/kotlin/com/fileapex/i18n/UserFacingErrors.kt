@@ -1,5 +1,6 @@
 package com.fileapex.i18n
 
+import com.fileapex.network.RemoteFileUnavailableException
 import com.fileapex.platform.ArchiveRefusedException
 import java.io.IOException
 import java.net.ConnectException
@@ -34,6 +35,7 @@ object UserFacingErrors {
         while (current != null && depth < MAX_CAUSE_DEPTH) {
             when (current) {
                 is ArchiveRefusedException -> return "error_archive_refused"
+                is RemoteFileUnavailableException -> return "error_remote_file_unavailable"
                 is SocketTimeoutException -> return "error_peer_timeout"
                 is ConnectException,
                 is NoRouteToHostException,
@@ -52,6 +54,8 @@ object UserFacingErrors {
         val text = raw.lowercase()
         return when {
             "no space left" in text || "enospc" in text -> "error_disk_full"
+            "permission denied" in text || "eacces" in text || "eperm" in text || "operation not permitted" in text ->
+                "error_storage_permission"
             "certificate_unknown" in text || "certificate unknown" in text || "bad_certificate" in text ||
                 "bad certificate" in text -> "error_peer_not_trusted"
             "timed out" in text || "timeout" in text -> "error_peer_timeout"

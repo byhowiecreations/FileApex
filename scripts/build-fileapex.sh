@@ -575,6 +575,28 @@ execute_build() {
     run_with_live_view "$label" "$subtitle" run_gradle_steps "$@"
 }
 
+# The desktop and Android unit tests plus a compile of every target. Builds never run these, so this is the one place that does.
+# F-Droid cannot share an invocation with the others. Stops at the first failing step; leaves current/ and composeApp/build alone.
+run_tests() {
+    prepare_build || return 1
+    local step_args status=0
+    step "Unit tests and compile of every target (nothing is built for release)"
+    for step_args in \
+        ":shared:desktopTest :shared:testDebugUnitTest :composeApp:compileKotlinDesktop :composeApp:compileGithubDebugKotlinAndroid :composeApp:compilePlayDebugKotlinAndroid" \
+        ":composeApp:compileFdroidDebugKotlinAndroid"; do
+        echo ">>> ./gradlew --console=plain $step_args"
+        # shellcheck disable=SC2086
+        (unset JAVA_HOME; ./gradlew --console=plain $step_args) || { status=$?; break; }
+    done
+    if ((status == 0)); then
+        ok "${BOLD}All tests passed and every target compiles${RESET}"
+    else
+        fail "${BOLD}Tests or compile FAILED${RESET} (exit $status)"
+    fi
+    after_build "" "$status"
+    return $status
+}
+
 # ---------- remote and local Windows and Linux builds ----------
 
 # ssh_target <key> <host> <command...>; the key is optional.
@@ -1107,7 +1129,8 @@ With one or more flags, runs the requested build(s) directly and exits:
   -windows, -win    Build Windows .exe (on this machine or over SSH, as set up)
   -linux            Build Linux .deb, .rpm, and .AppImage (on this machine or over SSH, as set up)
   -xpi, -firefox    Build Firefox extension (.xpi)
-  -relay            Build the drop relay for the Oracle VM in Docker (Linux aarch64, tests included)
+  -test             Run the desktop and Android unit tests and compile every target (builds never run tests; nothing is packaged)
+  -relay           Build the drop relay for the Oracle VM in Docker (Linux aarch64, tests included)
   -wasm             Build the drop page's browser client in Docker (tests included)
   -site             Test the Worker in Docker, regenerate _worker.js and zip the website into current/fileapex-site.zip
   -initialize       First run: check this machine, save tool locations, ask which machines build Windows and Linux
@@ -1664,6 +1687,7 @@ main_menu() {
             "🪟  Windows (.exe)" \
             "🐧  Linux (.deb, .rpm, AppImage)" \
             "🦊  Firefox Extension" \
+            "T:🧪  Tests (no packaging)" \
             "S:⚙   Setup and machines" \
             "D:🩺  Doctor (check this machine)" \
             "Quit (or Q)"
@@ -1710,6 +1734,9 @@ main_menu() {
                 ;;
             8)
                 execute_build "Firefox Extension" ":composeApp:shipFirefoxExtension"
+                ;;
+            T)
+                run_tests
                 ;;
             S)
                 menu "Setup and machines" "Check this machine (doctor)" "First-time setup (initialize)" \
@@ -1816,6 +1843,9 @@ if (($# > 0)); then
                 execute_build "Full Build (Mac + Android)" \
                     "shipGithubRelease packageBothDmg verifyReleaseSigning verifyReleaseApkSigned :verifyGitExecutableScripts" \
                     ":composeApp:bundlePlayRelease -PbundleBuild=true" || exit $?
+                ;;
+            -test|test)
+                run_tests || exit $?
                 ;;
             -relay|relay)
                 build_relay || exit $?

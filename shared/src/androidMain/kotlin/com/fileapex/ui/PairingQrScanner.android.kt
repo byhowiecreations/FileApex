@@ -28,12 +28,33 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.DecodeHintType
 import com.google.zxing.ResultPoint
 import com.fileapex.i18n.stringRes
 import com.journeyapps.barcodescanner.BarcodeCallback
 import com.journeyapps.barcodescanner.BarcodeResult
 import com.journeyapps.barcodescanner.BarcodeView
 import com.journeyapps.barcodescanner.DefaultDecoderFactory
+import com.journeyapps.barcodescanner.camera.CameraSettings
+
+internal val PAIRING_QR_FORMATS = listOf(BarcodeFormat.QR_CODE)
+internal const val PAIRING_QR_MARGIN_FRACTION = 0.0
+internal const val PAIRING_QR_USE_TEXTURE_VIEW = true
+
+internal fun pairingQrCameraSettings(): CameraSettings = CameraSettings().apply {
+    isContinuousFocusEnabled = true
+}
+
+internal fun pairingQrDecodeHints(): Map<DecodeHintType, Any> = mapOf(
+    DecodeHintType.TRY_HARDER to true
+)
+
+internal fun pairingQrDecoderFactory(): DefaultDecoderFactory = DefaultDecoderFactory(
+    PAIRING_QR_FORMATS,
+    pairingQrDecodeHints(),
+    null,
+    0
+)
 
 @Composable
 actual fun PairingQrScanner(
@@ -87,7 +108,10 @@ actual fun PairingQrScanner(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     BarcodeView(ctx).apply {
-                        decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
+                        isUseTextureView = PAIRING_QR_USE_TEXTURE_VIEW
+                        marginFraction = PAIRING_QR_MARGIN_FRACTION
+                        cameraSettings = pairingQrCameraSettings()
+                        decoderFactory = pairingQrDecoderFactory()
                         decodeContinuous(object : BarcodeCallback {
                             override fun barcodeResult(result: BarcodeResult?) {
                                 val text = result?.text?.trim().orEmpty()

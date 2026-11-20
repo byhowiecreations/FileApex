@@ -71,6 +71,9 @@ internal inline fun <T> transferCatching(what: String? = null, block: () -> T): 
 /** No bind candidate could open a TCP connection to the peer endpoint. */
 class PeerUnreachableException(message: String) : IllegalStateException(message)
 
+/** The peer answered 404 for a file we listed: it is gone, or the peer's app may not be allowed to open it (Android without All Files Access). */
+class RemoteFileUnavailableException(message: String) : IllegalStateException(message)
+
 /** The user stopped the batch; the queue keeps the item for a manual retry instead of re-sending it. */
 class TransferCancelledException : IllegalStateException(com.fileapex.i18n.AppI18n.t("transfer_cancelled"))
 

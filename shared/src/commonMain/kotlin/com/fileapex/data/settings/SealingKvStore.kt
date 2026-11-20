@@ -3,6 +3,14 @@ package com.fileapex.data.settings
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import com.fileapex.util.cancellableCatching
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapLatest
 
 /** Wraps and unwraps a secret with something the platform protects (Keystore, Keychain, DPAPI, keyring). */
 interface SecretSealer {
@@ -21,7 +29,14 @@ class SecretUnavailableException(message: String, cause: Throwable? = null) : Ex
 
 /** Settings keys whose stored secret exists but could not be opened because its wrapping key was unavailable. */
 object SecretAvailability {
+    /** How long a secret must stay unavailable before the user is told; a keystore that is still starting is not news. */
+    const val NOTICE_GRACE_MS = 120_000L
+
     private val unavailable = ConcurrentHashMap.newKeySet<String>()
+    private val anyFlag = MutableStateFlow(false)
+
+    /** True while at least one stored secret cannot be opened right now. */
+    val anyUnavailable: StateFlow<Boolean> = anyFlag.asStateFlow()
 
     fun isUnavailable(key: String): Boolean = key in unavailable
 
@@ -29,8 +44,21 @@ object SecretAvailability {
     fun requireAvailable(key: String) {
         if (isUnavailable(key)) throw SecretUnavailableException("the stored secret cannot be opened right now")
     }
-    internal fun markUnavailable(key: String) { unavailable.add(key) }
-    internal fun markAvailable(key: String) { unavailable.remove(key) }
+
+    /** True once a secret has stayed unavailable for [graceMs]; false again as soon as every secret opens. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun noticeVisible(graceMs: Long = NOTICE_GRACE_MS): Flow<Boolean> =
+        anyUnavailable.mapLatest { if (it) { delay(graceMs); true } else false }.distinctUntilChanged()
+
+    internal fun markUnavailable(key: String) = synchronized(unavailable) {
+        unavailable.add(key)
+        anyFlag.value = true
+    }
+
+    internal fun markAvailable(key: String) = synchronized(unavailable) {
+        unavailable.remove(key)
+        anyFlag.value = unavailable.isNotEmpty()
+    }
 }
 
 /**
