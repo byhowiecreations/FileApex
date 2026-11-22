@@ -72,7 +72,8 @@ class ExplorerViewModel(
         { onDirectoryClick(it) },
         { previewActions.openImagePreview(it) },
         { previewActions.openTextPreview(it) },
-        { previewActions.openExternalMedia(it) }
+        { previewActions.openPdfPreview(it) },
+        { previewActions.openDownloadPrompt(it) }
     )
     private val watching = ExplorerWatchActions(_uiState, viewModelScope, target, browser, browseRoot, { browseGeneration }, { reloadListing(it) })
 

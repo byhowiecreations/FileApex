@@ -20,7 +20,8 @@ class ExplorerPickSelectionTest {
     private fun actions(
         state: MutableStateFlow<ExplorerUiState>,
         target: BrowseTarget = BrowseTarget.Local("local", "This device", "/d"),
-        openExternalMedia: (RemoteFileItem) -> Unit = {}
+        openPdfPreview: (RemoteFileItem) -> Unit = {},
+        openDownloadPrompt: (RemoteFileItem) -> Unit = {}
     ): ExplorerSelectionActions {
         return ExplorerSelectionActions(
             state,
@@ -31,7 +32,8 @@ class ExplorerPickSelectionTest {
             {},
             {},
             {},
-            openExternalMedia
+            openPdfPreview,
+            openDownloadPrompt
         )
     }
 
@@ -44,21 +46,25 @@ class ExplorerPickSelectionTest {
         assertTrue(state.value.selectedFileIds.isEmpty())
     }
 
-    @Test fun activatingPdfOrAudioRoutesThroughOpenExternalMediaEvenWhenRemote() {
+    @Test fun activatingAnyOtherRemoteFileOffersTheDownloadDialog() {
         val remoteTarget = BrowseTarget.Remote("peer-1", "Phone", "192.168.1.50", 8080, "/")
         val state = MutableStateFlow(ExplorerUiState())
-        val opened = mutableListOf<String>()
-        val pdf = RemoteFileItem("guide.pdf", "/docs/guide.pdf", 2048L, 0L, false, "application/pdf")
-        val mp3 = RemoteFileItem("song.mp3", "/music/song.mp3", 4096L, 0L, false, "audio/mpeg")
-        val zip = RemoteFileItem("archive.zip", "/docs/archive.zip", 1024L, 0L, false, "application/zip")
+        val prompted = mutableListOf<String>()
+        val selection = actions(state, remoteTarget, openDownloadPrompt = { prompted += it.name })
+        listOf("app.apk", "setup.exe", "archive.zip", "blob.bin", "song.mp3", "clip.mp4").forEach {
+            selection.activateFile(RemoteFileItem(it, "/x/$it", 1024L, 0L, false, "application/octet-stream"))
+        }
+        assertEquals(listOf("app.apk", "setup.exe", "archive.zip", "blob.bin", "song.mp3", "clip.mp4"), prompted)
+    }
 
-        val selection = actions(state, remoteTarget) { opened += it.name }
-        selection.activateFile(pdf)
-        selection.activateFile(mp3)
-        assertEquals(listOf("guide.pdf", "song.mp3"), opened)
-
-        selection.activateFile(zip)
-        assertEquals(listOf("guide.pdf", "song.mp3"), opened)
-        assertTrue(state.value.statusMessage?.contains("archive.zip") == true)
+    @Test fun activatingARemotePdfOpensThePdfPreviewNotTheDownloadPrompt() {
+        val remoteTarget = BrowseTarget.Remote("peer-1", "Phone", "192.168.1.50", 8080, "/")
+        val state = MutableStateFlow(ExplorerUiState())
+        val pdfs = mutableListOf<String>()
+        val prompted = mutableListOf<String>()
+        val selection = actions(state, remoteTarget, { pdfs += it.name }, { prompted += it.name })
+        selection.activateFile(RemoteFileItem("guide.pdf", "/docs/guide.pdf", 2048L, 0L, false, "application/pdf"))
+        assertEquals(listOf("guide.pdf"), pdfs)
+        assertTrue(prompted.isEmpty())
     }
 }

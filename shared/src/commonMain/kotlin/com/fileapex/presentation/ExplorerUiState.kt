@@ -36,6 +36,7 @@ data class ExplorerUiState(
     val previewItem: RemoteFileItem? = null,
     val previewText: String? = null,
     val previewImage: ImageBitmap? = null,
+    val previewPages: List<ImageBitmap> = emptyList(),
     val isPreviewLoading: Boolean = false,
     val canDownloadPreview: Boolean = false,
     val isDownloading: Boolean = false,

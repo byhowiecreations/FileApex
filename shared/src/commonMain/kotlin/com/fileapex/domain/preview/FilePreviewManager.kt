@@ -28,6 +28,8 @@ class FilePreviewManager(
         }
     }
 
+    fun previewFits(item: RemoteFileItem, maxBytes: Long): Boolean = item.sizeBytes in 1..maxBytes
+
     suspend fun loadPreviewBytes(item: RemoteFileItem, maxBytes: Long): ByteArray {
         assertPreviewAllowed(item, maxBytes)
         return when (val browseTarget = target) {
@@ -64,6 +66,11 @@ class FilePreviewManager(
         val name = item.name.lowercase()
         val ext = name.substringAfterLast('.', "")
         return name in EXACT_TEXT_NAMES || ext in TEXT_EXTENSIONS
+    }
+
+    fun isPdfFile(item: RemoteFileItem): Boolean {
+        if (item.isDirectory || target is BrowseTarget.Demo) return false
+        return item.mimeType.lowercase() == "application/pdf" || item.name.lowercase().endsWith(".pdf")
     }
 
     fun isExternalMediaFile(item: RemoteFileItem): Boolean {
@@ -157,6 +164,7 @@ enum class ExplorerOpenKind {
     Directory,
     Image,
     Text,
+    Pdf,
     ExternalMedia,
     Fallback
 }
@@ -166,6 +174,7 @@ object ExplorerFileOpenPolicy {
         item.isDirectory -> ExplorerOpenKind.Directory
         preview.isImageFile(item) -> ExplorerOpenKind.Image
         preview.isTextFile(item) -> ExplorerOpenKind.Text
+        preview.isPdfFile(item) -> ExplorerOpenKind.Pdf
         preview.isExternalMediaFile(item) -> ExplorerOpenKind.ExternalMedia
         else -> ExplorerOpenKind.Fallback
     }

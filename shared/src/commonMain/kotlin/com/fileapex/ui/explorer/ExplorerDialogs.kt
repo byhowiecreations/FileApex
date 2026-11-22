@@ -4,6 +4,7 @@ import com.fileapex.ui.transfer.TransferRowDensity
 import com.fileapex.ui.transfer.LiveTransferRow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -235,38 +236,64 @@ internal fun ExplorerScope.ExplorerPreviewDialog() {
             onDismissRequest = viewModel::dismissPreview,
             title = { Text(preview?.name ?: stringRes("preview")) },
             text = {
-                when {
-                    state.isPreviewLoading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
+                Column {
+                    when {
+                        state.isPreviewLoading -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 120.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                        state.previewImage != null -> {
+                            Image(
+                                bitmap = state.previewImage!!,
+                                contentDescription = preview?.name,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 480.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        state.previewPages.isNotEmpty() -> {
+                            Column(
+                                modifier = Modifier
+                                    .heightIn(max = 480.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                state.previewPages.forEach { page ->
+                                    Image(
+                                        bitmap = page,
+                                        contentDescription = preview?.name,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentScale = ContentScale.FillWidth
+                                    )
+                                }
+                            }
+                        }
+                        state.previewText != null -> {
+                            Column(
+                                modifier = Modifier
+                                    .heightIn(max = 420.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(state.previewText!!)
+                            }
+                        }
+                        else -> {
+                            Text(stringRes("no_preview"))
                         }
                     }
-                    state.previewImage != null -> {
-                        Image(
-                            bitmap = state.previewImage!!,
-                            contentDescription = preview?.name,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 480.dp),
-                            contentScale = ContentScale.Fit
+                    if (preview != null) {
+                        Text(
+                            com.fileapex.platform.formatHostFileSize(preview.sizeBytes),
+                            modifier = Modifier.padding(top = 8.dp),
+                            style = MaterialTheme.typography.bodySmall
                         )
-                    }
-                    state.previewText != null -> {
-                        Column(
-                            modifier = Modifier
-                                .heightIn(max = 420.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            Text(state.previewText!!)
-                        }
-                    }
-                    else -> {
-                        Text(stringRes("no_preview"))
                     }
                 }
             },

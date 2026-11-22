@@ -8,7 +8,10 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.decodeImageBytes
 import com.fileapex.platform.decodeLocalImageFile
-import com.fileapex.platform.openLocalFile
+import com.fileapex.platform.PDF_PREVIEW_MAX_PAGES
+import com.fileapex.platform.PDF_PREVIEW_WIDTH_PX
+import com.fileapex.platform.canRenderPdf
+import com.fileapex.platform.renderPdfPages
 import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
@@ -62,12 +65,8 @@ internal class ExplorerPreviewActions(
             }
             return
         }
-        cancellableCatching("ExplorerPreviewActions openImagePreview") {
-            preview.assertPreviewAllowed(item, FilePreviewManager.MAX_PREVIEW_BYTES)
-        }.onFailure { error ->
-            _uiState.update {
-                it.copy(errorMessage = UserFacingErrors.message(error, "preview_failed"))
-            }
+        if (!preview.previewFits(item, FilePreviewManager.MAX_PREVIEW_BYTES)) {
+            openDownloadPrompt(item)
             return
         }
         viewModelScope.launch {
@@ -100,10 +99,8 @@ internal class ExplorerPreviewActions(
                 onFailure = { error ->
                     _uiState.update {
                         it.copy(
-                            previewItem = null,
                             previewImage = null,
                             isPreviewLoading = false,
-                            canDownloadPreview = false,
                             errorMessage = UserFacingErrors.message(error, "preview_failed")
                         )
                     }
@@ -113,12 +110,8 @@ internal class ExplorerPreviewActions(
     }
 
     fun openTextPreview(item: RemoteFileItem) {
-        cancellableCatching("ExplorerPreviewActions openTextPreview") {
-            preview.assertPreviewAllowed(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
-        }.onFailure { error ->
-            _uiState.update {
-                it.copy(errorMessage = UserFacingErrors.message(error, "text_preview_too_large"))
-            }
+        if (!preview.previewFits(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)) {
+            openDownloadPrompt(item)
             return
         }
         viewModelScope.launch {
@@ -151,9 +144,7 @@ internal class ExplorerPreviewActions(
                 onFailure = { error ->
                     _uiState.update {
                         it.copy(
-                            previewItem = null,
                             isPreviewLoading = false,
-                            canDownloadPreview = false,
                             errorMessage = UserFacingErrors.message(error, "preview_failed")
                         )
                     }
@@ -162,14 +153,47 @@ internal class ExplorerPreviewActions(
         }
     }
 
-    fun openExternalMedia(item: RemoteFileItem) {
-        if (target is BrowseTarget.Local) {
-            openLocalFile(item.absolutePath, item.name)
+    fun openDownloadPrompt(item: RemoteFileItem) {
+        _uiState.update {
+            it.copy(
+                previewItem = item,
+                previewText = null,
+                previewImage = null,
+                isPreviewLoading = false,
+                canDownloadPreview = isRemote,
+                statusMessage = null,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun openPdfPreview(item: RemoteFileItem) {
+        if (!canRenderPdf() || !preview.previewFits(item, FilePreviewManager.MAX_PREVIEW_BYTES)) {
+            openDownloadPrompt(item)
             return
         }
-        if (!isRemote) return
-        downloadSingleRemoteItem(item) { path ->
-            openLocalFile(path, item.name)
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    previewItem = item,
+                    previewText = null,
+                    previewImage = null,
+                    previewPages = emptyList(),
+                    isPreviewLoading = true,
+                    canDownloadPreview = isRemote,
+                    statusMessage = null,
+                    errorMessage = null
+                )
+            }
+            val pages = cancellableCatching("ExplorerPreviewActions openPdfPreview") {
+                val bytes = withContext(Dispatchers.IO) {
+                    preview.loadPreviewBytes(item, FilePreviewManager.MAX_PREVIEW_BYTES)
+                }
+                withContext(Dispatchers.Default) {
+                    renderPdfPages(bytes, PDF_PREVIEW_WIDTH_PX, PDF_PREVIEW_MAX_PAGES)
+                }
+            }.getOrDefault(emptyList())
+            _uiState.update { it.copy(previewPages = pages, isPreviewLoading = false) }
         }
     }
 
@@ -218,6 +242,7 @@ internal class ExplorerPreviewActions(
                 previewItem = null,
                 previewText = null,
                 previewImage = null,
+                previewPages = emptyList(),
                 isPreviewLoading = false,
                 canDownloadPreview = false
             )

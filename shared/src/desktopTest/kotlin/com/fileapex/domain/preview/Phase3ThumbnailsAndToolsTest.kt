@@ -228,11 +228,22 @@ class Phase3ThumbnailsAndToolsTest {
         assertFalse(manager.isExternalMediaFile(item("readme.txt", "text/plain")))
         assertFalse(manager.isExternalMediaFile(item("archive.zip", "application/zip")))
 
-        assertEquals(ExplorerOpenKind.ExternalMedia, ExplorerFileOpenPolicy.classify(manager, item("manual.pdf", "application/pdf")))
+        assertEquals(ExplorerOpenKind.Pdf, ExplorerFileOpenPolicy.classify(manager, item("manual.pdf", "application/pdf")))
+        assertEquals(ExplorerOpenKind.Pdf, ExplorerFileOpenPolicy.classify(manager, item("invoice.PDF", "application/octet-stream")))
         assertEquals(ExplorerOpenKind.ExternalMedia, ExplorerFileOpenPolicy.classify(manager, item("track.mp3", "audio/mpeg")))
         assertEquals(ExplorerOpenKind.Image, ExplorerFileOpenPolicy.classify(manager, item("photo.png", "image/png")))
         assertEquals(ExplorerOpenKind.Text, ExplorerFileOpenPolicy.classify(manager, item("notes.md", "text/markdown")))
         assertEquals(ExplorerOpenKind.Directory, ExplorerFileOpenPolicy.classify(manager, item("docs", isDir = true)))
         assertEquals(ExplorerOpenKind.Fallback, ExplorerFileOpenPolicy.classify(manager, item("archive.zip", "application/zip")))
+    }
+
+    @Test
+    fun `preview fits only for known sizes within the cap`() {
+        val manager = FilePreviewManager(BrowseTarget.Local("local", "Local", "/work"))
+        val cap = FilePreviewManager.MAX_PREVIEW_BYTES
+        assertTrue(manager.previewFits(RemoteFileItem("a.png", "/a.png", 1L, 0L, false, "image/png"), cap))
+        assertTrue(manager.previewFits(RemoteFileItem("a.png", "/a.png", cap, 0L, false, "image/png"), cap))
+        assertFalse(manager.previewFits(RemoteFileItem("a.png", "/a.png", cap + 1, 0L, false, "image/png"), cap))
+        assertFalse(manager.previewFits(RemoteFileItem("a.png", "/a.png", 0L, 0L, false, "image/png"), cap))
     }
 }

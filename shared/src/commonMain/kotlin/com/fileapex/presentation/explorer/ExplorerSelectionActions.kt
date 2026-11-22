@@ -22,7 +22,8 @@ internal class ExplorerSelectionActions(
     private val onDirectoryClick: (RemoteFileItem) -> Unit,
     private val openImagePreview: (RemoteFileItem) -> Unit,
     private val openTextPreview: (RemoteFileItem) -> Unit,
-    private val openExternalMedia: (RemoteFileItem) -> Unit
+    private val openPdfPreview: (RemoteFileItem) -> Unit,
+    private val openDownloadPrompt: (RemoteFileItem) -> Unit
 ) {
     /** Anchor for desktop Shift-click range selection. */
     private var selectionAnchorId: String? = null
@@ -92,14 +93,18 @@ internal class ExplorerSelectionActions(
             ExplorerOpenKind.Directory -> onDirectoryClick(item)
             ExplorerOpenKind.Image -> openImagePreview(item)
             ExplorerOpenKind.Text -> openTextPreview(item)
-            ExplorerOpenKind.ExternalMedia -> openExternalMedia(item)
-            ExplorerOpenKind.Fallback -> {
+            ExplorerOpenKind.Pdf -> {
                 if (target is BrowseTarget.Local) {
                     openLocalFile(item.absolutePath, item.name)
                 } else {
-                    _uiState.update {
-                        it.copy(statusMessage = "${item.name} · ${preview.formatBytes(item.sizeBytes)}")
-                    }
+                    openPdfPreview(item)
+                }
+            }
+            ExplorerOpenKind.ExternalMedia, ExplorerOpenKind.Fallback -> {
+                if (target is BrowseTarget.Local) {
+                    openLocalFile(item.absolutePath, item.name)
+                } else {
+                    openDownloadPrompt(item)
                 }
             }
         }
