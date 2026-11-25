@@ -75,7 +75,6 @@ import com.fileapex.ui.ShareSendScreen
 import com.fileapex.ui.TransferQueueScreen
 import com.fileapex.ui.NotesScreen
 import com.fileapex.presentation.TransferQueueViewModel
-import com.fileapex.ui.OnboardingScreen
 import com.fileapex.ui.UpdateAvailableSheet
 import com.fileapex.ui.adaptive.AdaptiveWideHome
 import com.fileapex.ui.carousel.CarouselDock
@@ -108,11 +107,8 @@ import kotlinx.coroutines.launch
 fun App(
     hasStoragePermission: Boolean,
     onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
-    onboardingComplete: Boolean = hasStoragePermission,
     deniedOnboardingStepIds: Set<String> = emptySet(),
     onGrantOnboardingStep: (String) -> Unit = {},
-    onSkipOnboardingStep: (String) -> Unit = {},
-    onContinueToApp: () -> Unit = {},
     hasUnrestrictedBattery: Boolean = true,
     backgroundPersistence: BackgroundPersistenceUiState = BackgroundPersistenceUiState(),
     onRequestStoragePermission: () -> Unit,
@@ -133,7 +129,6 @@ fun App(
     onScannedPayloadConsumed: () -> Unit = {},
     qrScanError: String? = null,
     onQrScanErrorConsumed: () -> Unit = {},
-    onPermissionRecheck: () -> Unit = {},
     incomingShare: IncomingSharePayload? = null,
     isPreparingShare: Boolean = false,
     sharePrepareError: String? = null,
@@ -160,7 +155,6 @@ fun App(
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
     val transferQueueViewModel: TransferQueueViewModel = viewModel { TransferQueueViewModel() }
-    val setupComplete = onboardingComplete
 
     // Wide-layout detail state (list-detail). Survives compact/wide transitions.
     var wideSelectedTarget by remember { mutableStateOf<BrowseTarget?>(null) }
@@ -176,9 +170,8 @@ fun App(
         showLocalFilesPermissionDialog = true
     }
 
-    LaunchedEffect(pendingOpenSettingsPage, setupComplete) {
+    LaunchedEffect(pendingOpenSettingsPage) {
         val page = pendingOpenSettingsPage ?: return@LaunchedEffect
-        if (!setupComplete) return@LaunchedEffect
         settingsDeepLink = when (page) {
             PhoneSettingsPage.CLIPBOARD -> SettingsDeepLink.Clipboard
             PhoneSettingsPage.BROADCAST_NOTIFICATIONS -> SettingsDeepLink.BroadcastNotifications
@@ -205,9 +198,8 @@ fun App(
         wideHomeTab = HomeTab.Devices
     }
 
-    LaunchedEffect(incomingShare, setupComplete, directShareDeviceId) {
+    LaunchedEffect(incomingShare, directShareDeviceId) {
         val payload = incomingShare ?: return@LaunchedEffect
-        if (!setupComplete) return@LaunchedEffect
         route = AppRoute.ShareSend(payload, directShareDeviceId)
         val staged = payload.files.isNotEmpty() &&
             payload.files.all { it.absolutePath.isNotBlank() && it.sizeBytes > 0L }
@@ -227,15 +219,15 @@ fun App(
         route = AppRoute.Notes
     }
 
-    LaunchedEffect(pendingOpenBulletinBoard, setupComplete) {
-        if (!pendingOpenBulletinBoard || !setupComplete) return@LaunchedEffect
+    LaunchedEffect(pendingOpenBulletinBoard) {
+        if (!pendingOpenBulletinBoard) return@LaunchedEffect
         route = AppRoute.Notes
         onOpenBulletinBoardConsumed()
     }
 
-    LaunchedEffect(pendingOpenDeviceId, setupComplete) {
+    LaunchedEffect(pendingOpenDeviceId) {
         val deviceId = pendingOpenDeviceId?.trim().orEmpty()
-        if (deviceId.isEmpty() || !setupComplete) return@LaunchedEffect
+        if (deviceId.isEmpty()) return@LaunchedEffect
         devicesViewModel.openDeviceOrExplain(deviceId) { target ->
             wideSelectedTarget = target
             wideHomeTab = HomeTab.Devices
@@ -244,8 +236,8 @@ fun App(
         onOpenDeviceRequestConsumed()
     }
 
-    LaunchedEffect(pendingOpenFriends, setupComplete) {
-        if (!pendingOpenFriends || !setupComplete) return@LaunchedEffect
+    LaunchedEffect(pendingOpenFriends) {
+        if (!pendingOpenFriends) return@LaunchedEffect
         com.fileapex.friends.ui.FriendsUi.open()
         onOpenFriendsConsumed()
     }
@@ -279,8 +271,7 @@ fun App(
         enabled = route !is AppRoute.Devices &&
             route !is AppRoute.Explorer &&
             route !is AppRoute.ShareSend &&
-            route !is AppRoute.TransferQueue &&
-            setupComplete
+            route !is AppRoute.TransferQueue
     ) {
         onNavigateHome()
     }
@@ -409,18 +400,7 @@ fun App(
             ) {
 
 
-                if (!setupComplete &&
-                    com.fileapex.platform.OnDemandPermissionPolicy.blockLaunchWithPermissionScreen &&
-                    onboardingSteps.isNotEmpty()
-                ) {
-                    OnboardingScreen(
-                        steps = onboardingSteps,
-                        deniedStepIds = deniedOnboardingStepIds,
-                        onGrantStep = onGrantOnboardingStep,
-                        onSkipStep = onSkipOnboardingStep,
-                        onContinueToApp = onContinueToApp
-                    )
-                } else if (incomingShare != null || route is AppRoute.ShareSend) {
+                if (incomingShare != null || route is AppRoute.ShareSend) {
                     val liveShare = incomingShare
                     val routedShare = route as? AppRoute.ShareSend
                     ShareSendScreen(
@@ -863,10 +843,8 @@ fun App(
     } }
     }
 
-    LaunchedEffect(onboardingComplete) {
-        if (!onboardingComplete) {
-            onPermissionRecheck()
-        } else if (!usesDesktopFileSelection()) {
+    LaunchedEffect(Unit) {
+        if (!usesDesktopFileSelection()) {
             onStartShareServer()
             PresenceForegroundRefresh.onAppForegrounded()
         }

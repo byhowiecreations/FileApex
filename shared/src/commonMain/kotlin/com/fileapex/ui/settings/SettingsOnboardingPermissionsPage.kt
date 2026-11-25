@@ -2,13 +2,16 @@ package com.fileapex.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,7 +36,6 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
 import com.fileapex.notice.NoticeCoordinator
 import com.fileapex.platform.OnboardingPermissionStep
-import com.fileapex.ui.OnboardingPermissionCard
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.StartupPromptGate
 import com.fileapex.update.AppUpdateCoordinator
@@ -210,6 +212,88 @@ private fun OnboardingChoiceSetupCard(
                 }
                 OutlinedButton(onClick = onDecline) {
                     Text(declineLabel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OnboardingPermissionCard(
+    step: OnboardingPermissionStep,
+    denied: Boolean = false,
+    onGrant: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val containerColor = if (step.granted) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringRes(step.titleKey),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringRes(step.reasonKey),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (denied) {
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = stringRes(step.deniedHintKey),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            if (step.granted) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = stringRes("granted"),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringRes("granted"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            } else {
+                Button(
+                    onClick = onGrant,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                    modifier = Modifier.defaultMinSize(minHeight = 36.dp)
+                ) {
+                    Text(
+                        text = stringRes("grant"),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }

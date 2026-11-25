@@ -7,14 +7,14 @@ publish = false
 description = "FileApex relay: the stock iroh-relay server with one access rule, the shared token for paired devices or a registered drop endpoint id for guests."
 
 [dependencies]
-iroh-relay = { version = "=1.4.1", default-features = false, features = ["server", "tls-ring"] }
+iroh-relay = { version = "=1.5.0", default-features = false, features = ["server", "tls-ring"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 http = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "ansi"] }
-iroh-base = { version = "=1.4.1", default-features = false }
+iroh-base = { version = "=1.5.0", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
@@ -25,7 +25,7 @@ codegen-units = 1
 strip = true
 
 [dev-dependencies]
-iroh-dns = "=1.4.1"
+iroh-dns = "=1.5.0"
 n0-future = "0.3"
 rcgen = "0.13"
 tempfile = "3"

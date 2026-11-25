@@ -404,8 +404,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="open">Abrir</string>
     <string name="info">Info</string>
     <string name="files">Archivos</string>
-    <string name="onboarding_intro_title">Bienvenido a FileApex</string>
-    <string name="onboarding_intro_body">Concede los siguientes permisos para que FileApex encuentre dispositivos y comparta archivos en tu red.</string>
     <string name="status_on_warnings">%1$s · %2$s</string>
     <string name="warn_background_restricted">segundo plano restringido</string>
     <string name="warn_battery_optimized">batería optimizada</string>
@@ -1070,8 +1068,6 @@ Toca el hub central (+) para emparejar</string>
     <string name="exit_demo">Salir de la demostración</string>
     <string name="demo_mode_banner">MODO DEMO: Entorno simulado (No se mueven archivos)</string>
     <string name="demo_transfer_complete">¡Transferencia de demostración completa! ¿Listo para conectar tus dispositivos reales?</string>
-    <string name="set_up_later">Configurar más tarde</string>
-    <string name="continue_to_app">Continuar a la aplicación</string>
     <string name="demo_preview_title">Vista previa de demostración</string>
     <string name="phone_may_pause_transfer">El teléfono puede pausar la transferencia si la pantalla se apaga.</string>
     <string name="keep_active">Mantener activo</string>

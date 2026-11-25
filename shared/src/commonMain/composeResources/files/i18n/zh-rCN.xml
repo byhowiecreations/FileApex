@@ -404,8 +404,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="open">打开</string>
     <string name="info">信息</string>
     <string name="files">文件</string>
-    <string name="onboarding_intro_title">欢迎使用 FileApex</string>
-    <string name="onboarding_intro_body">请授予以下权限，以便 FileApex 在网络上查找设备并共享文件。</string>
     <string name="status_on_warnings">%1$s · %2$s</string>
     <string name="warn_background_restricted">后台受限</string>
     <string name="warn_battery_optimized">电池优化</string>
@@ -1055,8 +1053,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="exit_demo">退出演示</string>
     <string name="demo_mode_banner">演示模式: 模拟环境（未移动任何文件）</string>
     <string name="demo_transfer_complete">演示传输完成！准备好连接您的真实设备了吗？</string>
-    <string name="set_up_later">稍后设置</string>
-    <string name="continue_to_app">继续前往应用</string>
     <string name="demo_preview_title">演示预览</string>
     <string name="phone_may_pause_transfer">如果屏幕关闭，手机可能会暂停传输。</string>
     <string name="keep_active">保持活跃</string>

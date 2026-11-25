@@ -1,7 +1,7 @@
 package com.fileapex.platform
 
 /**
- * One user-grant step shown during first-run onboarding (Android).
+ * One optional permission step (Android), offered after the first pairing and listed in Settings.
  *
  * Title/reason/denied copy is resolved from i18n keys at composition time.
  */
@@ -10,6 +10,5 @@ data class OnboardingPermissionStep(
     val titleKey: String,
     val reasonKey: String,
     val deniedHintKey: String,
-    val granted: Boolean,
-    val isOptional: Boolean = false
+    val granted: Boolean
 )

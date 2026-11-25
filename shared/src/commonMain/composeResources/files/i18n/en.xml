@@ -413,8 +413,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="open">Open</string>
     <string name="info">Info</string>
     <string name="files">Files</string>
-    <string name="onboarding_intro_title">Welcome to FileApex</string>
-    <string name="onboarding_intro_body">Grant the following permissions so FileApex can find devices and share files on your network.</string>
     <string name="status_on_warnings">%1$s · %2$s</string>
     <string name="warn_background_restricted">background restricted</string>
     <string name="warn_battery_optimized">battery optimized</string>
@@ -1083,8 +1081,6 @@ Tap Central Hub (+) to Pair</string>
     <string name="exit_demo">Exit Demo</string>
     <string name="demo_mode_banner">DEMO MODE: Simulated environment (No files moved)</string>
     <string name="demo_transfer_complete">Demo transfer complete! Ready to connect your real devices?</string>
-    <string name="set_up_later">Set Up Later</string>
-    <string name="continue_to_app">Continue to App</string>
     <string name="demo_preview_title">Demo Preview</string>
     <string name="phone_may_pause_transfer">Phone may pause transfer if screen turns off.</string>
     <string name="keep_active">Keep Active</string>

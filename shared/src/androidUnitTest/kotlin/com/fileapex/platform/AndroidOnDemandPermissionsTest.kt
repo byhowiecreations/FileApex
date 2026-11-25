@@ -8,11 +8,6 @@ import java.nio.charset.StandardCharsets
 class AndroidOnDemandPermissionsTest {
 
     @Test
-    fun startupDoesNotBlockAppLaunchOnPermissions() {
-        assertFalse(OnDemandPermissionPolicy.blockLaunchWithPermissionScreen)
-    }
-
-    @Test
     fun postPairBackgroundBannerOnlyAppearsAfterFirstDeviceWhenStepsRemain() {
         val storageOnlyMissing = listOf(
             OnboardingPermissionStep(
@@ -20,8 +15,7 @@ class AndroidOnDemandPermissionsTest {
                 titleKey = "onboard_perm_storage",
                 reasonKey = "onboard_storage_reason",
                 deniedHintKey = "onboard_storage_denied",
-                granted = false,
-                isOptional = true
+                granted = false
             )
         )
         val notifyMissing = listOf(
@@ -30,8 +24,7 @@ class AndroidOnDemandPermissionsTest {
                 titleKey = "onboard_perm_notify",
                 reasonKey = "onboard_notify_reason",
                 deniedHintKey = "onboard_notify_denied",
-                granted = false,
-                isOptional = true
+                granted = false
             )
         )
         assertFalse(OnDemandPermissionPolicy.shouldOfferPostPairSetup(pairedCount = 0, steps = notifyMissing))

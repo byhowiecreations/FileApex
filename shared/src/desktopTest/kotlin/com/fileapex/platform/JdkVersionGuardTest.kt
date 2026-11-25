@@ -12,13 +12,13 @@ import org.junit.Test
  */
 class JdkVersionGuardTest {
     private val readers = listOf("gradlew", "gradlew.bat", "composeApp/build.gradle.kts")
-    private val literal = Regex("""jdk-21\.0\.\d+\+\d+""")
+    private val literal = Regex("""jdk-21\.0\.\d+(\.\d+)?\+\d+""")
     private fun text(name: String) = File("../$name").readText()
 
     private val jdk = Regex("""(?m)^jdk=(\S+)$""").find(text("toolchain.properties"))?.groupValues?.get(1)
 
     @Test fun theJdkVersionIsWrittenOnceInToolchainProperties() {
-        assertTrue("toolchain.properties needs jdk=21.<minor>.<patch>+<build>", jdk != null && Regex("""21\.0\.\d+\+\d+""").matches(jdk))
+        assertTrue("toolchain.properties needs jdk=21.<minor>.<patch>[.<hotfix>]+<build>", jdk != null && Regex("""21\.0\.\d+(\.\d+)?\+\d+""").matches(jdk))
         (readers + "gradle.properties" + "scripts/build-fileapex.sh").forEach {
             assertFalse("$it spells a JDK version; read toolchain.properties instead", literal.containsMatchIn(text(it)))
         }
@@ -31,7 +31,7 @@ class JdkVersionGuardTest {
     }
 
     @Test fun theBuildJdkIsTheCurrentTemurinPatch() {
-        assertEquals("21.0.13+9", jdk)
+        assertEquals("21.0.13.1+2", jdk)
     }
 
     @Test fun theGoToolchainDefaultsAgreeWithGoMod() {

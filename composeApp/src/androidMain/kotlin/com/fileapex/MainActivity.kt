@@ -75,7 +75,6 @@ class MainActivity : ComponentActivity() {
 
     private var hasStoragePermission by mutableStateOf(false)
     private var onboardingSteps by mutableStateOf<List<OnboardingPermissionStep>>(emptyList())
-    private var onboardingComplete by mutableStateOf(false)
     private var deniedOnboardingStepIds by mutableStateOf(setOf<String>())
     private var persistenceSnapshot by mutableStateOf(
         BackgroundPersistenceGuidance.Snapshot(
@@ -184,11 +183,8 @@ class MainActivity : ComponentActivity() {
                 App(
                     hasStoragePermission = hasStoragePermission,
                     onboardingSteps = onboardingSteps,
-                    onboardingComplete = onboardingComplete,
                     deniedOnboardingStepIds = deniedOnboardingStepIds,
                     onGrantOnboardingStep = ::grantOnboardingStep,
-                    onSkipOnboardingStep = ::skipOnboardingStep,
-                    onContinueToApp = ::continueToAppFromOnboarding,
                     hasUnrestrictedBattery = !persistenceSnapshot.persistenceRestricted,
                     backgroundPersistence = persistenceSnapshot.toUiState(),
                     onRequestStoragePermission = ::requestStoragePermission,
@@ -211,7 +207,6 @@ class MainActivity : ComponentActivity() {
                     onScannedPayloadConsumed = { scannedPayload = null },
                     qrScanError = qrScanError,
                     onQrScanErrorConsumed = { qrScanError = null },
-                    onPermissionRecheck = ::refreshPermissions,
                     incomingShare = incomingShare,
                     isPreparingShare = isPreparingShare,
                     sharePrepareError = sharePrepareError,
@@ -263,17 +258,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun performResumeWork() {
-        val previouslyComplete = onboardingComplete
         completePendingOnboardingReturns()
         refreshPermissions()
         refreshUnusedAppRestrictionsAsync()
-        if (onboardingComplete) {
-            if (!previouslyComplete) {
-                startShareServerDeferred()
-            } else {
-                startShareServer()
-            }
-        }
+        startShareServer()
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppForegrounded()
         com.fileapex.update.AppUpdateCoordinator.syncInstallStatusOnAppOpen()
         val pendingOffer = com.fileapex.update.AppUpdateCoordinator.pendingUpdate.value
@@ -291,9 +279,7 @@ class MainActivity : ComponentActivity() {
         if (com.fileapex.di.FileApexServices.settings.googleRestorePending.value) {
             promptReinstallGoogleAccount()
         }
-        if (onboardingComplete) {
-            startShareServer()
-        }
+        startShareServer()
         lifecycleScope.launch {
             cancellableCatching {
                 // Only "has paired devices" matters here; a peer's last-seen update must not restart the service call.
@@ -301,7 +287,7 @@ class MainActivity : ComponentActivity() {
                     .map { it.isNotEmpty() }
                     .distinctUntilChanged()
                     .collect { hasDevices ->
-                        if (hasDevices && onboardingComplete) startShareServer(force = true)
+                        if (hasDevices) startShareServer(force = true)
                     }
             }
         }
@@ -611,11 +597,6 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshPermissions() {
         onboardingSteps = AndroidOnboardingPermissions.buildSteps(this)
-        onboardingComplete = if (com.fileapex.platform.OnDemandPermissionPolicy.blockLaunchWithPermissionScreen) {
-            AndroidOnboardingPermissions.isComplete(this, onboardingSteps)
-        } else {
-            true
-        }
         hasStoragePermission = onboardingSteps
             .firstOrNull { it.id == AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE }
             ?.granted
@@ -633,16 +614,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun skipOnboardingStep(stepId: String) {
-        AndroidOnboardingPermissions.markStepSkipped(this, stepId)
-        refreshPermissions()
-    }
-
-    private fun continueToAppFromOnboarding() {
-        AndroidOnboardingPermissions.markAllOptionalStepsSkipped(this, onboardingSteps)
-        refreshPermissions()
-    }
-
     private fun completePendingOnboardingReturns() {
         if (pendingStorageOnboardingReturn) {
             pendingStorageOnboardingReturn = false
@@ -654,10 +625,6 @@ class MainActivity : ComponentActivity() {
         if (pendingBatteryOnboardingReturn) {
             pendingBatteryOnboardingReturn = false
             AndroidOnboardingPermissions.markBatteryOptimizationAcknowledged(this, true)
-            AndroidOnboardingPermissions.markStepSkipped(
-                this,
-                AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS
-            )
             updateOnboardingDenial(
                 stepId = AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS,
                 granted = true
@@ -692,15 +659,6 @@ class MainActivity : ComponentActivity() {
             if (active != persistenceSnapshot.unusedAppRestrictionsActive) {
                 persistenceSnapshot = persistenceSnapshot.copy(unusedAppRestrictionsActive = active)
             }
-        }
-    }
-
-    private fun startShareServerDeferred() {
-        Looper.myQueue().addIdleHandler {
-            if (!isDestroyed && !isFinishing && onboardingComplete) {
-                startShareServer()
-            }
-            false
         }
     }
 
@@ -825,9 +783,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startShareServer(force: Boolean = false) {
-        if (!onboardingComplete) {
-            return
-        }
         lifecycleScope.launch(Dispatchers.IO) {
             val hasPaired = try {
                 com.fileapex.di.FileApexServices.isDatabaseReady() &&
@@ -847,7 +802,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startShareServerWithRoster(force: Boolean, hasPaired: Boolean) {
-        if (!onboardingComplete) return
         val wasPending = ShareServerPendingStart.consume(this)
         if (!force && !hasPaired && !wasPending) {
             Log.i(TAG, "Deferring share server start - 0 paired devices")

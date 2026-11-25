@@ -53,7 +53,6 @@ object AndroidOnboardingPermissions {
                     .putBoolean(KEY_OEM_PERSISTENCE_DONE, true)
                     .putBoolean(KEY_BATTERY_ACKNOWLEDGED, true)
                     .putBoolean(KEY_INITIAL_ONBOARDING_INITIALIZED, true)
-                    .putBoolean(KEY_ONBOARDING_DISMISSED, true)
                     .apply()
                 return true
             } else {
@@ -97,8 +96,7 @@ object AndroidOnboardingPermissions {
                 titleKey = "onboard_perm_storage",
                 reasonKey = "onboard_storage_reason",
                 deniedHintKey = "onboard_storage_denied",
-                granted = AndroidStorageAccess.hasFullAccess(context),
-                isOptional = true
+                granted = AndroidStorageAccess.hasFullAccess(context)
             )
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -108,8 +106,7 @@ object AndroidOnboardingPermissions {
                     titleKey = "onboard_perm_notify",
                     reasonKey = "onboard_notify_reason",
                     deniedHintKey = "onboard_notify_denied",
-                    granted = AndroidRuntimePermissions.hasPostNotifications(context),
-                    isOptional = true
+                    granted = AndroidRuntimePermissions.hasPostNotifications(context)
                 )
             )
         }
@@ -120,8 +117,7 @@ object AndroidOnboardingPermissions {
                 titleKey = "onboard_perm_battery",
                 reasonKey = "onboard_battery_reason",
                 deniedHintKey = "onboard_battery_denied",
-                granted = batteryGranted,
-                isOptional = true
+                granted = batteryGranted
             )
         )
         if (isOemPersistenceRequired()) {
@@ -133,53 +129,11 @@ object AndroidOnboardingPermissions {
                     titleKey = titleKey,
                     reasonKey = reasonKey,
                     deniedHintKey = deniedHintKey,
-                    granted = isOemPersistenceCompleted(context),
-                    isOptional = true
+                    granted = isOemPersistenceCompleted(context)
                 )
             )
         }
     }
-
-    private const val KEY_SKIPPED_OPTIONAL_STEPS = "skipped_optional_steps"
-    private const val KEY_ONBOARDING_DISMISSED = "onboarding_dismissed"
-
-    fun markStepSkipped(context: Context, stepId: String) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val current = prefs.getStringSet(KEY_SKIPPED_OPTIONAL_STEPS, emptySet())?.toMutableSet() ?: mutableSetOf()
-        current.add(stepId)
-        prefs.edit().putStringSet(KEY_SKIPPED_OPTIONAL_STEPS, current).apply()
-    }
-
-    fun markOnboardingDismissed(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean(KEY_ONBOARDING_DISMISSED, true).apply()
-    }
-
-    fun markAllOptionalStepsSkipped(context: Context, steps: List<OnboardingPermissionStep>) {
-        markOnboardingDismissed(context)
-        markBatteryOptimizationAcknowledged(context, true)
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val current = prefs.getStringSet(KEY_SKIPPED_OPTIONAL_STEPS, emptySet())?.toMutableSet() ?: mutableSetOf()
-        steps.filter { it.isOptional }.forEach { current.add(it.id) }
-        prefs.edit().putStringSet(KEY_SKIPPED_OPTIONAL_STEPS, current).apply()
-    }
-
-    fun isComplete(context: Context, steps: List<OnboardingPermissionStep>): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_ONBOARDING_DISMISSED, false)) {
-            return true
-        }
-        val skipped = prefs.getStringSet(KEY_SKIPPED_OPTIONAL_STEPS, emptySet()) ?: emptySet()
-        val batteryAck = prefs.getBoolean(KEY_BATTERY_ACKNOWLEDGED, false)
-        return steps.all { step ->
-            step.granted ||
-                (step.id == ID_IGNORE_BATTERY_OPTIMIZATIONS && batteryAck) ||
-                (step.isOptional && step.id in skipped)
-        }
-    }
-
-    fun isComplete(steps: List<OnboardingPermissionStep>): Boolean =
-        steps.filterNot { it.isOptional }.all { it.granted }
 
     private fun isBatteryOptimizationRestricted(context: Context): Boolean {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager

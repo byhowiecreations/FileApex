@@ -1,0 +1,16 @@
+[package]
+name = "oldclient-v1_4_1"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "oldclient"
+path = "../client/main.rs"
+
+[dependencies]
+iroh-relay = { version = "=1.4.1", default-features = false, features = ["tls-ring"] }
+iroh-base = { version = "=1.4.1", default-features = false }
+iroh-dns = "=1.4.1"
+n0-future = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
