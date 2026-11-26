@@ -137,7 +137,6 @@ internal fun BulletinBoardStylesSettingsPage(
                                         Text(
                                             text = stringRes("default_badge"),
                                             style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold
                                             ),
                                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),

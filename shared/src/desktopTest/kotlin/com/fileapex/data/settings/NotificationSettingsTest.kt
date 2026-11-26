@@ -11,10 +11,10 @@ class NotificationSettingsTest {
     private fun settings() = BaseAppSettings(kv)
 
     @Test
-    fun onlyTheNotesNotificationsStartOn() {
+    fun onlyTheNotesAndTransferNotificationsStartOn() {
         val s = settings()
         assertTrue(s.notesNotificationsEnabled.value)
-        assertFalse(s.fileTransferNotificationsEnabled.value)
+        assertTrue(s.fileTransferNotificationsEnabled.value)
         assertFalse(s.driveRelayNotificationsEnabled.value)
         assertFalse(s.notesNotificationPromptShown.value)
         assertFalse(s.notificationBroadcastEnabled.value)
@@ -69,11 +69,11 @@ class NotificationSettingsTest {
     fun resetToDefaultsPutsEverythingBack() {
         val s = settings()
         s.setNotesNotificationsEnabled(false)
-        s.setFileTransferNotificationsEnabled(true)
+        s.setFileTransferNotificationsEnabled(false)
         s.setNotificationBroadcastApps(setOf("com.a"))
         s.resetToDefaults()
         assertTrue(s.notesNotificationsEnabled.value)
-        assertFalse(s.fileTransferNotificationsEnabled.value)
+        assertTrue(s.fileTransferNotificationsEnabled.value)
         assertTrue(s.notificationBroadcastApps.value.isEmpty())
         assertTrue(settings().notesNotificationsEnabled.value)
     }

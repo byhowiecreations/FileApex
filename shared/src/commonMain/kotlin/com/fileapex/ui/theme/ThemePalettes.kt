@@ -9,7 +9,6 @@ object CleanModernPalette {
     val ChromeContent = Color(0xFF111827)
     val ChromeMuted = Color(0xFF52606D)
     val HeaderActionHover = Color(0x0D000000)
-    val NavSelectedPill = Color(0xFFDDF1EE)
     val CardSurface = Color(0xFFFFFFFF)
     val CardBorder = Color(0xFFE2E8EC)
     val CardHover = Color(0xFFF9FBFC)

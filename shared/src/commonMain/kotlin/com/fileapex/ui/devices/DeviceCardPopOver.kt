@@ -57,8 +57,8 @@ import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.deviceIconFillsOrb
 import com.fileapex.ui.theme.CleanModernPalette
-import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.fileApexAccent
+import com.fileapex.ui.theme.fileApexAccentDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
 import com.fileapex.ui.theme.isFileApexCleanModern
@@ -92,8 +92,8 @@ internal fun DeviceCardPopOver(
     val textColor = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isFlux) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
     val iconContainerColor = if (useStandardBadge && isFlux) FluxGlassPalette.iconBadgeBg else if (useStandardBadge) CleanModernPalette.IconBadgeBg else if (isFlux) FluxGlassPalette.accentSoft else MaterialTheme.colorScheme.primaryContainer
-    val iconTint = if (useStandardBadge && isFlux) FluxGlassPalette.iconBadgeTint else if (useStandardBadge) CleanModernPalette.IconBadgeTint else if (isFlux) FluxGlassPalette.accent else FileApexTealDark
-    val borderColor = if (isFlux) FluxGlassPalette.cardBorder else if (cleanModern) CleanModernPalette.CardBorder else FileApexTeal
+    val iconTint = if (useStandardBadge && isFlux) FluxGlassPalette.iconBadgeTint else if (useStandardBadge) CleanModernPalette.IconBadgeTint else if (isFlux) FluxGlassPalette.accent else fileApexAccentDark()
+    val borderColor = if (isFlux) FluxGlassPalette.cardBorder else if (cleanModern) CleanModernPalette.CardBorder else fileApexAccent()
     val menuIconTint = if (isFlux) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
 
     Card(
@@ -155,7 +155,7 @@ internal fun DeviceCardPopOver(
                         Text(
                             text = statText,
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal,
+                            color = if (isFlux) FluxGlassPalette.accent else fileApexAccent(),
                             softWrap = false
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -165,8 +165,8 @@ internal fun DeviceCardPopOver(
                                 .fillMaxWidth()
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(1.5.dp)),
-                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal,
-                            trackColor = (if (isFlux) FluxGlassPalette.accent else FileApexTeal).copy(alpha = 0.2f)
+                            color = if (isFlux) FluxGlassPalette.accent else fileApexAccent(),
+                            trackColor = (if (isFlux) FluxGlassPalette.accent else fileApexAccent()).copy(alpha = 0.2f)
                         )
                     }
                 } else if (connecting) {
@@ -174,13 +174,13 @@ internal fun DeviceCardPopOver(
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal
+                            color = if (isFlux) FluxGlassPalette.accent else fileApexAccent()
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringRes("connecting"),
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal,
+                            color = if (isFlux) FluxGlassPalette.accent else fileApexAccent(),
                             softWrap = false
                         )
                     }

@@ -46,7 +46,7 @@ import com.fileapex.ui.ExplorerEntryIcons
 import com.fileapex.ui.NOTES_SENDING_LABEL
 import com.fileapex.ui.rectIn
 import androidx.compose.ui.geometry.Rect
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import kotlinx.coroutines.launch
 
 @Composable
@@ -242,7 +242,7 @@ internal fun NotesScope.NotesAttachmentChip() {
                     Icon(
                         imageVector = ExplorerEntryIcons.iconForFile(chipName, ""),
                         contentDescription = null,
-                        tint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
+                        tint = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent(),
                         modifier = Modifier.size(22.dp)
                     )
                 }

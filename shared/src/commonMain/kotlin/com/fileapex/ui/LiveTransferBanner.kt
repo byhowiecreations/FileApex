@@ -35,7 +35,7 @@ import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.i18n.stringRes
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 
 /** True where the bottom transfer banner is shown, so a transfer-start snackbar would only repeat it. */
 val LocalShowsTransferBanner = staticCompositionLocalOf { false }
@@ -75,7 +75,7 @@ fun LiveTransferBanner(
     ) {
         val currentTheme = LocalAppTheme.current
         val isCustomGlass = currentTheme.traits.glassNotesSurfaces
-        val accentColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+        val accentColor = if (isCustomGlass) Color(0xFF00E5FF) else fileApexAccent()
         val surfaceColor = if (isCustomGlass) {
             Color(0xFF0F172A).copy(alpha = 0.92f)
         } else {

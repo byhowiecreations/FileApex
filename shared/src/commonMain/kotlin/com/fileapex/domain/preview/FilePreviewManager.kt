@@ -13,7 +13,15 @@ import kotlinx.io.readAtMostTo
  * Loads capped preview bytes for local/remote files. Rejects unknown/zero sizes.
  */
 class FilePreviewManager(
-    private val target: BrowseTarget
+    private val target: BrowseTarget,
+    private val remoteBytesLoader: suspend (BrowseTarget.Remote, RemoteFileItem, Long) -> ByteArray = { browseTarget, item, maxBytes ->
+        FileApexServices.client.downloads.downloadBytes(
+            host = browseTarget.host,
+            port = browseTarget.port,
+            remotePath = item.absolutePath,
+            maxBytes = maxBytes
+        )
+    }
 ) {
     fun assertPreviewAllowed(item: RemoteFileItem, maxBytes: Long) {
         if (item.sizeBytes <= 0L) {
@@ -34,14 +42,7 @@ class FilePreviewManager(
         assertPreviewAllowed(item, maxBytes)
         return when (val browseTarget = target) {
             is BrowseTarget.Local -> readLocalBytesCapped(item.absolutePath, maxBytes)
-            is BrowseTarget.Remote -> {
-                FileApexServices.client.downloads.downloadBytes(
-                    host = browseTarget.host,
-                    port = browseTarget.port,
-                    remotePath = item.absolutePath,
-                    maxBytes = maxBytes
-                )
-            }
+            is BrowseTarget.Remote -> remoteBytesLoader(browseTarget, item, maxBytes)
             is BrowseTarget.Demo -> {
                 com.fileapex.domain.demo.DemoModeState.getDemoPreviewBytes(item.name)
             }

@@ -27,6 +27,7 @@ internal class NotesFrame(
     val cardBg: Color,
     val textColor: Color,
     val subTextColor: Color,
+    val accent: Color,
     val pickAttachment: () -> Unit
 ) {
     val displayNotes get() = state.rawNotes

@@ -1,5 +1,6 @@
 package com.fileapex.ui.devices
 
+import com.fileapex.ui.theme.fileApexAccentContainer
 import com.fileapex.ui.motion.pressScale
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.BorderStroke
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,12 +76,11 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.DeviceEntryIcon
-import com.fileapex.ui.adaptive.OnlineStatusDot
 import com.fileapex.ui.deviceIconFillsOrb
 import com.fileapex.ui.dnd.deviceFileDropTarget
 import com.fileapex.ui.theme.CleanModernPalette
-import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.fileApexAccent
+import com.fileapex.ui.theme.fileApexAccentDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.LocalFileApexUiStyle
@@ -115,7 +116,7 @@ internal fun SendClipboardActionChip(
                 isLoading -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                 jaded -> KineticStyleLook.jadedCardEdge
                 glass -> FluxGlassPalette.cyan.copy(alpha = 0.50f)
-                else -> FileApexTeal.copy(alpha = 0.55f)
+                else -> fileApexAccent().copy(alpha = 0.55f)
             }
         ),
         shadowElevation = when {
@@ -134,7 +135,7 @@ internal fun SendClipboardActionChip(
                 CircularProgressIndicator(
                     modifier = Modifier.size(15.dp),
                     strokeWidth = 2.dp,
-                    color = if (glass) FluxGlassPalette.accent else FileApexTeal
+                    color = if (glass) FluxGlassPalette.accent else fileApexAccent()
                 )
             } else {
                 Icon(
@@ -142,7 +143,7 @@ internal fun SendClipboardActionChip(
                     contentDescription = null,
                     tint = when {
                         glass -> FluxGlassPalette.accent
-                        else -> FileApexTeal
+                        else -> fileApexAccent()
                     },
                     modifier = Modifier.size(15.dp)
                 )
@@ -152,7 +153,7 @@ internal fun SendClipboardActionChip(
                 text = stringRes("send_clipboard"),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.5.sp
+                    fontSize = 12.sp
                 ),
                 color = if (isLoading) {
                     (if (glass) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.6f)
@@ -244,11 +245,11 @@ internal fun DeviceCard(
     val cleanModern = isFileApexCleanModern()
     val isFlux = currentTheme.traits.fluxSurfaces
     val containerColor = when {
-        dragging -> FileApexTeal.copy(alpha = 0.14f)
-        dropHover -> FileApexTeal.copy(alpha = 0.22f)
+        dragging -> fileApexAccent().copy(alpha = 0.14f)
+        dropHover -> fileApexAccent().copy(alpha = 0.22f)
         selected && isFlux -> FluxGlassPalette.navSelectedPill
-        selected && cleanModern -> CleanModernPalette.NavSelectedPill
-        selected -> FileApexTeal.copy(alpha = 0.12f)
+        selected && cleanModern -> fileApexAccentContainer()
+        selected -> fileApexAccent().copy(alpha = 0.12f)
         isCardHovered && cleanModern -> CleanModernPalette.CardHover
         isCardHovered && isFlux -> FluxGlassPalette.cardHover
         cleanModern -> CleanModernPalette.CardSurface
@@ -284,11 +285,11 @@ internal fun DeviceCard(
         border = BorderStroke(
             width = 1.dp,
             color = when {
-                highlighted -> if (isFlux) FluxGlassPalette.navSelectedTint else FileApexTeal
+                highlighted -> if (isFlux) FluxGlassPalette.navSelectedTint else fileApexAccent()
                 fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                 cleanModern -> CleanModernPalette.CardBorder
                 isFlux -> FluxGlassPalette.cardBorder
-                else -> FileApexTeal.copy(alpha = 0.10f)
+                else -> fileApexAccent().copy(alpha = 0.10f)
             }
         )
     ) {
@@ -323,7 +324,7 @@ internal fun DeviceCard(
                         Text(
                             text = statText,
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = FileApexTeal,
+                            color = fileApexAccent(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { statOverflow = it.hasVisualOverflow }
@@ -335,8 +336,8 @@ internal fun DeviceCard(
                                 .fillMaxWidth()
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(1.5.dp)),
-                            color = FileApexTeal,
-                            trackColor = FileApexTeal.copy(alpha = 0.2f)
+                            color = fileApexAccent(),
+                            trackColor = fileApexAccent().copy(alpha = 0.2f)
                         )
                     }
                 } else if (connecting) {
@@ -344,40 +345,31 @@ internal fun DeviceCard(
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = FileApexTeal
+                            color = fileApexAccent()
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringRes("connecting"),
                             style = MaterialTheme.typography.bodySmall,
-                            color = FileApexTeal,
+                            color = fileApexAccent(),
                             maxLines = 1,
                             overflow = TextOverflow.Clip
                         )
                     }
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if ((cleanModern || isFlux) && row.online && !editMode) {
-                            OnlineStatusDot(isFlux = isFlux)
-                            Spacer(modifier = Modifier.width(5.dp))
-                        }
-                        Text(
-                            text = DeviceListRow.localizedSubtitle(row),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = true,
-                            onTextLayout = { subtitleOverflow = it.hasVisualOverflow }
-                        )
-                    }
+                    DeviceCaption(
+                        row = row,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onTextLayout = { subtitleOverflow = it.hasVisualOverflow }
+                    )
                 }
             }
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
                     contentDescription = stringRes("selected"),
-                    tint = FileApexTeal,
+                    tint = fileApexAccent(),
                     modifier = Modifier
                         .padding(end = 4.dp)
                         .size(22.dp)
@@ -458,6 +450,14 @@ internal fun DeviceCard(
 
 @Composable
 private fun DeviceCardIconBadge(row: DeviceListRow, cleanModern: Boolean, isFlux: Boolean) {
+    Box {
+        DeviceCardIcon(row, cleanModern, isFlux)
+        RouteBadge(row, Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp))
+    }
+}
+
+@Composable
+private fun DeviceCardIcon(row: DeviceListRow, cleanModern: Boolean, isFlux: Boolean) {
     val iconStyle = LocalThemeIconStyle.current
     if (cleanModern || (isFlux && iconStyle == ThemeIconStyle.STANDARD)) {
         val shape = RoundedCornerShape(9.dp)
@@ -475,7 +475,7 @@ private fun DeviceCardIconBadge(row: DeviceListRow, cleanModern: Boolean, isFlux
             contentAlignment = Alignment.Center
         ) {
             val iconMod = if (deviceIconFillsOrb(iconStyle)) Modifier.fillMaxSize().padding(2.dp) else Modifier.size(24.dp)
-            DeviceEntryIcon(row = row, modifier = iconMod, tint = FileApexTealDark)
+            DeviceEntryIcon(row = row, modifier = iconMod, tint = fileApexAccentDark())
         }
     }
 }

@@ -15,6 +15,7 @@ import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.di.FileApexServices
+import com.fileapex.update.FileApexAppVersion
 import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.LanPairingDiscovery
@@ -177,7 +178,7 @@ class DevicesViewModel : ViewModel() {
                     if (rows.isEmpty() && isDemoActive) {
                         demoRows
                     } else {
-                        DeviceOrderCoordinator.applySavedOrder(rows)
+                        DeviceOrderCoordinator.applySavedOrder(DeviceListRow.markBehind(rows, FileApexAppVersion.NAME))
                     }
                 }
             } else {

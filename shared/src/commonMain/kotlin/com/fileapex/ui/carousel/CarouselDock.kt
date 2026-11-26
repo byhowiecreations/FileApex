@@ -203,7 +203,7 @@ fun CarouselDock(
                         ) {
                             Text(
                                 text = if (unreadCount > 99) "99+" else unreadCount.toString(),
-                                fontSize = 10.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = CarouselPalette.onAccent
                             )

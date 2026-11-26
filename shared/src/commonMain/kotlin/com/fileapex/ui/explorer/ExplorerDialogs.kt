@@ -4,8 +4,6 @@ import com.fileapex.ui.transfer.TransferRowDensity
 import com.fileapex.ui.transfer.LiveTransferRow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,7 +17,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -31,7 +28,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -226,90 +222,30 @@ internal fun ExplorerScope.ExplorerMultiCopyPicker() {
     } } }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ExplorerScope.ExplorerPreviewDialog() {
     with(inputs) { with(frame) { with(live) {
     val preview = state.previewItem
     if (preview != null || state.isPreviewLoading) {
-        AlertDialog(
-            onDismissRequest = viewModel::dismissPreview,
-            title = { Text(preview?.name ?: stringRes("preview")) },
-            text = {
-                Column {
-                    when {
-                        state.isPreviewLoading -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 120.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                        state.previewImage != null -> {
-                            Image(
-                                bitmap = state.previewImage!!,
-                                contentDescription = preview?.name,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 480.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-                        state.previewPages.isNotEmpty() -> {
-                            Column(
-                                modifier = Modifier
-                                    .heightIn(max = 480.dp)
-                                    .verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                state.previewPages.forEach { page ->
-                                    Image(
-                                        bitmap = page,
-                                        contentDescription = preview?.name,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentScale = ContentScale.FillWidth
-                                    )
-                                }
-                            }
-                        }
-                        state.previewText != null -> {
-                            Column(
-                                modifier = Modifier
-                                    .heightIn(max = 420.dp)
-                                    .verticalScroll(rememberScrollState())
-                            ) {
-                                Text(state.previewText!!)
-                            }
-                        }
-                        else -> {
-                            Text(stringRes("no_preview"))
-                        }
-                    }
-                    if (preview != null) {
-                        Text(
-                            com.fileapex.platform.formatHostFileSize(preview.sizeBytes),
-                            modifier = Modifier.padding(top = 8.dp),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
+        val files = state.contentFiles
+        val neighbours = preview?.let { FileViewerLogic.neighbours(files, it) }
+        FileViewer(
+            name = preview?.name ?: stringRes("preview"),
+            sizeText = preview?.let { com.fileapex.platform.formatHostFileSize(it.sizeBytes) }.orEmpty(),
+            position = preview?.let { FileViewerLogic.position(files, it) },
+            body = when {
+                state.isPreviewLoading -> ViewerBody.Loading
+                state.previewImage != null -> ViewerBody.Image(state.previewImage!!)
+                state.previewPages.isNotEmpty() -> ViewerBody.Pages(state.previewPages)
+                state.previewText != null -> ViewerBody.Text(state.previewText!!)
+                else -> ViewerBody.Unsupported
             },
-            confirmButton = {
-                TextButton(onClick = viewModel::dismissPreview) { Text(stringRes("close")) }
-            },
-            dismissButton = {
-                if (state.canDownloadPreview) {
-                    TextButton(
-                        onClick = viewModel::downloadPreview,
-                        enabled = !state.isDownloading && !state.isPreviewLoading
-                    ) {
-                        Text(if (state.isDownloading) stringRes("downloading") else stringRes("download"))
-                    }
-                }
-            }
+            canDownload = state.canDownloadPreview,
+            downloading = state.isDownloading,
+            onDownload = viewModel::downloadPreview,
+            onClose = viewModel::dismissPreview,
+            onPrevious = neighbours?.previous?.let { target -> { viewModel.activateFile(target) } },
+            onNext = neighbours?.next?.let { target -> { viewModel.activateFile(target) } }
         )
     }
     } } }

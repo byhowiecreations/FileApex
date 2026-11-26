@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
-/** Serves downscaled JPEG thumbnails for authorized image and video files under shared roots. */
+/** Serves downscaled JPEG thumbnails for authorized image, video, PDF, audio and APK files under shared roots. */
 internal fun Route.registerFileThumbnailRoute(server: FileApexServer) {
     get("/api/v1/files/thumbnail") {
         cancellableCatching {
@@ -41,7 +41,7 @@ internal fun Route.registerFileThumbnailRoute(server: FileApexServer) {
                 ?: RemoteThumbnailPolicy.DEFAULT_EDGE
             val clampedEdge = RemoteThumbnailPolicy.clampEdge(requestedEdge)
             val inferredMime = RemoteThumbnailPolicy.inferMimeType(filePath.name, "")
-            if (!inferredMime.startsWith("image/") && !inferredMime.startsWith("video/")) {
+            if (RemoteThumbnailPolicy.kindOf(filePath.name, inferredMime, metadata?.size ?: 0L) == null) {
                 return@cancellableCatching call.respond(HttpStatusCode.NotFound)
             }
             val bytes = withContext(Dispatchers.IO) {

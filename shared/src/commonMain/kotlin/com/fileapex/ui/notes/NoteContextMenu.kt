@@ -15,7 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.BriefToast
 import com.fileapex.platform.PlatformClipboard
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -124,7 +124,7 @@ internal fun NoteRevealActions(
             NoteRevealAction(
                 icon = Icons.Filled.ContentCopy,
                 contentDescription = stringRes("copy_to_clipboard"),
-                containerColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal,
+                containerColor = if (isCustomGlass) Color(0xFF00E5FF) else fileApexAccent(),
                 onClick = {
                     PlatformClipboard.setSystemClipboardText(copyableText)
                     snackbar.say(AppI18n.t("copied_to_clipboard"))
@@ -135,7 +135,7 @@ internal fun NoteRevealActions(
         NoteRevealAction(
             icon = if (locked) Icons.Filled.Lock else Icons.Filled.LockOpen,
             contentDescription = stringRes(if (locked) "unlock_attachment" else "lock_attachment"),
-            containerColor = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
+            containerColor = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent(),
             onClick = onLockClick
         )
         NoteRevealAction(

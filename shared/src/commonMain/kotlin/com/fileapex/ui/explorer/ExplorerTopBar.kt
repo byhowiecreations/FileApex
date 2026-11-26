@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerActionCopy
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.KineticStyleLook
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,7 +92,7 @@ internal fun ExplorerScope.ExplorerCopyButtons() {
                 onClick = { viewModel.pickSelected(pick) },
                 icon = { Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null) },
                 text = { Text(stringRes("send")) },
-                containerColor = FileApexTeal,
+                containerColor = fileApexAccent(),
                 contentColor = MaterialTheme.colorScheme.onPrimary
             )
         } else if (showCopyFabs) {
@@ -121,7 +121,7 @@ internal fun ExplorerScope.ExplorerCopyButtons() {
                         )
                     },
                     text = { Text(ExplorerActionCopy.SEND_TO_ACTION) },
-                    containerColor = FileApexTeal,
+                    containerColor = fileApexAccent(),
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             }

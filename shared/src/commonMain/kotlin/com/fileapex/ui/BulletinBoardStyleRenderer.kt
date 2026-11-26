@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.FluxGlassPalette
 import kotlin.math.sin
 
@@ -269,13 +269,13 @@ fun BulletinBubbleContainer(
                     RoundedCornerShape(16.dp, 16.dp, 16.dp, 2.dp)
                 }
                 val bg = if (isMine) {
-                    if (isCustomGlass) FluxGlassPalette.accentFill else FileApexTeal.copy(alpha = 0.20f)
+                    if (isCustomGlass) FluxGlassPalette.accentFill else fileApexAccent().copy(alpha = 0.20f)
                 } else {
                     if (isCustomGlass) FluxGlassPalette.notesCard else cardBg
                 }
 
                 val borderColor = when {
-                    highlighted -> if (isCustomGlass) FluxGlassPalette.cyan else FileApexTeal
+                    highlighted -> if (isCustomGlass) FluxGlassPalette.cyan else fileApexAccent()
                     isCustomGlass -> Color.White.copy(alpha = 0.18f)
                     else -> Color.White.copy(alpha = 0.10f)
                 }
@@ -583,7 +583,7 @@ fun BulletinStylePreviewCard(
                             fontSize = if (compact) 10.sp else 11.sp
                         ),
                         color = when (style) {
-                            BulletinBoardStyle.DEFAULT -> if (isCustomGlass) FluxGlassPalette.accent else FileApexTeal
+                            BulletinBoardStyle.DEFAULT -> if (isCustomGlass) FluxGlassPalette.accent else fileApexAccent()
                             BulletinBoardStyle.STICKY_NOTE -> Color(0xFFB71C1C)
                             BulletinBoardStyle.TORN_LEDGER -> Color(0xFF1E5BB0)
                             BulletinBoardStyle.IOS_MODERN -> Color.White

@@ -41,6 +41,7 @@ class FileApexClient(
     val alerts = PeerAlertClient(this)
     val cluster = PeerClusterClient(this)
     val notifications = PeerNotificationClient(this)
+    val deviceIcons = PeerDeviceIconClient(this)
     val clipboard = PeerClipboardClient(this)
 
     fun rememberSessionPin(host: String, port: Int, pin: String) {
@@ -491,10 +492,3 @@ class FileApexClient(
         private const val DIAGNOSTICS_TIMEOUT_MS = 25_000L
     }
 }
-
-@kotlinx.serialization.Serializable
-data class RenameDeviceRequest(
-    val deviceName: String,
-    val renamedByDeviceId: String = "",
-    val renamedByDeviceName: String = ""
-)

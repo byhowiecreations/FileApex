@@ -1,7 +1,6 @@
 package com.fileapex.data.settings
 
 import com.fileapex.domain.clipboard.ClipboardShareMode
-import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.iroh.IrohRelaySetting
@@ -50,7 +49,7 @@ class BaseAppSettings(
             )
         )
     private val liveTransferCapsuleFlow =
-        MutableStateFlow(store.getBoolean(KEY_LIVE_TRANSFER_CAPSULE, false))
+        MutableStateFlow(store.getBoolean(KEY_LIVE_TRANSFER_CAPSULE, true))
     private val liveTransferShowQueueFlow =
         MutableStateFlow(store.getBoolean(KEY_LIVE_TRANSFER_SHOW_QUEUE, false))
     private val pinRequired = MutableStateFlow(store.getBoolean(KEY_PIN_REQUIRED, false))
@@ -158,6 +157,9 @@ class BaseAppSettings(
     override val simpleActiveDeviceId: StateFlow<String> = simpleActiveDeviceIdFlow.asStateFlow()
     override val pairLink = PairLinkSettings(store)
     override val motion = MotionSettings(store)
+    override val textScale = TextScaleSettings(store)
+    override val accent = AccentSettings(store)
+    override val deviceIconSync = DeviceIconSyncSettings(store)
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )

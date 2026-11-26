@@ -37,7 +37,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.data.settings.LocalThemeIconStyle
@@ -228,14 +227,11 @@ internal fun FreestyleScope.FreestyleDeviceNode(
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 6.dp, end = 6.dp)
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(statusColor)
-                                .border(BorderStroke(1.5.dp, Color(0xFF0D1E2D)), CircleShape)
+                        RouteBadge(
+                            row,
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .offset(x = -orbBadgeInset(deviceButtonSizeDp), y = -orbBadgeInset(deviceButtonSizeDp))
                         )
                     }
                 }
@@ -256,8 +252,6 @@ internal fun FreestyleScope.FreestyleDeviceNode(
                     text = row.deviceName,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp
                     ),
                     color = Color.White,
                     maxLines = 2,

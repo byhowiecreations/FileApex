@@ -274,13 +274,11 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             }
             val channel = call.receiveChannel()
             val uploadFileName = targetPathStr.substringAfterLast('/').substringAfterLast('\\')
-            com.fileapex.domain.transfer.TransferActivityGuard.beginTransfer(fileName = uploadFileName)
-            val receivedOrCancelled = try {
+            val trackedTotal = totalSize ?: sessionLength?.let { offset + it } ?: 0L
+            val receivedOrCancelled = trackInboundUpload(uploadFileName, senderId, cancelKey, offset, trackedTotal) { onBytes ->
                 receiveCancelable(cancelKey) {
-                    server.receiveUploadBytes(channel, partPath, offset, sessionLength)
+                    server.receiveUploadBytes(channel, partPath, offset, sessionLength, onBytes)
                 }
-            } finally {
-                com.fileapex.domain.transfer.TransferActivityGuard.endTransfer()
             }
             if (receivedOrCancelled == null) {
                 discardCancelledPart(partPath)
@@ -419,13 +417,13 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             }
             val channel = call.receiveChannel()
             ActiveSegmentWriters.enter(target.partPath)
-            com.fileapex.domain.transfer.TransferActivityGuard.beginTransfer(fileName = target.fileName)
             val receivedOrCancelled = try {
-                receiveCancelable(cancelKey) {
-                    server.receiveSegmentBytes(channel, target.partPath, target.totalSize, offset, length)
+                InboundSegmentProgress.trackSegment(target.partPath, target.fileName, target.senderId, target.totalSize) { onBytes ->
+                    receiveCancelable(cancelKey) {
+                        server.receiveSegmentBytes(channel, target.partPath, target.totalSize, offset, length, onBytes)
+                    }
                 }
             } finally {
-                com.fileapex.domain.transfer.TransferActivityGuard.endTransfer()
                 ActiveSegmentWriters.exit(target.partPath)
             }
             if (receivedOrCancelled == null) {

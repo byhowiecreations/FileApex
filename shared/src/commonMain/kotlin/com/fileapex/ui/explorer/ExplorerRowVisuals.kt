@@ -20,15 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import com.fileapex.domain.preview.RemoteThumbnailPolicy
+import com.fileapex.platform.decodeThumbnailBitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.fileapex.domain.model.RemoteFileItem
-import com.fileapex.platform.decodeLocalImageFile
-import com.fileapex.platform.decodeVideoPoster
 import com.fileapex.ui.ExplorerEntryIcon
 import com.fileapex.ui.JadedFileGlyph
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,7 +39,7 @@ internal fun SelectionIndicator(selected: Boolean) {
             .size(22.dp)
             .clip(CircleShape)
             .background(
-                if (selected) FileApexTeal
+                if (selected) fileApexAccent()
                 else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
             ),
         contentAlignment = Alignment.Center
@@ -80,7 +79,7 @@ internal fun ExplorerFileVisual(
 
 @Composable
 private fun rememberMediaThumb(item: RemoteFileItem, isRemoteTarget: Boolean): ImageBitmap? {
-    if (!RemoteThumbnailPolicy.isMediaCandidate(item)) return null
+    if (RemoteThumbnailPolicy.kindOf(item) == null) return null
     val remoteFetcher = LocalRemoteThumbnailFetcher.current
     if (isRemoteTarget && remoteFetcher == null) return null
     var bitmap by remember(item.absolutePath, isRemoteTarget, item.lastModified, item.sizeBytes) {
@@ -93,11 +92,7 @@ private fun rememberMediaThumb(item: RemoteFileItem, isRemoteTarget: Boolean): I
             val inferredMime = RemoteThumbnailPolicy.inferMimeType(item.name, item.mimeType)
             withContext(Dispatchers.IO) {
                 cancellableCatching("ExplorerRowVisuals rememberMediaThumb 2") {
-                    if (inferredMime.startsWith("video/")) {
-                        decodeVideoPoster(item.absolutePath, 256)
-                    } else {
-                        decodeLocalImageFile(item.absolutePath, 256)
-                    }
+                    decodeThumbnailBitmap(item.absolutePath, inferredMime, 256)
                 }.getOrNull()
             }
         }

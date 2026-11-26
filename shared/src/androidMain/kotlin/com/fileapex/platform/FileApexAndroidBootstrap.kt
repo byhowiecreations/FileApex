@@ -55,6 +55,7 @@ object FileApexAndroidBootstrap {
             com.fileapex.security.tls.TlsFrontFactory.install { com.fileapex.security.tls.AndroidTlsIdentity.store() }
             initAndroidLanConnectivity(appContext)
             initAndroidTransferReceiveNotifier(appContext)
+            initAndroidDocumentThumbnails(appContext)
             initAndroidNoteReceiveNotifier(appContext)
             initAndroidClipboardOptInNotifier(appContext)
             initAndroidDriveRelayNotifier(appContext)
@@ -81,6 +82,7 @@ object FileApexAndroidBootstrap {
             }
             BatteryBulletinCoordinator.onProcessStart(appContext)
             com.fileapex.widget.WidgetEventSync.start(appContext)
+            TransferProgressNotifier.start(appContext, deferredScope)
             Log.i(TAG, "Android process init complete")
             return true
         }

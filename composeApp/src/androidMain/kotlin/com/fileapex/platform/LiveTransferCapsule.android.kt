@@ -24,13 +24,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-
-
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.domain.transfer.liveTransferCapsuleContent
+import com.fileapex.i18n.AppI18n
 import com.fileapex.ui.theme.FileApexTeal
 import kotlinx.coroutines.delay
 
@@ -63,7 +62,10 @@ data class CapsuleDisplayData(
     val state: CapsuleState = CapsuleState.Hidden,
     val title: String = "",
     val subtitle: String = "",
+    val percentLabel: String = "",
     val progress: Float = 0f,
+    val indeterminate: Boolean = false,
+    val isReceiving: Boolean = false,
     val pendingCount: Int = 0
 )
 
@@ -101,28 +103,19 @@ fun LiveTransferCapsuleOverlay(
 
         when {
             isTransferActive || activeSendingItem != null -> {
-                val isSingle = (activeSendingItem?.sourceSummary?.contains(",") != true) && pendingCount <= 1
-                val title = if (isSingle) {
-                    com.fileapex.i18n.AppI18n.t("sending_file")
-                } else {
-                    com.fileapex.i18n.AppI18n.t("sending_files")
-                }
-                val rateParts = buildList {
-                    if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
-                    if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
-                }
-                val speedAndEta = if (rateParts.isNotEmpty()) rateParts.joinToString(" • ") else ""
-                val subtitle = when {
-                    speedAndEta.isNotBlank() && pendingCount > 1 -> "$speedAndEta (${pendingCount})"
-                    speedAndEta.isNotBlank() -> speedAndEta
-                    pendingCount > 1 -> com.fileapex.i18n.AppI18n.plural("items_in_queue", pendingCount, pendingCount.toString())
-                    else -> com.fileapex.i18n.AppI18n.t("active_transfer")
-                }
+                val content = liveTransferCapsuleContent(
+                    stats = liveStats,
+                    queueCount = pendingCount,
+                    activeSendingSummary = activeSendingItem?.sourceSummary
+                )
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Transferring,
-                    title = title,
-                    subtitle = subtitle,
-                    progress = liveProgress,
+                    title = content.title,
+                    subtitle = content.subtitle,
+                    percentLabel = content.percentLabel,
+                    progress = content.progress,
+                    indeterminate = content.indeterminate,
+                    isReceiving = content.isReceiving,
                     pendingCount = pendingCount
                 )
             }
@@ -130,8 +123,8 @@ fun LiveTransferCapsuleOverlay(
             capsuleData.state == CapsuleState.Transferring && !isTransferActive -> {
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Completed,
-                    title = com.fileapex.i18n.AppI18n.t("transfer_complete"),
-                    subtitle = com.fileapex.i18n.AppI18n.t("all_files_transmitted"),
+                    title = AppI18n.t("transfer_complete"),
+                    subtitle = AppI18n.t("all_files_transmitted"),
                     progress = 1f,
                     pendingCount = 0
                 )
@@ -146,11 +139,11 @@ fun LiveTransferCapsuleOverlay(
         }
     }
 
-
     if (capsuleData.state == CapsuleState.Hidden) return
 
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topMargin = (statusBarPadding + 8.dp).coerceAtLeast(44.dp)
+    val capsuleShape = RoundedCornerShape(20.dp)
 
     Box(
         modifier = modifier
@@ -165,87 +158,113 @@ fun LiveTransferCapsuleOverlay(
         ) {
             Surface(
                 modifier = Modifier
-                    .widthIn(min = 200.dp, max = 340.dp)
-                    .clip(RoundedCornerShape(28.dp))
+                    .fillMaxWidth()
+                    .widthIn(max = 360.dp)
+                    .clip(capsuleShape)
                     .clickable { expanded = !expanded },
+                shape = capsuleShape,
                 color = Color(0xFF181818).copy(alpha = 0.96f),
                 contentColor = Color.White,
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
                 shadowElevation = 10.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f, fill = false)
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(FileApexTeal),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .clip(CircleShape)
-                                    .background(FileApexTeal),
-                                contentAlignment = Alignment.Center
+                            Text(
+                                text = when (capsuleData.state) {
+                                    CapsuleState.Completed -> "✓"
+                                    CapsuleState.Error -> "!"
+                                    CapsuleState.Pending -> "⏳"
+                                    else -> if (capsuleData.isReceiving) "↓" else "↑"
+                                },
+                                color = Color.Black,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    text = when (capsuleData.state) {
-                                        CapsuleState.Completed -> "✓"
-                                        CapsuleState.Error -> "!"
-                                        CapsuleState.Pending -> "⏳"
-                                        else -> "⇄"
-                                    },
-                                    color = Color.Black,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Text(
                                     text = capsuleData.title,
                                     style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp
                                     ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (capsuleData.percentLabel.isNotBlank()) {
+                                    Text(
+                                        text = capsuleData.percentLabel,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = FileApexTeal,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                            if (capsuleData.subtitle.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = capsuleData.subtitle,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontSize = 12.sp
+                                    ),
+                                    color = Color.White.copy(alpha = 0.78f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                if (capsuleData.subtitle.isNotBlank()) {
-                                    Text(
-                                        text = capsuleData.subtitle,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp
-                                        ),
-                                        color = Color.White.copy(alpha = 0.72f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
                             }
                         }
                     }
 
                     if (capsuleData.state == CapsuleState.Transferring) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { capsuleData.progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = FileApexTeal,
-                            trackColor = Color.White.copy(alpha = 0.2f)
-                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        val barModifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 2.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                        if (capsuleData.indeterminate) {
+                            LinearProgressIndicator(
+                                modifier = barModifier,
+                                color = FileApexTeal,
+                                trackColor = Color.White.copy(alpha = 0.2f)
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                progress = { capsuleData.progress },
+                                modifier = barModifier,
+                                color = FileApexTeal,
+                                trackColor = Color.White.copy(alpha = 0.2f),
+                                gapSize = 0.dp,
+                                drawStopIndicator = {}
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
-

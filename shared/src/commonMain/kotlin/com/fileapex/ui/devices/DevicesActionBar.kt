@@ -45,7 +45,7 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DevicesUiState
 import com.fileapex.ui.adaptive.DockedDevicesActionBar
 import com.fileapex.ui.devices.SendClipboardActionChip
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
 import com.fileapex.ui.theme.isFileApexCleanCurved
@@ -67,9 +67,9 @@ internal fun DevicesActionBar(
     }
     if (isFileApexCleanCurved()) {
         val pillColor = MaterialTheme.colorScheme.surface
-        val clipTint = FileApexTeal
+        val clipTint = fileApexAccent()
         val clipText = MaterialTheme.colorScheme.onSurface
-        val addColor = FileApexTeal
+        val addColor = fileApexAccent()
         val addTint = Color.White
         val addText = Color.White
         val isCleanPills = true
@@ -210,7 +210,7 @@ internal fun DevicesActionBar(
                     },
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = FileApexTeal,
+                        containerColor = fileApexAccent(),
                         contentColor = Color.White
                     ),
                     elevation = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {

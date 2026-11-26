@@ -45,6 +45,9 @@ import com.fileapex.data.settings.LocalThemeIconStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
+import com.fileapex.ui.devices.DeviceCaption
+import com.fileapex.ui.devices.RouteBadge
+import com.fileapex.ui.devices.orbBadgeInset
 import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.deviceIconFillsOrb
 import com.fileapex.ui.dnd.deviceFileDropTarget
@@ -264,6 +267,13 @@ internal fun KineticScope.KineticNode(index: Int, row: DeviceListRow) {
                 },
                 tint = Color.White
             )
+            val orbDp = with(density) { currentOrbSizePx.toDp() }
+            RouteBadge(
+                row,
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = -orbBadgeInset(orbDp), y = -orbBadgeInset(orbDp))
+            )
         }
 
         val labelWidthDp = 125.dp
@@ -283,23 +293,17 @@ internal fun KineticScope.KineticNode(index: Int, row: DeviceListRow) {
             ) {
                 Text(
                     text = row.title,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        lineHeight = 14.sp
-                    ),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
                 )
-                Text(
-                    text = DeviceListRow.localizedSubtitle(row),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                DeviceCaption(
+                    row = row,
+                    style = MaterialTheme.typography.labelSmall,
                     color = statusColor,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    softWrap = true,
+                    modifier = Modifier.padding(top = 2.dp),
                     textAlign = TextAlign.Center
                 )
             }

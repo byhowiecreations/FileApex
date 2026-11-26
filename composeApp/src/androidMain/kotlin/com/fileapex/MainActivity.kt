@@ -18,6 +18,8 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -50,7 +52,7 @@ import com.fileapex.platform.ServiceWatchdogScheduler
 import com.fileapex.platform.ShareServerPendingStart
 import com.fileapex.platform.ShareServerRestartCoordinator
 import com.fileapex.platform.log.Log
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.systemBarColors
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.withAppLocale
 import com.fileapex.util.cancellableCatching
@@ -144,10 +146,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val barColor = FileApexTeal.toArgb()
+        // Neutral until the stored theme loads and applySystemBars sets that theme's colors.
+        val startColor = android.graphics.Color.parseColor("#0B1216")
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(barColor),
-            navigationBarStyle = SystemBarStyle.dark(barColor)
+            statusBarStyle = SystemBarStyle.dark(startColor),
+            navigationBarStyle = SystemBarStyle.dark(startColor)
         )
         super.onCreate(savedInstanceState)
         com.fileapex.di.FileApexServices.isPlayStoreBuild = BuildConfig.IS_PLAY_STORE
@@ -178,6 +181,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val appTheme by com.fileapex.di.FileApexServices.settings.appTheme.collectAsState()
+            val kineticStyle by com.fileapex.di.FileApexServices.settings.kineticStyle.collectAsState()
+            LaunchedEffect(appTheme, kineticStyle) { applySystemBars(appTheme, kineticStyle) }
             Box(modifier = Modifier.fillMaxSize()) {
 
                 App(
@@ -569,6 +575,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Whether the active theme has light bars, so the system icons must be dark; kept for onResume. */
+    private var darkSystemBarIcons = false
+
+    private fun applySystemBars(theme: com.fileapex.data.settings.AppTheme, kineticStyle: com.fileapex.data.settings.KineticStyle) {
+        val colors = systemBarColors(theme, kineticStyle)
+        fun style(color: androidx.compose.ui.graphics.Color) =
+            if (colors.darkIcons) SystemBarStyle.light(color.toArgb(), color.toArgb()) else SystemBarStyle.dark(color.toArgb())
+        darkSystemBarIcons = colors.darkIcons
+        enableEdgeToEdge(statusBarStyle = style(colors.status), navigationBarStyle = style(colors.navigation))
+    }
+
     private fun exitFileApex() {
         if (com.fileapex.di.FileApexServices.isDatabaseReady()) {
             kotlinx.coroutines.runBlocking { com.fileapex.di.FileApexServices.presenceMonitor.sayGoodbyeToOnlinePeers() }
@@ -584,8 +601,8 @@ class MainActivity : ComponentActivity() {
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         controller.show(WindowInsetsCompat.Type.systemBars())
-        controller.isAppearanceLightStatusBars = false
-        controller.isAppearanceLightNavigationBars = false
+        controller.isAppearanceLightStatusBars = darkSystemBarIcons
+        controller.isAppearanceLightNavigationBars = darkSystemBarIcons
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {

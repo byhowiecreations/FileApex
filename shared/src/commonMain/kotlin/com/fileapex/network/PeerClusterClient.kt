@@ -30,3 +30,10 @@ class PeerClusterClient internal constructor(private val http: FileApexClient) {
         return RenameConfirmation.fromBody(response.body)
     }
 }
+
+@kotlinx.serialization.Serializable
+data class RenameDeviceRequest(
+    val deviceName: String,
+    val renamedByDeviceId: String = "",
+    val renamedByDeviceName: String = ""
+)

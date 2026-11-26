@@ -171,6 +171,7 @@ internal suspend fun PeerHttpPlatform.executeBoundGetStreamingOnLocalIp(
         val response = try {
             call.execute()
         } catch (error: IOException) {
+            if (!currentCoroutineContext().isActive) throw CancellationException("stream cancelled", error)
             throw failure.error?.let { BoundConnectFailed(it) } ?: error
         }
         response.use {
@@ -179,10 +180,15 @@ internal suspend fun PeerHttpPlatform.executeBoundGetStreamingOnLocalIp(
             if (it.code in 200..299) {
                 val source = it.body.source()
                 val buffer = ByteArray(SocketFileStreamer.BUFFER_BYTES)
-                while (true) {
-                    val read = source.read(buffer)
-                    if (read < 0) break
-                    onChunk(buffer, read)
+                try {
+                    while (true) {
+                        val read = source.read(buffer)
+                        if (read < 0) break
+                        onChunk(buffer, read)
+                    }
+                } catch (error: IOException) {
+                    if (!currentCoroutineContext().isActive) throw CancellationException("stream cancelled", error)
+                    throw error
                 }
             }
             PeerBoundStreamResult(statusCode = it.code)

@@ -38,7 +38,7 @@ object TransferRowMappers {
             canCancel = stats.cancelable,
             canRetry = false,
             canRemove = false,
-            isSend = true,
+            isSend = !stats.isReceiving,
             cancelPauses = stats.parksOnCancel
         )
     }

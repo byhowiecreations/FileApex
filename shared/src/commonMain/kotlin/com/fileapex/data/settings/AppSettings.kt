@@ -308,6 +308,9 @@ interface AppSettings {
     /** Hidden Simple Home link state: the choice time, the computer's grant and the phone's claim. */
     val pairLink: PairLinkSettings
     val motion: MotionSettings
+    val textScale: TextScaleSettings
+    val accent: AccentSettings
+    val deviceIconSync: DeviceIconSyncSettings
     fun setOtherThemesHintShown(shown: Boolean)
     fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)

@@ -15,6 +15,7 @@ import com.fileapex.platform.renderPdfPages
 import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
+import com.fileapex.util.LatestJob
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,12 +29,15 @@ internal class ExplorerPreviewActions(
     private val viewModelScope: CoroutineScope,
     private val target: BrowseTarget,
     private val preview: FilePreviewManager,
-    private val transfers: ExplorerTransferManager,
+    private val transfers: ExplorerTransferManager?,
     private val isRemote: Boolean
 ) {
+    /** Only the newest preview load may write its result, and closing the preview stops the load. */
+    private val latestPreview = LatestJob(viewModelScope)
+
     fun openImagePreview(item: RemoteFileItem) {
         if (target is BrowseTarget.Local) {
-            viewModelScope.launch {
+            latestPreview.launch {
                 _uiState.update {
                     it.copy(
                         previewItem = item,
@@ -69,7 +73,7 @@ internal class ExplorerPreviewActions(
             openDownloadPrompt(item)
             return
         }
-        viewModelScope.launch {
+        latestPreview.launch {
             _uiState.update {
                 it.copy(
                     previewItem = item,
@@ -114,7 +118,7 @@ internal class ExplorerPreviewActions(
             openDownloadPrompt(item)
             return
         }
-        viewModelScope.launch {
+        latestPreview.launch {
             _uiState.update {
                 it.copy(
                     previewItem = item,
@@ -154,11 +158,13 @@ internal class ExplorerPreviewActions(
     }
 
     fun openDownloadPrompt(item: RemoteFileItem) {
+        latestPreview.cancel()
         _uiState.update {
             it.copy(
                 previewItem = item,
                 previewText = null,
                 previewImage = null,
+                previewPages = emptyList(),
                 isPreviewLoading = false,
                 canDownloadPreview = isRemote,
                 statusMessage = null,
@@ -172,7 +178,7 @@ internal class ExplorerPreviewActions(
             openDownloadPrompt(item)
             return
         }
-        viewModelScope.launch {
+        latestPreview.launch {
             _uiState.update {
                 it.copy(
                     previewItem = item,
@@ -209,7 +215,7 @@ internal class ExplorerPreviewActions(
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null, statusMessage = null) }
             cancellableCatching("ExplorerPreviewActions downloadSingleRemoteItem") {
-                transfers.downloadRemote(listOf(item))
+                transfers?.downloadRemote(listOf(item)) ?: emptyList()
             }.fold(
                 onSuccess = { paths ->
                     val downloadedPath = paths.firstOrNull()
@@ -237,6 +243,7 @@ internal class ExplorerPreviewActions(
     }
 
     fun dismissPreview() {
+        latestPreview.cancel()
         _uiState.update {
             it.copy(
                 previewItem = null,

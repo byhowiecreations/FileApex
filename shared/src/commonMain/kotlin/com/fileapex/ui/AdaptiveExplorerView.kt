@@ -63,7 +63,7 @@ import com.fileapex.presentation.ExplorerSortMode
 import com.fileapex.ui.explorer.ExplorerContentPane
 import com.fileapex.ui.explorer.PaneDirectoryRow
 import com.fileapex.ui.explorer.ParentRow
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -216,7 +216,7 @@ fun AdaptiveExplorerView(
                         color = when {
                             ink.jadedGlyphs && !isHovered && !isDraggingDivider -> Color.Transparent
                             isHovered || isDraggingDivider ->
-                                if (ink.styledKinetic) ink.accent else FileApexTeal
+                                if (ink.styledKinetic) ink.accent else fileApexAccent()
                             ink.styledKinetic -> ink.divider
                             else -> MaterialTheme.colorScheme.outlineVariant
                         }

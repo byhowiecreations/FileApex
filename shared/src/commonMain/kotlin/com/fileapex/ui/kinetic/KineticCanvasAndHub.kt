@@ -151,8 +151,6 @@ internal fun KineticScope.KineticHub() {
                         text = stringRes("add_new_device"),
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp
                         ),
                         color = Color.White,
                         textAlign = TextAlign.Center,

@@ -130,7 +130,9 @@ fun EmptyDevicesQuickStartCard(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
             ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            // No shadow: it shows through the translucent fill as a second, square frame.
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(

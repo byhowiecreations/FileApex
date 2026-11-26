@@ -295,6 +295,7 @@ fun App(
     )
     val themeIconStyle by FileApexServices.settings.themeIconStyle.collectAsState()
     val kineticStyle by FileApexServices.settings.kineticStyle.collectAsState()
+    val pickedAccent by FileApexServices.settings.accent.choice.collectAsState()
     val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
     val kineticSphereWallpaperOn by FileApexServices.settings.kineticSphereOrbitalRingsEnabled.collectAsState()
     val kineticSpherePersistentWallpaperOn by FileApexServices.settings.kineticSpherePersistentWallpaperEnabled.collectAsState()
@@ -317,8 +318,9 @@ fun App(
         uiStyle = desktopUiStyle,
         appTheme = appTheme,
         themeIconStyle = themeIconStyle,
-        kineticStyle = kineticStyle
-    ) { com.fileapex.ui.motion.ProvideReducedMotion {
+        kineticStyle = kineticStyle,
+        accent = pickedAccent ?: com.fileapex.ui.theme.AccentChoice.defaultFor(appTheme)
+    ) { androidx.compose.runtime.CompositionLocalProvider(com.fileapex.ui.LocalDeviceIcons provides FileApexServices.deviceIcons) { com.fileapex.ui.theme.ProvideTextScale { com.fileapex.ui.motion.ProvideReducedMotion {
         com.fileapex.friends.ui.FriendsHost()
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val widthClass = widthSizeClassFor(rememberLayoutWidth(maxWidth))
@@ -365,6 +367,7 @@ fun App(
                         } else {
                             Modifier.background(
                                 if (windowsFluent) MaterialTheme.colorScheme.background
+                                else if (appTheme == AppTheme.CLEAN) com.fileapex.ui.theme.CleanModernPalette.CanvasBackdrop
                                 else FileApexTeal
                             )
                         }
@@ -840,7 +843,7 @@ fun App(
             }
         }
         }
-    } }
+    } } } }
     }
 
     LaunchedEffect(Unit) {
@@ -1151,14 +1154,12 @@ private fun CompactHomeContent(
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
-    val onMainHomeScreen = route is AppRoute.Devices
     val devicesViewMode by FileApexServices.settings.devicesViewMode.collectAsState()
     val explorerViewMode by FileApexServices.settings.explorerViewMode.collectAsState()
     val showDevicesViewToggle = route is AppRoute.Devices
     val showExplorerViewToggle = route is AppRoute.Explorer || selectedTab == HomeTab.Files
     CompactPrimaryShell(
         selectedTab = selectedTab,
-        onMainHomeScreen = onMainHomeScreen,
         onDevices = onNavigateHome,
         onFiles = onOpenLocalFiles,
         onSettings = onOpenSettings,

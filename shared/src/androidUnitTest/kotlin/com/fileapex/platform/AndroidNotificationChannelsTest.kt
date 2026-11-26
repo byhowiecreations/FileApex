@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -81,6 +82,35 @@ class AndroidNotificationChannelsTest {
         val channel = notificationManager.getNotificationChannel(AndroidNotificationChannels.BATTERY_ALERTS)
         assertNotNull(channel)
         assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
+    }
+
+    @Test
+    fun testTransferProgressChannelUsesSilentDefaultImportanceAndMigratesLegacy() {
+        val legacy = NotificationChannel(
+            "fileapex_transfer_progress",
+            "Transfer progress",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        notificationManager.createNotificationChannel(legacy)
+
+        AndroidNotificationChannels.ensureTransferProgressChannel(context)
+
+        assertNull(notificationManager.getNotificationChannel("fileapex_transfer_progress"))
+        assertEquals("fileapex_transfer_progress_v2", AndroidNotificationChannels.TRANSFER_PROGRESS)
+        val channel = notificationManager.getNotificationChannel(AndroidNotificationChannels.TRANSFER_PROGRESS)
+        assertNotNull(channel)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, channel.importance)
+        assertNull(channel.sound)
+        assertFalse(channel.shouldVibrate())
+        assertFalse(channel.canShowBadge())
+    }
+
+    @Test
+    fun testTransferReceiveChannelIsNamedFilesReceived() {
+        AndroidNotificationChannels.ensureTransferReceiveChannel(context)
+        val channel = notificationManager.getNotificationChannel(AndroidNotificationChannels.TRANSFER_RECEIVE)
+        assertNotNull(channel)
+        assertEquals("Files received", channel.name.toString())
     }
 }
 

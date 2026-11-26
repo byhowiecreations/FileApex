@@ -49,7 +49,7 @@ private const val MAX_COMMAND_KEYS = 50
 private const val MAX_REPLY_CHARS = 4_000
 
 /** The sender must be a device this install paired with, and its key must match the one on record. */
-private suspend fun verifiedPairedSender(senderDeviceId: String, senderPublicKey: String?): PairedDeviceEntity? {
+internal suspend fun verifiedPairedSender(senderDeviceId: String, senderPublicKey: String?): PairedDeviceEntity? {
     val device = FileApexServices.deviceRepository.getDevice(senderDeviceId.trim()) ?: return null
     if (senderPublicKey == null) return device
     val expected = ClipboardShareCoordinator.resolvePeerPublicKey(device).trim()

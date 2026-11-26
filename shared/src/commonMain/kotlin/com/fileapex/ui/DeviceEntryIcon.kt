@@ -26,6 +26,17 @@ import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.TabletAndroid
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.ImageBitmap
+import com.fileapex.domain.devices.DeviceIconStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,13 +54,26 @@ import com.fileapex.presentation.resolveFluxDrawable
 import com.fileapex.presentation.resolveFreestyleDrawable
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.CleanModernPalette
-import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.fileApexAccentDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 /** Ids of pinned friends shown as device rows. */
 const val FRIEND_ROW_PREFIX = "friend:"
+
+/** Where custom device icons come from; null (the default, and in previews and tests) means every device uses its built-in icon. */
+val LocalDeviceIcons = staticCompositionLocalOf<DeviceIconStore?> { null }
+
+/** The custom icon the user picked for [deviceId], or null; reloads when icons are saved or removed. */
+@Composable
+internal fun rememberCustomDeviceIcon(deviceId: String): ImageBitmap? {
+    val store = LocalDeviceIcons.current ?: return null
+    val version by store.version.collectAsState()
+    var icon by remember(deviceId, version) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(deviceId, version) { icon = withContext(Dispatchers.IO) { store.get(deviceId) } }
+    return icon
+}
 
 @Composable
 fun DeviceEntryIcon(
@@ -60,6 +84,16 @@ fun DeviceEntryIcon(
 ) {
     if (row.isFriend) {
         com.fileapex.friends.ui.FriendGlyph(row.deviceName, row.friendGroup.orEmpty(), row.deviceId.removePrefix(FRIEND_ROW_PREFIX), modifier)
+        return
+    }
+    val custom = rememberCustomDeviceIcon(row.deviceId)
+    if (custom != null) {
+        Image(
+            bitmap = custom,
+            contentDescription = row.deviceName,
+            modifier = modifier.clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
         return
     }
     DeviceEntryIcon(
@@ -91,7 +125,7 @@ fun DeviceEntryIcon(
         tint != Color.Unspecified -> tint
         currentTheme.traits.fluxSurfaces -> FluxGlassPalette.iconBadgeTint
         currentTheme == AppTheme.CLEAN -> CleanModernPalette.IconBadgeTint
-        else -> FileApexTealDark
+        else -> fileApexAccentDark()
     }
     when (iconStyle) {
         ThemeIconStyle.STANDARD -> {

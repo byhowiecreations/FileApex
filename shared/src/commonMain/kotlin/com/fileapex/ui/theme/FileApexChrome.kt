@@ -60,7 +60,7 @@ fun fileApexChromeContainerColor(): Color = when {
     isFileApexCleanModern() -> CleanModernPalette.ChromeSurface
     isFileApexCustomGlassTheme() -> Color.Transparent
     isFileApexFluentUi() -> MaterialTheme.colorScheme.surface
-    else -> FileApexTeal
+    else -> fileApexAccent()
 }
 
 /** Icons and titles on chrome bars. */
@@ -96,7 +96,7 @@ fun fileApexHeaderActionTint(onChromeBar: Boolean = false): Color = when {
 @Composable
 fun fileApexNavSelectedBackgroundColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.PillTint
-    isFileApexCleanModern() -> CleanModernPalette.NavSelectedPill
+    isFileApexCleanModern() -> fileApexAccentContainer()
     LocalAppTheme.current.traits.fluxSurfaces -> FluxGlassPalette.navSelectedPill
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent.copy(alpha = 0.22f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.primaryContainer
@@ -106,11 +106,11 @@ fun fileApexNavSelectedBackgroundColor(): Color = when {
 @Composable
 fun fileApexNavSelectedIconColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMintSoft
-    isFileApexCleanModern() -> FileApexTealDark
+    isFileApexCleanModern() -> fileApexAccentDark()
     LocalAppTheme.current.traits.fluxSurfaces -> FluxGlassPalette.navSelectedTint
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
-    isFileApexFluentUi() -> FileApexTeal
-    else -> FileApexTealDark
+    isFileApexFluentUi() -> fileApexAccent()
+    else -> fileApexAccentDark()
 }
 
 @Composable
@@ -125,10 +125,10 @@ fun fileApexNavUnselectedIconColor(): Color = when {
 @Composable
 fun fileApexNavSelectedTextColor(): Color = when {
     isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMintSoft
-    isFileApexCleanModern() -> FileApexTealDark
+    isFileApexCleanModern() -> fileApexAccentDark()
     LocalAppTheme.current.traits.fluxSurfaces -> Color.White
     isFileApexCustomGlassTheme() -> Color.White
-    isFileApexFluentUi() -> FileApexTeal
+    isFileApexFluentUi() -> fileApexAccent()
     else -> Color.White
 }
 
@@ -247,3 +247,12 @@ fun Modifier.fileApexFloatingChrome(color: Color, radius: Dp = 22.dp, outer: Pad
         base
     }
 }
+
+/** The app title in every header: the same size and weight in every theme. */
+@Composable
+fun fileApexHeaderTitleStyle(): androidx.compose.ui.text.TextStyle =
+    MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+
+/** The line under or beside the app title ("Paired Devices", "Settings"). */
+@Composable
+fun fileApexHeaderSubtitleStyle(): androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium

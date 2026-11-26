@@ -60,7 +60,7 @@ internal fun rememberRemoteThumbnailFetcher(target: BrowseTarget): (suspend (Rem
     val cache = remember(remote.deviceId) { RemoteThumbnailCache() }
     return remember(remote.deviceId, remote.host, remote.port) {
         val fetcher: suspend (RemoteFileItem) -> ImageBitmap? = fetcher@{ item ->
-            if (!RemoteThumbnailPolicy.isMediaCandidate(item)) {
+            if (RemoteThumbnailPolicy.kindOf(item) == null) {
                 return@fetcher null
             }
             val cacheKey = "${remote.deviceId}|${item.absolutePath}|${item.lastModified}|${item.sizeBytes}"

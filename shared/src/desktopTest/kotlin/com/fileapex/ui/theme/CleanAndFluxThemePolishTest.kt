@@ -102,7 +102,6 @@ class CleanAndFluxThemePolishTest {
                 ) {
                     FileApexBottomBar(
                         selected = HomeTab.Devices,
-                        onMainHomeScreen = true,
                         onDevices = {},
                         onFiles = {},
                         onSettings = {}

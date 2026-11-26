@@ -30,7 +30,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.fileapex.i18n.stringRes
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -140,7 +140,7 @@ fun DeviceOrderDragHandle(
         Icon(
             imageVector = Icons.Filled.DragHandle,
             contentDescription = stringRes("drag_to_reorder"),
-            tint = if (isDragging) FileApexTeal else MaterialTheme.colorScheme.onSurfaceVariant
+            tint = if (isDragging) fileApexAccent() else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

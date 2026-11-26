@@ -8,7 +8,6 @@ import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RippleConfiguration
 import androidx.compose.material3.Shapes
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 
@@ -16,11 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.KineticStyle
@@ -46,12 +41,12 @@ private val FluentPrimaryContainer = Color(0xFFDFF0EE)
 
 val LocalFileApexUiStyle = staticCompositionLocalOf { DesktopUiStyle.Standard }
 
-private val StandardColorScheme = lightColorScheme(
-    primary = FileApexTeal,
+private fun standardColorScheme(accent: AccentColors) = lightColorScheme(
+    primary = accent.main,
     onPrimary = Color.White,
-    primaryContainer = CleanModernPalette.NavSelectedPill,
-    onPrimaryContainer = FileApexTealDark,
-    secondary = FileApexTealDark,
+    primaryContainer = accent.container,
+    onPrimaryContainer = accent.dark,
+    secondary = accent.dark,
     onSecondary = Color.White,
     background = CleanModernPalette.CanvasBackdrop,
     onBackground = CleanModernPalette.ChromeContent,
@@ -62,7 +57,13 @@ private val StandardColorScheme = lightColorScheme(
     outline = CleanModernPalette.ChromeBorder,
     outlineVariant = CleanModernPalette.CardBorder,
     error = Color(0xFFB3261E),
-    onError = Color.White
+    onError = Color.White,
+    surfaceTint = Color.Transparent,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF8FAFB),
+    surfaceContainer = CleanModernPalette.CanvasBackdrop,
+    surfaceContainerHigh = Color.White,
+    surfaceContainerHighest = Color(0xFFEEF2F5)
 )
 
 /** Light text on a smooth dark slate-obsidian & teal gradient; dialogs and menus keep opaque containers. */
@@ -92,12 +93,12 @@ private val SimpleColorScheme = darkColorScheme(
     surfaceContainerHighest = Color(0xFF21353A)
 )
 
-private val FluentColorScheme = lightColorScheme(
-    primary = FileApexTeal,
+private fun fluentColorScheme(choice: AccentChoice) = lightColorScheme(
+    primary = choice.colors.main,
     onPrimary = Color.White,
-    primaryContainer = FluentPrimaryContainer,
-    onPrimaryContainer = FileApexTealDark,
-    secondary = FileApexTealDark,
+    primaryContainer = if (choice == AccentChoice.Teal) FluentPrimaryContainer else choice.colors.container,
+    onPrimaryContainer = choice.colors.dark,
+    secondary = choice.colors.dark,
     onSecondary = Color.White,
     background = FluentCanvas,
     onBackground = FileApexInk,
@@ -108,7 +109,13 @@ private val FluentColorScheme = lightColorScheme(
     outline = FluentOutline,
     outlineVariant = Color(0x1A000000),
     error = Color(0xFFC42B1C),
-    onError = Color.White
+    onError = Color.White,
+    surfaceTint = Color.Transparent,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = FluentSurfaceBright,
+    surfaceContainer = FluentCanvas,
+    surfaceContainerHigh = FluentSurfaceBright,
+    surfaceContainerHighest = Color(0xFFF1F1F1)
 )
 
 private val CarouselColorScheme = darkColorScheme(
@@ -127,7 +134,13 @@ private val CarouselColorScheme = darkColorScheme(
     outline = CarouselPalette.borderStrong,
     outlineVariant = CarouselPalette.border,
     error = Color(0xFFFF6B6B),
-    onError = Color(0xFF2A0A0A)
+    onError = Color(0xFF2A0A0A),
+    surfaceTint = Color.Transparent,
+    surfaceContainerLowest = CarouselPalette.background,
+    surfaceContainerLow = CarouselPalette.card,
+    surfaceContainer = CarouselPalette.card,
+    surfaceContainerHigh = CarouselPalette.cardRaised,
+    surfaceContainerHighest = CarouselPalette.borderStrong
 )
 
 private val FluxGlassColorScheme = darkColorScheme(
@@ -148,7 +161,13 @@ private val FluxGlassColorScheme = darkColorScheme(
     outline = FluxGlassPalette.outline,
     outlineVariant = FluxGlassPalette.outlineVariant,
     error = FluxGlassPalette.error,
-    onError = Color.White
+    onError = Color.White,
+    surfaceTint = Color.Transparent,
+    surfaceContainerLowest = FluxGlassPalette.backgroundBottom,
+    surfaceContainerLow = FluxGlassPalette.backgroundMid,
+    surfaceContainer = FluxGlassPalette.notesCard,
+    surfaceContainerHigh = FluxGlassPalette.notesCard,
+    surfaceContainerHighest = FluxGlassPalette.bulletinTop
 )
 
 /** Dropdown menus use the extra small shape; the 4dp default looked sharp beside the rounded cards. */
@@ -178,28 +197,6 @@ private val FluentShapes = Shapes(
     extraLarge = RoundedCornerShape(16.dp)
 )
 
-private fun fluentTypography(fontFamily: FontFamily): Typography {
-    val base = Typography()
-    fun TextStyle.withFluentFont(): TextStyle = copy(fontFamily = fontFamily)
-    return Typography(
-        displayLarge = base.displayLarge.withFluentFont(),
-        displayMedium = base.displayMedium.withFluentFont(),
-        displaySmall = base.displaySmall.withFluentFont(),
-        headlineLarge = base.headlineLarge.withFluentFont(),
-        headlineMedium = base.headlineMedium.withFluentFont(),
-        headlineSmall = base.headlineSmall.withFluentFont(),
-        titleLarge = base.titleLarge.copy(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold),
-        titleMedium = base.titleMedium.copy(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold),
-        titleSmall = base.titleSmall.withFluentFont(),
-        bodyLarge = base.bodyLarge.copy(fontFamily = fontFamily, lineHeight = 22.sp),
-        bodyMedium = base.bodyMedium.withFluentFont(),
-        bodySmall = base.bodySmall.withFluentFont(),
-        labelLarge = base.labelLarge.withFluentFont(),
-        labelMedium = base.labelMedium.withFluentFont(),
-        labelSmall = base.labelSmall.withFluentFont()
-    )
-}
-
 /**
  * Color for text that sets none of its own, per theme and style. These themes draw on transparent or
  * translucent containers, so without it such text falls back to near-black. Null where a solid surface supplies it.
@@ -223,16 +220,16 @@ fun FileApexTheme(
     appTheme: AppTheme = AppTheme.DEFAULT,
     themeIconStyle: com.fileapex.data.settings.ThemeIconStyle = com.fileapex.data.settings.ThemeIconStyle.STANDARD,
     kineticStyle: KineticStyle = KineticStyle.SPACE,
+    accent: AccentChoice = AccentChoice.Teal,
     content: @Composable () -> Unit
 ) {
     val fluent = uiStyle == DesktopUiStyle.WindowsFluent
-    val fontFamily = if (fluent) fluentUiFontFamily() else FontFamily.Default
     val colorScheme = when {
         appTheme == AppTheme.CAROUSEL -> CarouselColorScheme
         appTheme.traits.glassChrome -> FluxGlassColorScheme
-        fluent -> FluentColorScheme
+        fluent -> fluentColorScheme(accent)
         appTheme == AppTheme.SIMPLE -> SimpleColorScheme
-        else -> StandardColorScheme
+        else -> standardColorScheme(accent.colors)
     }
 
     val shapes = when {
@@ -242,11 +239,7 @@ fun FileApexTheme(
         else -> StandardShapes
     }
     val macFont = if (appTheme == AppTheme.CAROUSEL || appTheme == AppTheme.CLEAN) com.fileapex.platform.macSystemFontFamily() else null
-    val typography = when {
-        fluent -> fluentTypography(fontFamily)
-        macFont != null -> fluentTypography(macFont)
-        else -> Typography()
-    }
+    val typography = fileApexTypography(if (fluent) fluentUiFontFamily() else macFont)
     val fluentRipple = RippleConfiguration(
         color = Color(0xFF000000),
         rippleAlpha = RippleAlpha(
@@ -260,6 +253,7 @@ fun FileApexTheme(
     CompositionLocalProvider(
         LocalFileApexUiStyle provides uiStyle,
         LocalAppTheme provides appTheme,
+        LocalAccent provides accent.colors,
         LocalKineticStyle provides kineticStyle,
         com.fileapex.data.settings.LocalThemeIconStyle provides themeIconStyle
     ) {

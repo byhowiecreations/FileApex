@@ -283,7 +283,7 @@ internal fun KineticGlassActionCapsule(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = row.friendGroup ?: if (row.online) DeviceListRow.localizedOnlineLabel(row.reachedBy) else DeviceListRow.offlineLabel(row.canWake),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        style = MaterialTheme.typography.labelSmall,
                         color = statusColor,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -361,7 +361,6 @@ private fun CapsuleActionButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold
             ),
             color = Color.White,

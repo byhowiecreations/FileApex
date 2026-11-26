@@ -1,5 +1,7 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.ui.theme.fileApexHeaderSubtitleStyle
+import com.fileapex.ui.theme.fileApexHeaderTitleStyle
 import androidx.compose.runtime.getValue
 import com.fileapex.ui.HeaderIconButton
 import androidx.compose.foundation.layout.width
@@ -16,34 +18,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.ExpandableSearchPillRow
 import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.QueuedFilesButton
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.fileApexFloatingChrome
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.isFileApexCleanModern
-import com.fileapex.ui.theme.isFileApexTiledChrome
-import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.isFileApexJadedSteel
 import com.fileapex.data.settings.FreestyleLayoutMode
@@ -54,7 +50,6 @@ import androidx.compose.runtime.collectAsState
 import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
-import androidx.compose.foundation.clickable
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.ui.NavDockPositionToggle
 
@@ -108,7 +103,7 @@ fun FluxGlassHeader(
                     }
                     Text(
                         text = primaryTitle,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        style = fileApexHeaderTitleStyle(),
                         color = titleColor,
                         maxLines = 1,
                         softWrap = false
@@ -118,7 +113,7 @@ fun FluxGlassHeader(
                         Text(
                             text = resolvedSecondary,
                             modifier = Modifier.weight(1f, fill = false),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            style = fileApexHeaderSubtitleStyle(),
                             color = subtitleColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -129,11 +124,7 @@ fun FluxGlassHeader(
                 Column(modifier = Modifier.weight(1f, fill = true)) {
                     Text(
                         text = primaryTitle,
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = if (jadedHeader) 22.sp else 30.sp,
-                            letterSpacing = (-0.5).sp
-                        ),
+                        style = fileApexHeaderTitleStyle(),
                         color = titleColor,
                         maxLines = 1,
                         softWrap = false,
@@ -143,10 +134,7 @@ fun FluxGlassHeader(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = resolvedSecondary,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 16.sp
-                            ),
+                            style = fileApexHeaderSubtitleStyle(),
                             color = subtitleColor,
                             maxLines = 2,
                             softWrap = true,
@@ -219,7 +207,7 @@ fun FluxGlassHeader(
             .then(
                 when {
                     jadedHeader -> Modifier.jadedCompactHeaderPanel()
-                    cleanBar -> Modifier.fileApexFloatingChrome(FileApexTeal)
+                    cleanBar -> Modifier.fileApexFloatingChrome(fileApexAccent())
                     else -> Modifier.background(headerBg).fileApexChromeBottomEdge()
                 }
             )

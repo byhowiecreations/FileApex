@@ -18,6 +18,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,7 +50,11 @@ internal fun DeviceDetailsDialog(
                 Text(text = details.errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
                 return@AlertDialog
             }
-            DeviceDetailsRows(details, snapshot, Modifier.fillMaxWidth().height(320.dp))
+            Column {
+                val iconVersion by FileApexServices.deviceIcons.version.collectAsState()
+                DeviceIconSection(details.deviceId, hasCustomIcon = remember(details.deviceId, iconVersion) { FileApexServices.deviceIcons.get(details.deviceId) != null })
+                DeviceDetailsRows(details, snapshot, Modifier.fillMaxWidth().height(320.dp))
+            }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text(stringRes("close")) }

@@ -25,6 +25,9 @@ object AndroidNotificationChannels {
     const val APP_UPDATES = "fileapex_app_updates_v2"
     private const val LEGACY_APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
+    /** The ongoing progress of a running transfer ([TransferProgressNotifier]). */
+    const val TRANSFER_PROGRESS = "fileapex_transfer_progress_v2"
+    private const val LEGACY_TRANSFER_PROGRESS = "fileapex_transfer_progress"
     const val NOTE_MESSAGES = "fileapex_note_messages"
     const val LOCATE_PHONE = "fileapex_locate_phone"
     const val BATTERY_ALERTS = "fileapex_battery_alerts_v1"
@@ -132,6 +135,29 @@ object AndroidNotificationChannels {
             ?.createNotificationChannel(channel)
     }
 
+    fun ensureTransferProgressChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        cancellableCatching("AndroidNotificationChannels ensureTransferProgressChannel") {
+            if (manager.getNotificationChannel(LEGACY_TRANSFER_PROGRESS) != null) {
+                manager.deleteNotificationChannel(LEGACY_TRANSFER_PROGRESS)
+            }
+        }
+        val channel = NotificationChannel(
+            TRANSFER_PROGRESS,
+            com.fileapex.i18n.AppI18n.t("channel_transfer_progress"),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = com.fileapex.i18n.AppI18n.t("channel_transfer_progress_desc")
+            setSound(null, null)
+            enableVibration(false)
+            enableLights(false)
+            setShowBadge(false)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+        }
+        manager.createNotificationChannel(channel)
+    }
+
     fun ensureBackupChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
@@ -209,6 +235,7 @@ object AndroidNotificationChannels {
         ensureNoteMessagesChannel(context)
         ensureBulletinCriticalChannel(context)
         ensureTransferReceiveChannel(context)
+        ensureTransferProgressChannel(context)
         ensureDriveRelayChannel(context)
         ensureShareServerChannel(context)
     }

@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.domain.model.RemoteFileItem
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 
 object ExplorerEntryIcons {
     fun iconFor(item: RemoteFileItem): ImageVector = when {
@@ -91,7 +91,7 @@ fun ExplorerEntryIcon(
 ) {
     val vector = ExplorerEntryIcons.iconFor(item)
     val tint = when {
-        item.isDirectory && tintFolder -> folderColor ?: if (LocalAppTheme.current == AppTheme.CAROUSEL) CarouselPalette.accent else FileApexTeal
+        item.isDirectory && tintFolder -> folderColor ?: if (LocalAppTheme.current == AppTheme.CAROUSEL) CarouselPalette.accent else fileApexAccent()
         item.isDirectory -> MaterialTheme.colorScheme.primary
         else -> fileColor ?: MaterialTheme.colorScheme.primary
     }

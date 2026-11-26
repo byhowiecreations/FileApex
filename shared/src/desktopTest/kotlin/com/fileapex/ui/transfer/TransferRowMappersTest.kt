@@ -142,5 +142,10 @@ class TransferRowMappersTest {
         assertFalse(TransferRowMappers.fromLive(live().copy(parksOnCancel = false), 0, "sending", t).cancelPauses)
         assertFalse(TransferRowMappers.fromPending(pending(paused = true), live(), t).cancelPauses)
     }
+
+    @Test
+    fun `an active receive maps as a receive row rather than a send row`() {
+        assertFalse(TransferRowMappers.fromLive(live().copy(isReceiving = true), 0, "receiving", t).isSend)
+    }
 }
 

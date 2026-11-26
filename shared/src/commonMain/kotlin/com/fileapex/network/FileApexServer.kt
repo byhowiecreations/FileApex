@@ -68,6 +68,7 @@ class FileApexServer(
         { id -> FileApexServices.presenceMonitor.onPeerGoodbye(id) },
     /** What the macOS Finder extensions ask of this app over 127.0.0.1; null where there are none. */
     internal val localExtension: LocalExtensionApi? = null,
+    internal val deviceIconHost: DeviceIconSyncHost = DeviceIconSyncHost.Default,
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
         if (error != null) {
             println("FileApexServer: $message :: ${error.message}")
@@ -224,6 +225,7 @@ class FileApexServer(
                     registerIrohRoutes(this@FileApexServer)
                     registerFileRoutes(this@FileApexServer)
                     registerFileThumbnailRoute(this@FileApexServer)
+                    registerDeviceIconRoutes(this@FileApexServer)
                     registerClipboardRoutes(this@FileApexServer)
                     registerBulletinRoutes(this@FileApexServer)
                     registerDiagnosticRoutes(this@FileApexServer)
@@ -403,7 +405,8 @@ class FileApexServer(
         channel: ByteReadChannel,
         targetPath: String,
         startOffset: Long,
-        expectedLength: Long?
+        expectedLength: Long?,
+        onBytesReceived: (Long) -> Unit = {}
     ): Long = withContext(TransferRuntime.inbound) {
         var received = 0L
         var idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
@@ -422,6 +425,7 @@ class FileApexServer(
                     read > 0 -> {
                         raf.write(buffer, 0, read)
                         received += read.toLong()
+                        onBytesReceived(received)
                         idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
                     }
                     channel.isClosedForRead -> break
@@ -443,7 +447,8 @@ class FileApexServer(
         partPath: String,
         totalSize: Long,
         offset: Long,
-        length: Long
+        length: Long,
+        onBytesReceived: (Long) -> Unit = {}
     ): Long = withContext(TransferRuntime.inbound) {
         var received = 0L
         var recorded = 0L
@@ -462,6 +467,7 @@ class FileApexServer(
                         read > 0 -> {
                             raf.write(buffer, 0, read)
                             received += read.toLong()
+                            onBytesReceived(received)
                             idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
                             if (received - recorded >= TransferRuntime.CHECKPOINT_BYTES) {
                                 raf.channel.force(false)

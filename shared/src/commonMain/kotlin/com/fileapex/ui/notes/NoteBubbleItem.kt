@@ -58,7 +58,7 @@ import com.fileapex.ui.ExplorerEntryIcons
 import com.fileapex.ui.IosModernApexBlue
 import com.fileapex.ui.NoteLinkText
 import com.fileapex.ui.notesAttachmentIsImage
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.util.TimeUtils
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -103,7 +103,7 @@ internal fun NoteBubbleItem(
         else -> subTextColor
     }
     val effectiveHeaderColor = when (style) {
-        BulletinBoardStyle.DEFAULT -> if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+        BulletinBoardStyle.DEFAULT -> if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
         BulletinBoardStyle.STICKY_NOTE -> Color(0xFFB71C1C)
         BulletinBoardStyle.TORN_LEDGER -> Color(0xFF1E5BB0)
         BulletinBoardStyle.IOS_MODERN -> if (isMine) Color.White else IosModernApexBlue
@@ -211,7 +211,7 @@ internal fun NoteBubbleItem(
                         Surface(shape = RoundedCornerShape(4.dp), color = Color(0x3300E5FF)) {
                             Text(
                                 text = stringRes("drive_sync"),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                style = MaterialTheme.typography.labelSmall,
                                 color = Color(0xFF00E5FF),
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
@@ -299,7 +299,7 @@ internal fun NoteBubbleItem(
                     if (footerText.isNotEmpty()) {
                         Text(
                             text = footerText,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            style = MaterialTheme.typography.labelSmall,
                             color = subTextColor
                         )
                     }
@@ -307,11 +307,11 @@ internal fun NoteBubbleItem(
                         CircularProgressIndicator(
                             modifier = Modifier.size(10.dp),
                             strokeWidth = 1.5.dp,
-                            color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+                            color = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
                         )
                         Text(
                             text = stringRes("downloading"),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            style = MaterialTheme.typography.labelSmall,
                             color = subTextColor
                         )
                     }

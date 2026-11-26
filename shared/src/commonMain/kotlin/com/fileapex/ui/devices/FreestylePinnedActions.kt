@@ -199,8 +199,6 @@ internal fun FreestyleScope.FreestylePinnedActions() {
                         text = optAction.label(),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp
                         ),
                         color = Color.White,
                         maxLines = 2,

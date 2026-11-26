@@ -52,7 +52,7 @@ import com.fileapex.ui.DevicesScreenLayoutMode
 import com.fileapex.ui.ExplorerHeaderCommands
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.HomeTab
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.isFileApexCleanModern
@@ -212,7 +212,7 @@ internal fun RowScope.DevicesSplitPane(
                     val showGrabHandle = isFileApexCleanModern() || LocalAppTheme.current.traits.fluxSurfaces
                     VerticalDivider(
                         thickness = if (isHovered || isDraggingDivider) 2.dp else 1.dp,
-                        color = if (isHovered || isDraggingDivider) FileApexTeal else MaterialTheme.colorScheme.outlineVariant
+                        color = if (isHovered || isDraggingDivider) fileApexAccent() else MaterialTheme.colorScheme.outlineVariant
                     )
                     if (showGrabHandle) {
                         Box(
@@ -221,7 +221,7 @@ internal fun RowScope.DevicesSplitPane(
                                 .height(28.dp)
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(
-                                    if (isHovered || isDraggingDivider) FileApexTeal
+                                    if (isHovered || isDraggingDivider) fileApexAccent()
                                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f)
                                 )
                         )

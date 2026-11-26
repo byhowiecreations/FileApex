@@ -67,13 +67,6 @@ enum class HomeTab {
     Settings
 }
 
-/** True only on the paired-devices root (not explorer, settings, or local-files navigation). */
-fun isMainHomeScreen(selectedTab: HomeTab, hasActiveDetail: Boolean = false): Boolean =
-    selectedTab == HomeTab.Devices && !hasActiveDetail
-
-fun devicesNavLabel(onMainHomeScreen: Boolean): String =
-    if (onMainHomeScreen) AppI18n.t("devices") else AppI18n.t("home")
-
 enum class DevicesScreenLayoutMode {
     /** Phone / folded: full scaffold with bottom bar. */
     FullScreen,

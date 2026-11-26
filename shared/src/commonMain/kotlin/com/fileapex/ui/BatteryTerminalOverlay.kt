@@ -205,7 +205,7 @@ fun BatteryTerminalOverlay(
                                 Text(
                                     text = formatTerminalLine(line),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     lineHeight = 15.sp,
                                     softWrap = false
                                 )
@@ -215,35 +215,35 @@ fun BatteryTerminalOverlay(
                                 Text(
                                     text = formatTerminalLine("FileApex Linux v${com.fileapex.update.currentAppVersionName()} (tty1)"),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     lineHeight = 15.sp,
                                     softWrap = false
                                 )
                                 Text(
                                     text = formatTerminalLine("login: fileapex"),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     lineHeight = 15.sp,
                                     softWrap = false
                                 )
                                 Text(
                                     text = formatTerminalLine("root@fileapex:~# ${if (isCompact) "batstat" else "batstat --all-devices"}"),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     lineHeight = 15.sp,
                                     softWrap = false
                                 )
                                 Text(
                                     text = formatTerminalLine("[INIT] Polling battery telemetry across cluster..."),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     lineHeight = 15.sp,
                                     softWrap = false
                                 )
                                 Text(
                                     text = formatTerminalLine("--------------------------------------------------------------------------------"),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     lineHeight = 15.sp,
                                     softWrap = false
                                 )
@@ -264,7 +264,7 @@ fun BatteryTerminalOverlay(
                                     Text(
                                         text = formatTerminalLine("--------------------------------------------------------------------------------"),
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.5.sp,
+                                        fontSize = 12.sp,
                                         lineHeight = 15.sp,
                                         softWrap = false
                                     )
@@ -272,7 +272,7 @@ fun BatteryTerminalOverlay(
                                     Text(
                                         text = formatTerminalLine("[DONE] Query complete: ${onlineItems.size} online, ${offlineItems.size} offline."),
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.5.sp,
+                                        fontSize = 12.sp,
                                         lineHeight = 15.sp,
                                         softWrap = false
                                     )
@@ -288,13 +288,13 @@ fun BatteryTerminalOverlay(
                                 Text(
                                     text = "root@fileapex:~# ",
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     color = Color(0xFF00FF66)
                                 )
                                 Text(
                                     text = if (cursorAlpha > 0.5f) "█" else " ",
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     color = Color(0xFF00FF66)
                                 )
                             }
@@ -312,7 +312,7 @@ fun BatteryTerminalOverlay(
                         Text(
                             text = if (isComplete) "SESSION COMPLETE" else "POLLING NODES...",
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isComplete) Color(0xFF00FF66) else Color(0xFFFFD54F)
                         )
@@ -320,7 +320,7 @@ fun BatteryTerminalOverlay(
                             Text(
                                 text = "[ESC / TAP OUTSIDE TO EXIT]",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 9.5.sp,
+                                fontSize = 12.sp,
                                 color = Color.White.copy(alpha = 0.5f)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -343,7 +343,7 @@ fun BatteryTerminalOverlay(
                                 Text(
                                     text = "◢",
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     color = Color(0xFF00FF66).copy(alpha = 0.8f)
                                 )
                             }
@@ -396,7 +396,7 @@ private fun BatteryStackedItemRow(
                 color = if (item.online) Color(0xFF33FF66) else Color(0xFFFF6E6E),
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 lineHeight = 15.sp,
                 modifier = Modifier.width(72.dp)
             )
@@ -405,7 +405,7 @@ private fun BatteryStackedItemRow(
                 text = item.deviceName,
                 color = Color(0xFFE8F5E9),
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 lineHeight = 15.sp,
                 maxLines = 1
             )
@@ -413,7 +413,7 @@ private fun BatteryStackedItemRow(
                 text = " │ ",
                 color = Color(0xFF00FF66).copy(alpha = 0.55f),
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 lineHeight = 15.sp
             )
             Text(
@@ -421,7 +421,7 @@ private fun BatteryStackedItemRow(
                 color = batteryColor,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 lineHeight = 15.sp
             )
         }
@@ -433,14 +433,14 @@ private fun BatteryStackedItemRow(
                 text = "  └─ ",
                 color = Color(0xFF00FF66).copy(alpha = 0.55f),
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 lineHeight = 15.sp
             )
             Text(
                 text = stateTag,
                 color = stateColor,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 lineHeight = 15.sp
             )
             if (item.lowPowerMode) {
@@ -450,7 +450,7 @@ private fun BatteryStackedItemRow(
                     color = Color(0xFFFFB300),
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 11.5.sp,
+                    fontSize = 12.sp,
                     lineHeight = 15.sp
                 )
             }
@@ -498,7 +498,7 @@ private fun BatteryWideItemRow(
             color = if (item.online) Color(0xFF33FF66) else Color(0xFFFF6E6E),
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.5.sp,
+            fontSize = 12.sp,
             lineHeight = 15.sp,
             modifier = Modifier.width(72.dp)
         )
@@ -508,7 +508,7 @@ private fun BatteryWideItemRow(
             text = item.deviceName,
             color = Color(0xFFE8F5E9),
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.5.sp,
+            fontSize = 12.sp,
             lineHeight = 15.sp,
             maxLines = 1,
             modifier = Modifier.width(nameColWidthDp)
@@ -518,7 +518,7 @@ private fun BatteryWideItemRow(
             text = " │ ",
             color = Color(0xFF00FF66).copy(alpha = 0.55f),
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.5.sp,
+            fontSize = 12.sp,
             lineHeight = 15.sp
         )
 
@@ -527,7 +527,7 @@ private fun BatteryWideItemRow(
             color = batteryColor,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.5.sp,
+            fontSize = 12.sp,
             lineHeight = 15.sp,
             textAlign = TextAlign.End,
             modifier = Modifier.width(27.dp)
@@ -537,7 +537,7 @@ private fun BatteryWideItemRow(
             text = " │ ",
             color = Color(0xFF00FF66).copy(alpha = 0.55f),
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.5.sp,
+            fontSize = 12.sp,
             lineHeight = 15.sp
         )
 
@@ -545,7 +545,7 @@ private fun BatteryWideItemRow(
             text = stateTag,
             color = stateColor,
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.5.sp,
+            fontSize = 12.sp,
             lineHeight = 15.sp
         )
 
@@ -556,7 +556,7 @@ private fun BatteryWideItemRow(
                 color = Color(0xFFFFB300),
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 lineHeight = 15.sp
             )
         }

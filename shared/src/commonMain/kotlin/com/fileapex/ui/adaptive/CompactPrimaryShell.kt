@@ -1,5 +1,7 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.ui.theme.fileApexHeaderSubtitleStyle
+import com.fileapex.ui.theme.fileApexHeaderTitleStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,17 +18,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.ExpandableSearchPillRow
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.QueuedFilesButton
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexFloatingChrome
@@ -56,7 +57,6 @@ object CompactHomeChrome {
 @Composable
 fun CompactPrimaryShell(
     selectedTab: HomeTab,
-    onMainHomeScreen: Boolean = true,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit,
@@ -66,7 +66,6 @@ fun CompactPrimaryShell(
 ) {
     ThemeCompactNavScaffold(
         selectedTab = selectedTab,
-        onMainHomeScreen = onMainHomeScreen,
         onDevices = onDevices,
         onFiles = onFiles,
         onSettings = onSettings,
@@ -171,7 +170,7 @@ fun CompactHomeTitleBand(
                 CompactHomeTitleStyle.Prominent -> {
                     Text(
                         text = "FileApex",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        style = fileApexHeaderTitleStyle(),
                         color = if (lightText) Color.White else MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(CompactHomeChrome.eyebrowHeadlineGap))
@@ -182,7 +181,7 @@ fun CompactHomeTitleBand(
                             primaryLine
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                        style = fileApexHeaderSubtitleStyle(),
                         color = if (lightText) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
                         softWrap = true,
                         maxLines = 2
@@ -192,17 +191,7 @@ fun CompactHomeTitleBand(
                 CompactHomeTitleStyle.Detail -> {
                     Text(
                         text = primaryLine,
-                        style = if (isFileApexCleanCurved()) {
-                            MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                        } else if (jadedHeader) {
-                            MaterialTheme.typography.headlineLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                letterSpacing = (-0.5).sp
-                            )
-                        } else {
-                            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        },
+                        style = fileApexHeaderTitleStyle(),
                         color = if (lightText) Color.White else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -211,7 +200,7 @@ fun CompactHomeTitleBand(
                         Spacer(modifier = Modifier.height(if (jadedHeader) 1.dp else CompactHomeChrome.eyebrowHeadlineGap))
                         Text(
                             text = secondaryLine,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            style = MaterialTheme.typography.labelSmall,
                             color = if (lightText) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -250,7 +239,7 @@ private fun CompactHomeTitleBandRow(
             modifier = rowModifier,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f).hiddenUnlessItFits()) {
                 titleContent()
             }
             if (onOpenTransferQueue != null) {
@@ -268,7 +257,7 @@ private fun CompactHomeTitleBandRow(
             .then(
                 when {
                     jadedHeader -> Modifier.jadedCompactHeaderPanel()
-                    isFileApexCleanCurved() -> Modifier.fileApexFloatingChrome(FileApexTeal)
+                    isFileApexCleanCurved() -> Modifier.fileApexFloatingChrome(fileApexAccent())
                     else -> Modifier.background(headerBg).fileApexChromeBottomEdge()
                 }
             )
@@ -294,5 +283,15 @@ private fun CompactHomeTitleBandRow(
         } else {
             rowContent(Modifier.fillMaxWidth())
         }
+    }
+}
+
+/** Places nothing when the content cannot fit whole in the width it is given, so a squeezed title never shows as a fragment. */
+internal fun Modifier.hiddenUnlessItFits(): Modifier = layout { measurable, constraints ->
+    if (measurable.maxIntrinsicWidth(constraints.maxHeight) > constraints.maxWidth) {
+        layout(0, 0) {}
+    } else {
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
     }
 }

@@ -22,6 +22,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -119,6 +120,18 @@ internal fun DeviceDetailsSettingsPage(
                                 onAllowOverCellularChange(false)
                             }
                         }
+                    )
+                }
+            )
+            val iconSync = FileApexServices.settings.deviceIconSync
+            val acceptSyncedIcons by iconSync.acceptFromPeers.collectAsState()
+            ListItem(
+                headlineContent = { Text(stringRes("custom_icon_accept_sync"), softWrap = true) },
+                supportingContent = { Text(stringRes("custom_icon_accept_sync_desc"), softWrap = true) },
+                trailingContent = {
+                    Switch(
+                        checked = acceptSyncedIcons,
+                        onCheckedChange = { iconSync.setAcceptFromPeers(it) }
                     )
                 }
             )

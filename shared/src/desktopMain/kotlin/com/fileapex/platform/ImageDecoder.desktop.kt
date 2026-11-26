@@ -191,13 +191,19 @@ private fun calculateInSampleSize(
     return inSampleSize.coerceAtLeast(1)
 }
 
+actual fun decodeDocumentThumbnail(absolutePath: String, kind: com.fileapex.domain.preview.ThumbnailKind, maxEdge: Int): ImageBitmap? {
+    if (kind != com.fileapex.domain.preview.ThumbnailKind.Pdf) return null
+    return when {
+        DesktopPlatformPaths.isMacOs() -> MacPdfThumbnail.render(absolutePath, maxEdge)
+        DesktopPlatformPaths.isWindows() -> WindowsPdfThumbnail.render(absolutePath, maxEdge)
+        DesktopPlatformPaths.isLinux() -> LinuxPdfThumbnail.render(absolutePath, maxEdge)
+        else -> null
+    }
+}
+
 actual fun encodeLocalMediaThumbnailJpeg(absolutePath: String, mimeType: String, maxEdge: Int): ByteArray? {
     val edge = maxEdge.coerceIn(64, 320)
-    val bitmap = if (mimeType.lowercase().startsWith("video/")) {
-        decodeVideoPoster(absolutePath, edge)
-    } else {
-        decodeLocalImageFile(absolutePath, edge)
-    } ?: return null
+    val bitmap = decodeThumbnailBitmap(absolutePath, mimeType, edge) ?: return null
     return cancellableCatching("ImageDecoder encodeLocalMediaThumbnailJpeg") {
         Image.makeFromBitmap(bitmap.asSkiaBitmap())
             .encodeToData(EncodedImageFormat.JPEG, 78)

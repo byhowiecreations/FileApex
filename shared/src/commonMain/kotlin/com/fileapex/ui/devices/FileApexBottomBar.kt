@@ -46,7 +46,6 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.adaptive.CleanModernBottomBar
 import com.fileapex.ui.adaptive.JadedRaisedTile
-import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeTopEdge
@@ -64,18 +63,16 @@ import com.fileapex.ui.theme.isFileApexJadedSteel
 @Composable
 fun FileApexBottomBar(
     selected: HomeTab,
-    onMainHomeScreen: Boolean = true,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit
 ) {
-    val devicesLabel = devicesNavLabel(onMainHomeScreen)
+    val devicesLabel = stringRes("home")
     val currentTheme = LocalAppTheme.current
     if (currentTheme.traits.canvasHome) return
     if (isFileApexCleanModern()) {
         CleanModernBottomBar(
             selected = selected,
-            onMainHomeScreen = onMainHomeScreen,
             onDevices = onDevices,
             onFiles = onFiles,
             onSettings = onSettings
@@ -299,8 +296,6 @@ private fun CustomGlassNavItem(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                fontSize = 11.sp,
-                lineHeight = 13.sp,
                 lineHeightStyle = if (jaded) {
                     LineHeightStyle(
                         alignment = LineHeightStyle.Alignment.Center,

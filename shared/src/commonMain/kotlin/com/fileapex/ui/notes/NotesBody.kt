@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.NotesAttachmentTransportOverlay
 import com.fileapex.ui.dnd.deviceFileDropTarget
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 
 @Composable
 internal fun NotesScope.NotesBody(modifier: Modifier) {
@@ -40,7 +40,7 @@ internal fun NotesScope.NotesBody(modifier: Modifier) {
             .fillMaxSize()
             .background(
                 if (dropHover) {
-                    if (isCustomGlass) Color(0xFF00E676).copy(alpha = 0.10f) else FileApexTeal.copy(alpha = 0.10f)
+                    if (isCustomGlass) Color(0xFF00E676).copy(alpha = 0.10f) else fileApexAccent().copy(alpha = 0.10f)
                 } else {
                     Color.Transparent
                 }
@@ -100,7 +100,7 @@ internal fun NotesScope.NotesBody(modifier: Modifier) {
         )
     }
     if (dropHover) {
-        val dropAccent = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+        val dropAccent = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
         Box(
             modifier = Modifier
                 .fillMaxSize()

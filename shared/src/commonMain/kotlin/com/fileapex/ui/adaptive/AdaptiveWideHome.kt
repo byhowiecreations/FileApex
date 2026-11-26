@@ -85,8 +85,6 @@ import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.platform.OnboardingPermissionStep
-import com.fileapex.ui.devicesNavLabel
-import com.fileapex.ui.isMainHomeScreen
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexFloatingChrome
@@ -203,7 +201,6 @@ fun AdaptiveWideHome(
         ThemeNavContainer(
             navPosition = navPosition,
             selected = selectedTab,
-            onMainHomeScreen = isMainHomeScreen(selectedTab = selectedTab, hasActiveDetail = selectedTarget != null),
             onDevices = { onSelectTab(HomeTab.Devices); if (selectedTarget != null) onClearDetail() },
             onFiles = { onSelectTab(HomeTab.Files); onOpenLocalFiles() },
             onSettings = { onSelectTab(HomeTab.Settings) },
@@ -514,13 +511,12 @@ private fun WideTopBar(
 @Composable
 fun FileApexNavigationRail(
     selected: HomeTab,
-    onMainHomeScreen: Boolean = true,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit,
     onRightEdge: Boolean = false
 ) {
-    val devicesLabel = devicesNavLabel(onMainHomeScreen)
+    val devicesLabel = stringRes("home")
     val jadedRail = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
     val jadedRailShape = if (onRightEdge) {

@@ -43,7 +43,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fileapex.ui.ExplorerHeaderCommands
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import androidx.compose.runtime.setValue
 
@@ -54,7 +54,7 @@ internal fun RowScope.TransferStatsPill(onOpenTransferQueue: () -> Unit) {
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .background(FileApexTeal.copy(alpha = 0.20f))
+                .background(fileApexAccent().copy(alpha = 0.20f))
                 .clickable(onClick = onOpenTransferQueue)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -62,7 +62,7 @@ internal fun RowScope.TransferStatsPill(onOpenTransferQueue: () -> Unit) {
             CircularProgressIndicator(
                 progress = { liveStats.progress },
                 modifier = Modifier.size(12.dp),
-                color = FileApexTeal,
+                color = fileApexAccent(),
                 strokeWidth = 2.dp
             )
             Spacer(modifier = Modifier.width(6.dp))

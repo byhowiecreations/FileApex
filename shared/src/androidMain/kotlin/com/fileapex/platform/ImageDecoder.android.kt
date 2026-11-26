@@ -87,11 +87,7 @@ private fun calculateInSampleSize(
 
 actual fun encodeLocalMediaThumbnailJpeg(absolutePath: String, mimeType: String, maxEdge: Int): ByteArray? {
     val edge = maxEdge.coerceIn(64, 320)
-    val bitmap = if (mimeType.lowercase().startsWith("video/")) {
-        decodeVideoPoster(absolutePath, edge)
-    } else {
-        decodeLocalImageFile(absolutePath, edge)
-    } ?: return null
+    val bitmap = decodeThumbnailBitmap(absolutePath, mimeType, edge) ?: return null
     val androidBitmap = bitmap.asAndroidBitmap()
     val output = java.io.ByteArrayOutputStream()
     var quality = 78

@@ -17,11 +17,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fileapex.i18n.stringRes
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 
 @Composable
 internal fun NewPostsDivider(isCustomGlass: Boolean) {
-    val accent = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+    val accent = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),

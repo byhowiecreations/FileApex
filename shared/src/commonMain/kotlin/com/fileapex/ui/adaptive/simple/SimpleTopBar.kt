@@ -1,5 +1,6 @@
 package com.fileapex.ui.adaptive.simple
 
+import com.fileapex.ui.theme.fileApexHeaderTitleStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,7 +19,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -87,7 +87,7 @@ internal fun SimpleTopBar(
     ) {
         Text(
             text = "FileApex",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = fileApexHeaderTitleStyle(),
             color = fileApexChromeContentColor()
         )
         Spacer(modifier = Modifier.width(8.dp))

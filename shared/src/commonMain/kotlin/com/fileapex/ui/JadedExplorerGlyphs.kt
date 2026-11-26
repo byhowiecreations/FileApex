@@ -177,7 +177,7 @@ internal fun JadedCardCornerBadge(item: RemoteFileItem, modifier: Modifier = Mod
     Text(
         text = label,
         color = Color.White,
-        fontSize = 10.sp,
+        fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
         modifier = modifier

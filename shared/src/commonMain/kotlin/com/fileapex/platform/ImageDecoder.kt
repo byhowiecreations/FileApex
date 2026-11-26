@@ -9,6 +9,12 @@ expect fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap
 /** Encodes a bounded JPEG thumbnail for local image or video files, or null if unsupported. */
 expect fun encodeLocalMediaThumbnailJpeg(absolutePath: String, mimeType: String, maxEdge: Int = 256): ByteArray?
 
+/**
+ * A thumbnail for a PDF (first page), audio file (cover art) or APK (app icon), or null when this platform cannot make one.
+ * Runs on a background thread; the result is at most [maxEdge] pixels on its longest side.
+ */
+expect fun decodeDocumentThumbnail(absolutePath: String, kind: com.fileapex.domain.preview.ThumbnailKind, maxEdge: Int): ImageBitmap?
+
 /** Longest edge of the primary display in physical pixels, clamped for full-screen previews. */
 expect fun previewMaxEdgePx(): Int
 

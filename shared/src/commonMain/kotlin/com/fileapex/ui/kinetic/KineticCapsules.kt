@@ -114,7 +114,7 @@ internal fun KineticScope.KineticBatteryChip() {
                             text = batteryText,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 11.5.sp
+                                fontSize = 12.sp
                             ),
                             color = Color.White,
                             softWrap = true,
@@ -176,7 +176,7 @@ internal fun KineticScope.KineticFriendsChip() {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = stringRes("groups_title"),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = Color.White,
                         maxLines = 1
                     )

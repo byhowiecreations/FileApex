@@ -314,6 +314,8 @@ internal fun ThemesSettingsPage(
                     )
                 }
             }
+            AccentSettingsSection(state.appTheme)
+            TextSizeSettingsSection()
             MotionSettingsSection()
         }
     }
@@ -378,7 +380,7 @@ private fun AppThemeOptionRow(
                                 text = stringRes("default_badge"),
                                 maxLines = ThemeBadgeLayoutPolicy.maxLines,
                                 softWrap = ThemeBadgeLayoutPolicy.softWrap,
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSecondaryContainer
                             )

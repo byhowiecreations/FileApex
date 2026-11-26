@@ -91,7 +91,7 @@ private fun UnreadBadge(label: String, modifier: Modifier = Modifier) {
         Text(
             text = label,
             color = Color.White,
-            fontSize = 10.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold
         )
     }

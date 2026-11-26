@@ -19,7 +19,6 @@ import com.fileapex.ui.NotesAttachmentTransportState
 import com.fileapex.ui.loadNotesAttachmentBitmap
 import com.fileapex.ui.notesAttachmentIsImage
 import com.fileapex.ui.predictOutgoingAttachmentCardSize
-import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
@@ -90,7 +89,7 @@ internal fun NotesScope.flushPendingSend(text: String?) {
                 sourceRect = origin,
                 bitmap = preview,
                 isImage = notesAttachmentIsImage(name),
-                accent = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
+                accent = if (isCustomGlass) Color(0xFF00E676) else accent,
                 icon = if (name.isNullOrBlank()) {
                     Icons.AutoMirrored.Filled.InsertDriveFile
                 } else {
@@ -234,7 +233,7 @@ internal fun NotesScope.startDroppedAttachment(picked: PickedLocalFile, rootOffs
                 sourceRect = origin,
                 bitmap = preview,
                 isImage = notesAttachmentIsImage(picked.displayName),
-                accent = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
+                accent = if (isCustomGlass) Color(0xFF00E676) else accent,
                 icon = ExplorerEntryIcons.iconForFile(picked.displayName, ""),
                 text = captionText,
                 caption = caption,

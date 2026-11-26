@@ -334,14 +334,14 @@ private fun androidx.compose.foundation.layout.RowScope.SimpleBarItem(
                     textAlign = TextAlign.Center,
                     maxLines = SimpleBottomBarLayoutPolicy.labelMaxLines,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 12.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(lineHeight = 12.sp),
                     color = if (selected) fileApexNavSelectedTextColor() else fileApexNavUnselectedTextColor()
                 )
                 if (!caption.isNullOrBlank()) {
                     Text(
                         caption,
                         textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = fileApexNavUnselectedTextColor()

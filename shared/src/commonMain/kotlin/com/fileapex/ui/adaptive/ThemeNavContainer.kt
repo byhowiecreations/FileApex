@@ -30,7 +30,6 @@ import com.fileapex.ui.devices.FileApexBottomBar
 @Composable
 internal fun ThemeCompactNavScaffold(
     selectedTab: HomeTab,
-    onMainHomeScreen: Boolean,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit,
@@ -53,7 +52,6 @@ internal fun ThemeCompactNavScaffold(
             if (showBottomBar) {
                 FileApexBottomBar(
                     selected = selectedTab,
-                    onMainHomeScreen = onMainHomeScreen,
                     onDevices = onDevices,
                     onFiles = {
                         StorageToolsEvents.closeRequests.tryEmit(Unit)
@@ -71,7 +69,6 @@ internal fun ThemeCompactNavScaffold(
             ThemeNavRailRow(
                 navPosition = navPosition,
                 selected = selectedTab,
-                onMainHomeScreen = onMainHomeScreen,
                 onDevices = onDevices,
                 onFiles = onFiles,
                 onSettings = onSettings,
@@ -91,7 +88,6 @@ internal fun ThemeCompactNavScaffold(
 internal fun ThemeNavContainer(
     navPosition: DesktopNavPosition,
     selected: HomeTab,
-    onMainHomeScreen: Boolean,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit,
@@ -111,7 +107,6 @@ internal fun ThemeNavContainer(
         DesktopNavPosition.Left -> Row(modifier = modifier.fillMaxWidth()) {
             FileApexNavigationRail(
                 selected = selected,
-                onMainHomeScreen = onMainHomeScreen,
                 onDevices = onDevices,
                 onFiles = handleFiles,
                 onSettings = onSettings,
@@ -123,7 +118,6 @@ internal fun ThemeNavContainer(
             Row(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
             FileApexNavigationRail(
                 selected = selected,
-                onMainHomeScreen = onMainHomeScreen,
                 onDevices = onDevices,
                 onFiles = handleFiles,
                 onSettings = onSettings,
@@ -134,7 +128,6 @@ internal fun ThemeNavContainer(
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
             FileApexBottomBar(
                 selected = selected,
-                onMainHomeScreen = onMainHomeScreen,
                 onDevices = onDevices,
                 onFiles = handleFiles,
                 onSettings = onSettings
@@ -150,7 +143,6 @@ internal fun ThemeNavContainer(
 internal fun ThemeNavRailRow(
     navPosition: DesktopNavPosition,
     selected: HomeTab,
-    onMainHomeScreen: Boolean,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit,
@@ -165,7 +157,6 @@ internal fun ThemeNavRailRow(
         if (navPosition == DesktopNavPosition.Left) {
             FileApexNavigationRail(
                 selected = selected,
-                onMainHomeScreen = onMainHomeScreen,
                 onDevices = onDevices,
                 onFiles = handleFiles,
                 onSettings = onSettings,
@@ -178,7 +169,6 @@ internal fun ThemeNavRailRow(
         if (navPosition == DesktopNavPosition.Right) {
             FileApexNavigationRail(
                 selected = selected,
-                onMainHomeScreen = onMainHomeScreen,
                 onDevices = onDevices,
                 onFiles = handleFiles,
                 onSettings = onSettings,

@@ -28,7 +28,9 @@ data class LiveTransferStats(
     /** True when a cancel only pauses: a queue row owns the send and keeps it for a retry. A receive has no owner and is really cancelled. */
     val parksOnCancel: Boolean = false,
     /** True while the active transfer goes through the Google Drive relay (Cancel then asks what to do with Drive). */
-    val driveRelay: Boolean = false
+    val driveRelay: Boolean = false,
+    /** True while every active stream in the batch is an inbound receive. */
+    val isReceiving: Boolean = false
 )
 
 /**
@@ -60,7 +62,8 @@ object TransferActivityGuard {
     private class Stream(
         val deviceId: String,
         @Volatile var deviceName: String,
-        @Volatile var fileName: String
+        @Volatile var fileName: String,
+        val isReceive: Boolean = false
     ) {
         @Volatile var sentBytes: Long = 0L
         @Volatile var totalBytes: Long = 0L
@@ -161,13 +164,14 @@ object TransferActivityGuard {
         fileName: String = "",
         destinationDeviceName: String = "",
         deviceId: String = "",
-        streamKey: String = ""
+        streamKey: String = "",
+        isReceive: Boolean = false
     ) {
         if (fileName.isNotBlank()) currentFileName = fileName
         if (destinationDeviceName.isNotBlank()) this.destinationDeviceName = destinationDeviceName
         val key = streamKey.ifBlank { deviceId }
         if (key.isNotBlank()) {
-            streams[key] = Stream(deviceId, destinationDeviceName, fileName.ifBlank { currentFileName })
+            streams[key] = Stream(deviceId, destinationDeviceName, fileName.ifBlank { currentFileName }, isReceive = isReceive)
         } else {
             anonymousActive.incrementAndGet()
         }
@@ -224,7 +228,7 @@ object TransferActivityGuard {
     }
 
     private fun recordIfFinished(stream: Stream) {
-        if (stream.totalBytes <= 0L || stream.sentBytes < stream.totalBytes) return
+        if (stream.isReceive || stream.totalBytes <= 0L || stream.sentBytes < stream.totalBytes) return
         val now = TimeUtils.now()
         TransferHistory.record(TransferHistoryEntry("$now-${stream.fileName}", stream.fileName, stream.deviceName, stream.totalBytes, now), now)
     }
@@ -395,7 +399,8 @@ object TransferActivityGuard {
             etaFormatted = formatEta(sent, total, speed),
             cancelable = cancelableJobs.isNotEmpty(),
             parksOnCancel = cancelableJobs.values.any { it.isNotEmpty() },
-            driveRelay = driveRelayActive.get() > 0
+            driveRelay = driveRelayActive.get() > 0,
+            isReceiving = active.isNotEmpty() && active.all { it.isReceive }
         )
     }
 

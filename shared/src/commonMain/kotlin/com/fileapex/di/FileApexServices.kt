@@ -117,6 +117,9 @@ object FileApexServices {
         FileApexClient(json = FileApexHttpClientFactory.defaultJson)
     }
     val settings: AppSettings by lazy { createAppSettings() }
+
+    /** Custom device icons the user picked, sealed on disk. */
+    val deviceIcons: com.fileapex.domain.devices.DeviceIconStore by lazy { com.fileapex.domain.devices.createDeviceIconStore() }
     val localIdentity: LocalIdentity
         get() = loadLocalIdentity()
 

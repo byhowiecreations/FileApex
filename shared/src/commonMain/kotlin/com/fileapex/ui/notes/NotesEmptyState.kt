@@ -12,7 +12,7 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.BulletinFilter
 import com.fileapex.ui.EmptyState
 import com.fileapex.ui.EmptyStateColors
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 
 /** Which strings the Bulletin Board shows when there is nothing to list. */
 internal data class NotesEmptyCopy(
@@ -45,7 +45,7 @@ internal fun NotesScope.NotesEmptyState(modifier: Modifier = Modifier) {
         val isSearchEmpty = searchQuery.isNotBlank() && displayNotes.isNotEmpty()
         val isFilteredEmpty = (activeFilter != BulletinFilter.All || isSearchEmpty) && displayNotes.isNotEmpty()
         val copy = notesEmptyCopy(isSearchEmpty, isFilteredEmpty, activeFilter)
-        val accent = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+        val accent = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
         EmptyState(
             icon = when {
                 isSearchEmpty -> Icons.Filled.Search

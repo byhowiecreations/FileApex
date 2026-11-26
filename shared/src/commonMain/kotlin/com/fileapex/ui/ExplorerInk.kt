@@ -12,7 +12,7 @@ import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.ui.theme.CarouselPalette
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.KineticStyleLook
 
@@ -81,7 +81,7 @@ internal fun explorerInk(): ExplorerInk {
     val flux = theme.traits.fluxSurfaces
     val scheme = MaterialTheme.colorScheme
     // Simple sits on the dark steel background, where the standard dark teal would not show.
-    val teal = if (theme == AppTheme.SIMPLE) scheme.primary else FileApexTeal
+    val teal = if (theme == AppTheme.SIMPLE) scheme.primary else fileApexAccent()
     return ExplorerInk(
         title = if (flux) Color.White else scheme.onSurface,
         muted = if (flux) FluxGlassPalette.explorerMuted else scheme.onSurfaceVariant,

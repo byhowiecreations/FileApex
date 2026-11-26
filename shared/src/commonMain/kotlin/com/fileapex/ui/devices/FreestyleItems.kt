@@ -202,7 +202,6 @@ internal fun FreestyleHorizontalCardItem(
             Text(
                 text = action.menuShortLabel(),
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 8.5.sp,
                     fontWeight = FontWeight.Medium
                 ),
                 color = Color.White,
@@ -344,9 +343,7 @@ internal fun FreestyleTileRingItem(
                     Text(
                         text = action.menuShortLabel(),
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            lineHeight = 10.sp
                         ),
                         color = Color.White,
                         maxLines = 1,
@@ -385,9 +382,7 @@ internal fun FreestyleTileRingItem(
                 Text(
                     text = action.menuShortLabel(),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 9.sp,
                         fontWeight = FontWeight.SemiBold,
-                        lineHeight = 10.sp
                     ),
                     color = Color.White,
                     maxLines = 1,

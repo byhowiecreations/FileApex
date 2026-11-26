@@ -1,5 +1,6 @@
 package com.fileapex.ui.notes
 
+import com.fileapex.ui.theme.fileApexAccent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -78,7 +79,7 @@ internal fun rememberNotesScope(
     val subTextColor = if (isCustomGlass) Color.White.copy(alpha = 0.70f) else MaterialTheme.colorScheme.onSurfaceVariant
     val frame = NotesFrame(
         onBack, focusNoteId, onFocusNoteConsumed, viewModel, state, currentTheme, isCustomGlass, scope, density, listState,
-        visualRows, holdingTransportSlot, backgroundColor, cardBg, textColor, subTextColor, pickAttachment
+        visualRows, holdingTransportSlot, backgroundColor, cardBg, textColor, subTextColor, fileApexAccent(), pickAttachment
     )
     return NotesScope(frame, live).also { holder[0] = it }
 }

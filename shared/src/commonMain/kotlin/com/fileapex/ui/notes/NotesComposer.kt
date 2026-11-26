@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.usesDesktopFileSelection
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 
 @Composable
 internal fun ColumnScope.NotesComposer(notes: NotesScope) {
@@ -60,7 +60,7 @@ internal fun ColumnScope.NotesComposer(notes: NotesScope) {
             fontSize = 13.sp,
             color = textColor
         )
-        val composerBorder = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+        val composerBorder = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
         val composerIdleBorder = if (isCustomGlass) {
             Color.White.copy(alpha = 0.3f)
         } else {
@@ -77,7 +77,7 @@ internal fun ColumnScope.NotesComposer(notes: NotesScope) {
                     imageVector = Icons.Filled.AttachFile,
                     contentDescription = stringRes("attach_file"),
                     tint = if (pendingAttachmentPath != null) {
-                        if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+                        if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
                     } else {
                         subTextColor
                     }
@@ -170,7 +170,7 @@ internal fun ColumnScope.NotesComposer(notes: NotesScope) {
                 },
                 enabled = inputContent.trim().isNotEmpty() || !pendingAttachmentPath.isNullOrBlank(),
                 shape = CircleShape,
-                color = if (inputContent.trim().isNotEmpty() || !pendingAttachmentPath.isNullOrBlank()) (if (isCustomGlass) Color(0xFF00E676) else FileApexTeal) else Color.Gray.copy(alpha = 0.4f),
+                color = if (inputContent.trim().isNotEmpty() || !pendingAttachmentPath.isNullOrBlank()) (if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()) else Color.Gray.copy(alpha = 0.4f),
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {

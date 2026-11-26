@@ -1,5 +1,6 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.ui.theme.fileApexAccentContainer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -62,12 +63,11 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DevicesUiState
 import com.fileapex.ui.ExplorerIcon
 import com.fileapex.ui.HomeTab
-import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.explorerIcon
 import com.fileapex.ui.theme.CarouselPalette
 import com.fileapex.ui.theme.CleanModernPalette
-import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.fileApexAccent
+import com.fileapex.ui.theme.fileApexAccentDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.fileApexChromeTopEdge
@@ -126,12 +126,11 @@ internal fun devicesListPaneContainerColor(theme: AppTheme, isFluent: Boolean): 
 @Composable
 internal fun CleanModernBottomBar(
     selected: HomeTab,
-    onMainHomeScreen: Boolean,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit
 ) {
-    val devicesLabel = devicesNavLabel(onMainHomeScreen)
+    val devicesLabel = stringRes("home")
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -181,8 +180,8 @@ private fun CleanModernBottomTab(
     label: String,
     modifier: Modifier = Modifier
 ) {
-    val bg = if (selected) CleanModernPalette.NavSelectedPill else Color.Transparent
-    val tint = if (selected) FileApexTealDark else CleanModernPalette.ChromeMuted
+    val bg = if (selected) fileApexAccentContainer() else Color.Transparent
+    val tint = if (selected) fileApexAccentDark() else CleanModernPalette.ChromeMuted
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
@@ -203,7 +202,6 @@ private fun CleanModernBottomTab(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                fontSize = 11.sp
             ),
             color = tint,
             maxLines = 1,
@@ -227,9 +225,9 @@ internal fun DockedDevicesActionBar(
     val dividerColor = if (isFlux) FluxGlassPalette.footerDivider else CleanModernPalette.ChromeBorder
     val clipBg = if (isFlux) FluxGlassPalette.clipboardButtonFill else CleanModernPalette.CardSurface
     val clipBorder = if (isFlux) FluxGlassPalette.cardBorder else CleanModernPalette.CardBorder
-    val clipIconTint = if (isFlux) FluxGlassPalette.headerIcon else FileApexTealDark
+    val clipIconTint = if (isFlux) FluxGlassPalette.headerIcon else fileApexAccentDark()
     val clipText = if (isFlux) Color.White else CleanModernPalette.ChromeContent
-    val addBg = if (isFlux) FluxGlassPalette.addButtonFill else FileApexTeal
+    val addBg = if (isFlux) FluxGlassPalette.addButtonFill else fileApexAccent()
     val addContent = if (isFlux) FluxGlassPalette.addButtonContent else Color.White
     val btnShape = RoundedCornerShape(10.dp)
 
@@ -361,16 +359,6 @@ internal fun DockedDevicesActionBar(
             }
         }
     }
-}
-
-@Composable
-internal fun OnlineStatusDot(isFlux: Boolean, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(6.dp)
-            .clip(CircleShape)
-            .background(if (isFlux) FluxGlassPalette.statusOnlineDot else CleanModernPalette.StatusOnlineDot)
-    )
 }
 
 @Composable

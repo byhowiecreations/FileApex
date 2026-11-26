@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -276,6 +277,11 @@
         <!-- The watchdog alarm fires this explicitly from inside the app; nothing outside can reach it. -->
         <receiver
             android:name="com.fileapex.platform.FileApexWatchdogAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Cancel on the ongoing transfer progress notification. Only this app sends it. -->
+        <receiver
+            android:name="com.fileapex.platform.TransferCancelReceiver"
             android:exported="false" />
 
         <!-- Accept and Decline on the incoming-file notification from a friend. Only this app sends these. -->

@@ -50,7 +50,7 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.BulletinFilter
 import com.fileapex.presentation.BulletinSearchPolicy
 import com.fileapex.ui.DesktopHoverTooltip
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexAccent
 
 @Composable
 internal fun NotesScope.NotesTopBar() {
@@ -66,7 +66,7 @@ internal fun NotesScope.NotesTopBar() {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringRes("back"),
-                    tint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+                    tint = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
@@ -99,7 +99,7 @@ internal fun NotesScope.NotesTopBar() {
                         imageVector = Icons.Filled.Search,
                         contentDescription = stringRes("search_notes"),
                         tint = if (searchOpen || searchQuery.isNotBlank()) {
-                            if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                            if (isCustomGlass) Color(0xFF00E5FF) else fileApexAccent()
                         } else {
                             subTextColor
                         }
@@ -112,7 +112,7 @@ internal fun NotesScope.NotesTopBar() {
                         imageVector = Icons.Filled.FilterList,
                         contentDescription = stringRes("filter_notes"),
                         tint = if (activeFilter != BulletinFilter.All) {
-                            if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                            if (isCustomGlass) Color(0xFF00E5FF) else fileApexAccent()
                         } else {
                             subTextColor
                         }
@@ -152,7 +152,7 @@ internal fun NotesScope.NotesTopBar() {
 @Composable
 private fun NotesScope.NotesFilterDropdownMenu() {
     with(frame) { with(live) {
-        val checkTint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+        val checkTint = if (isCustomGlass) Color(0xFF00E676) else fileApexAccent()
         DropdownMenu(
             expanded = filterMenuExpanded,
             onDismissRequest = { filterMenuExpanded = false }
@@ -198,7 +198,7 @@ private fun NotesScope.NotesFilterDropdownMenu() {
                             Text(
                                 text = tag,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                                color = if (isCustomGlass) Color(0xFF00E5FF) else fileApexAccent()
                             )
                         },
                         trailingIcon = if (isSelected) {

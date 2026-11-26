@@ -7,7 +7,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Which events raise a notification here, and what this device shares of its own notifications with another one. */
 class NotificationSettingsStore(private val store: SettingsKvStore) {
-    private val transfer = BooleanSetting(store, BaseAppSettings.KEY_TRANSFER_NOTIFICATIONS)
+    // On by default: the live transfer capsule and the progress notification are options under it.
+    private val transfer = BooleanSetting(store, BaseAppSettings.KEY_TRANSFER_NOTIFICATIONS, default = true)
     private val driveRelay = BooleanSetting(store, BaseAppSettings.KEY_DRIVE_RELAY_NOTIFICATIONS)
     private val notes = BooleanSetting(store, BaseAppSettings.KEY_NOTES_NOTIFICATIONS, default = true)
     private val notesPromptShown = BooleanSetting(store, BaseAppSettings.KEY_NOTES_NOTIFICATION_PROMPT_SHOWN)

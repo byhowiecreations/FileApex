@@ -1,5 +1,6 @@
 package com.fileapex.ui.devices
 
+import com.fileapex.ui.theme.fileApexAccentContainer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,8 +69,8 @@ import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.dnd.deviceFileDropTarget
 import com.fileapex.ui.theme.CleanModernPalette
-import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.fileApexAccent
+import com.fileapex.ui.theme.fileApexAccentDark
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
 import com.fileapex.ui.theme.isFileApexCleanModern
@@ -153,10 +155,10 @@ internal fun DeviceGridCell(
     val titleColor = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isFlux) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
     val containerColor = when {
-        dropHover -> FileApexTeal.copy(alpha = 0.22f)
+        dropHover -> fileApexAccent().copy(alpha = 0.22f)
         selected && isFlux -> FluxGlassPalette.navSelectedPill
-        selected && cleanModern -> CleanModernPalette.NavSelectedPill
-        selected -> FileApexTeal.copy(alpha = 0.12f)
+        selected && cleanModern -> fileApexAccentContainer()
+        selected -> fileApexAccent().copy(alpha = 0.12f)
         isFlux -> FluxGlassPalette.deviceCard
         cleanModern -> CleanModernPalette.CardSurface
         fluent -> MaterialTheme.colorScheme.surface
@@ -192,11 +194,11 @@ internal fun DeviceGridCell(
         border = BorderStroke(
             width = 1.dp,
             color = when {
-                highlighted -> if (isFlux) FluxGlassPalette.navSelectedTint else FileApexTeal
+                highlighted -> if (isFlux) FluxGlassPalette.navSelectedTint else fileApexAccent()
                 fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                 cleanModern -> CleanModernPalette.CardBorder
                 isFlux -> FluxGlassPalette.cardBorder
-                else -> FileApexTeal.copy(alpha = 0.10f)
+                else -> fileApexAccent().copy(alpha = 0.10f)
             }
         )
     ) {
@@ -216,13 +218,16 @@ internal fun DeviceGridCell(
                 val iconTint = if (cleanModern || (isFlux && LocalThemeIconStyle.current == ThemeIconStyle.STANDARD)) {
                     Color.Unspecified
                 } else {
-                    FileApexTealDark
+                    fileApexAccentDark()
                 }
-                DeviceEntryIcon(
-                    row = row,
-                    modifier = Modifier.size(grid.iconSize),
-                    tint = iconTint
-                )
+                Box {
+                    DeviceEntryIcon(
+                        row = row,
+                        modifier = Modifier.size(grid.iconSize),
+                        tint = iconTint
+                    )
+                    RouteBadge(row, Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 2.dp))
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = row.title,
@@ -245,8 +250,8 @@ internal fun DeviceGridCell(
                                 .fillMaxWidth(0.85f)
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(1.5.dp)),
-                            color = FileApexTeal,
-                            trackColor = FileApexTeal.copy(alpha = 0.2f)
+                            color = fileApexAccent(),
+                            trackColor = fileApexAccent().copy(alpha = 0.2f)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         val statText = buildList {
@@ -258,7 +263,7 @@ internal fun DeviceGridCell(
                         Text(
                             text = if (statText.isNotBlank()) statText else stringRes("sending"),
                             style = subtitleStyle.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold),
-                            color = FileApexTeal,
+                            color = fileApexAccent(),
                             maxLines = 1,
                             overflow = TextOverflow.Clip,
                             onTextLayout = { statOverflow = it.hasVisualOverflow }
@@ -273,26 +278,24 @@ internal fun DeviceGridCell(
                         CircularProgressIndicator(
                             modifier = Modifier.size(if (grid.compactTypography) 10.dp else 12.dp),
                             strokeWidth = 1.5.dp,
-                            color = FileApexTeal
+                            color = fileApexAccent()
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = stringRes("connecting"),
                             style = subtitleStyle.copy(textAlign = TextAlign.Center),
-                            color = FileApexTeal,
+                            color = fileApexAccent(),
                             maxLines = 1,
                             overflow = TextOverflow.Clip
                         )
                     }
                 } else {
-                    Text(
-                        text = DeviceListRow.localizedSubtitle(row),
-                        style = subtitleStyle.copy(textAlign = TextAlign.Center),
+                    DeviceCaption(
+                        row = row,
+                        style = subtitleStyle,
                         color = subtitleColor,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        softWrap = true,
                         modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
                         onTextLayout = { subtitleOverflow = it.hasVisualOverflow }
                     )
                 }
@@ -313,7 +316,7 @@ internal fun DeviceGridCell(
                 Icon(
                     imageVector = Icons.Filled.Check,
                     contentDescription = stringRes("selected"),
-                    tint = FileApexTeal,
+                    tint = fileApexAccent(),
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .size(14.dp)

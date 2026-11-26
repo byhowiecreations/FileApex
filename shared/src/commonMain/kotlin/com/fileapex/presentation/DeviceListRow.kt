@@ -38,11 +38,29 @@ data class DeviceListRow(
     /** The route the last contact used; only meaningful while [online]. */
     val reachedBy: RouteKind? = null,
     /** A wake message can start this device (an Android phone a cloud message reaches), so offline may say "Tap to wake". */
-    val canWake: Boolean = false
+    val canWake: Boolean = false,
+    /** Set by [markBehind]: this device runs an older app version than the newest in the cluster. */
+    val isBehind: Boolean = false
 ) {
     val title: String get() = deviceName
 
     val isFriend: Boolean get() = friendGroup != null
+
+    /** Green on the LAN (or a route not yet known), yellow over Tailscale or Iroh, red when not reachable. */
+    val routeLight: RouteLight
+        get() = when {
+            !online -> RouteLight.Red
+            reachedBy == RouteKind.Tailnet || reachedBy == RouteKind.Iroh -> RouteLight.Yellow
+            else -> RouteLight.Green
+        }
+
+    /** What a card prints beside the traffic light: the version only when behind, the offline state when offline, else nothing. */
+    val cardCaption: String?
+        get() = when {
+            !online -> offlineLabel(canWake)
+            isBehind -> (displayVersion ?: appVersion)?.trim()?.takeIf { it.isNotEmpty() }?.let { "v$it" }
+            else -> null
+        }
 
     val subtitle: String get() = friendGroup ?: peerStatusSubtitle(
         online = online,
@@ -53,6 +71,28 @@ data class DeviceListRow(
     )
 
     companion object {
+        /** Marks each peer whose version is below the newest of its peers and this device ([ownVersionName]). */
+        fun markBehind(rows: List<DeviceListRow>, ownVersionName: String): List<DeviceListRow> {
+            val versions = rows.map { versionKey(it.displayVersion ?: it.appVersion) }
+            val newest = (versions + versionKey(ownVersionName)).filterNotNull().maxWithOrNull(VERSION_ORDER) ?: return rows
+            return rows.mapIndexed { i, row ->
+                val own = versions[i]
+                row.copy(isBehind = own != null && VERSION_ORDER.compare(own, newest) < 0)
+            }
+        }
+
+        private val VERSION_ORDER = Comparator<List<Int>> { a, b ->
+            for (i in 0 until maxOf(a.size, b.size)) {
+                val c = (a.getOrElse(i) { 0 }).compareTo(b.getOrElse(i) { 0 })
+                if (c != 0) return@Comparator c
+            }
+            0
+        }
+
+        /** "0.21.10" becomes [0, 21, 10]; anything with a non-numeric part is unknown. */
+        private fun versionKey(version: String?): List<Int>? =
+            version?.trim()?.takeIf { it.isNotEmpty() }?.split('.')?.map { it.toIntOrNull() ?: return null }
+
         fun areItemsTheSame(oldItem: DeviceListRow, newItem: DeviceListRow): Boolean =
             oldItem.deviceId == newItem.deviceId
 
